@@ -1,0 +1,28 @@
+# Java
+target/
+*.class
+*.log
+
+# Spring config
+application-local.yml
+.env
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Docker data
+infrastructure/mysql/data/
+infrastructure/redis/data/
+
+# build cache
+*.pid
+*.lock
