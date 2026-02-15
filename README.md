@@ -11,7 +11,7 @@ cloud-native-blog-system/
 ├── docs/                 # 文档
 ├── gateway/              # API 网关服务
 ├── services/             # 业务微服务
-│   ├── auth-service/     # 用户认证服务
+│   ├── user-service/     # 用户服务（注册、登录、JWT、权限）
 │   ├── blog-service/     # 博客内容服务
 │   ├── comment-service/  # 评论服务
 │   └── (可选) file-service、search-service
@@ -29,7 +29,7 @@ cloud-native-blog-system/
 |------|--------|
 | **docs/** | 任务书、技术栈说明、接口文档、设计说明等文档。 |
 | **gateway/** | Spring Cloud Gateway 项目：路由、鉴权、限流等，作为统一入口。 |
-| **services/auth-service/** | 用户注册、登录、JWT 签发、权限校验。 |
+| **services/user-service/** | 用户管理、注册、登录、JWT 签发、权限校验。 |
 | **services/blog-service/** | 文章、分类、标签的增删改查，MyBatis Plus + MySQL。 |
 | **services/comment-service/** | 评论的增删改查，可调用 blog-service 做文章校验。 |
 | **frontend/** | Vue 3 + Vite + Element Plus 前端工程，页面与接口调用。 |

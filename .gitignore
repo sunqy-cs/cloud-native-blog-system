@@ -5,7 +5,10 @@ target/
 
 # Spring config
 application-local.yml
+application-dev-local.yml
 .env
+.env.local
+.env.*.local
 
 # Node
 node_modules/
@@ -18,6 +21,9 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+*.iml
+*.ipr
+*.iws
 
 # Docker data
 infrastructure/mysql/data/
