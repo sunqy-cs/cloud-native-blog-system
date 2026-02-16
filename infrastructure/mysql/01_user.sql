@@ -1,4 +1,7 @@
 -- 用户表（user-service 使用）
+SET NAMES utf8mb4;
+USE blog;
+
 CREATE TABLE IF NOT EXISTS `user` (
     `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
     `username`    VARCHAR(64)  NOT NULL COMMENT '用户名',
