@@ -16,6 +16,30 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '登录', noAuth: true },
   },
   {
+    path: '/follow',
+    name: 'follow',
+    component: () => import('@/views/Follow.vue'),
+    meta: { title: '关注' },
+  },
+  {
+    path: '/recommend',
+    name: 'recommend',
+    component: () => import('@/views/Recommend.vue'),
+    meta: { title: '推荐' },
+  },
+  {
+    path: '/hot',
+    name: 'hot',
+    component: () => import('@/views/Hot.vue'),
+    meta: { title: '热榜' },
+  },
+  {
+    path: '/knowledge',
+    name: 'knowledge',
+    component: () => import('@/views/Knowledge.vue'),
+    meta: { title: '知识库' },
+  },
+  {
     path: '/article/:id',
     name: 'article',
     component: () => import('@/views/ArticleDetail.vue'),
