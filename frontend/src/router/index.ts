@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { requestLogin } from '@/stores/loginModal'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -11,19 +12,17 @@ const routes: RouteRecordRaw[] = [
     path: '/blog',
     name: 'home',
     component: () => import('@/views/Home.vue'),
-    meta: { title: '博客' },
+    meta: { title: '博客', requireLogin: true },
   },
   {
     path: '/login',
-    name: 'login',
-    component: () => import('@/views/Login.vue'),
-    meta: { title: '登录', noAuth: true },
+    redirect: () => ({ path: '/recommend', query: { login: '1' } }),
   },
   {
     path: '/follow',
     name: 'follow',
     component: () => import('@/views/Follow.vue'),
-    meta: { title: '关注' },
+    meta: { title: '关注', requireLogin: true },
   },
   {
     path: '/recommend',
@@ -41,7 +40,13 @@ const routes: RouteRecordRaw[] = [
     path: '/knowledge',
     name: 'knowledge',
     component: () => import('@/views/Knowledge.vue'),
-    meta: { title: '知识库' },
+    meta: { title: '知识库', requireLogin: true },
+  },
+  {
+    path: '/creator',
+    name: 'creator',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: '创作者中心', requireLogin: true },
   },
   {
     path: '/article/:id',
@@ -76,10 +81,17 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   document.title = (to.meta.title as string) ? `${to.meta.title} - 云原生博客` : '云原生博客'
-  if (to.meta.requireAuth) {
-    const userStore = useUserStore()
-    if (!userStore.token) {
-      next({ name: 'login', query: { redirect: to.fullPath } })
+  const userStore = useUserStore()
+  if (!userStore.token) {
+    if (to.meta.requireAuth) {
+      /* 后台等：重定向到推荐，不弹窗 */
+      next({ path: '/recommend', query: { redirect: to.fullPath } })
+      return
+    }
+    if (to.meta.requireLogin) {
+      /* 博客、关注、知识库：不跳转，弹登录框 */
+      requestLogin(to.fullPath)
+      next(false)
       return
     }
   }

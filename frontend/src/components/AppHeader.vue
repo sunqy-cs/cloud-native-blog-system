@@ -50,7 +50,10 @@
         </el-button>
         <el-dropdown v-else>
           <span class="user-dropdown">
-            {{ userStore.userInfo?.nickname || userStore.userInfo?.username || '用户' }}
+            <span class="user-avatar">
+              <img v-if="avatarUrl" :src="avatarUrl" alt="头像" class="avatar-img" />
+              <span v-else class="avatar-initial">{{ avatarInitial }}</span>
+            </span>
             <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
@@ -70,6 +73,10 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { Search, ArrowDown } from '@element-plus/icons-vue'
+
+const props = defineProps<{
+  openLoginModal?: (redirect?: string) => void
+}>()
 
 const route = useRoute()
 const router = useRouter()
@@ -98,9 +105,14 @@ const activeMenu = computed(() => {
   // 只高亮我们现有的几个主导航
   const path = route.path
   if (path.startsWith('/admin')) return '/admin'
-  if (path.startsWith('/login')) return '/login'
   if (path === '/blog' || path.startsWith('/article')) return '/blog'
   return path
+})
+
+const avatarUrl = computed(() => (userStore.userInfo as { avatar?: string })?.avatar || '')
+const avatarInitial = computed(() => {
+  const name = userStore.userInfo?.nickname || userStore.userInfo?.username || '用'
+  return name.charAt(0).toUpperCase()
 })
 
 watch(activeMenu, updateIndicator)
@@ -113,10 +125,14 @@ onBeforeUnmount(() => {
 })
 
 function goLogin() {
-  router.push({ name: 'login', query: { redirect: route.fullPath } })
+  props.openLoginModal?.(route.fullPath)
 }
 
 function goAdmin() {
+  if (!userStore.isLoggedIn) {
+    props.openLoginModal?.('/admin')
+    return
+  }
   router.push('/admin')
 }
 
@@ -126,8 +142,11 @@ function logout() {
 }
 
 function goWrite() {
-  // 先简单跳后台文章管理，后续可单独做写作页
-  router.push('/admin/articles')
+  if (!userStore.isLoggedIn) {
+    props.openLoginModal?.('/creator')
+    return
+  }
+  router.push('/creator')
 }
 </script>
 
@@ -208,8 +227,46 @@ function goWrite() {
 .user-dropdown {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   cursor: pointer;
+  outline: none;
+}
+
+.action-area :deep(.el-dropdown__trigger) {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.action-area :deep(.el-dropdown__trigger:focus),
+.action-area :deep(.el-dropdown__trigger:focus-visible) {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.user-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #111;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-initial {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 /* ---- 英伦黑白风格：重写 Element Plus 顶栏配色 ---- */

@@ -41,11 +41,12 @@ async function handleLogin() {
   }
   loading.value = true
   try {
-    const data: any = await request.post('/user/login', form)
+    const data: any = await request.post('/sessions', form)
     const token = data?.data?.token ?? data?.token
+    const user = data?.user ?? data?.data?.user
     if (token) {
       userStore.setToken(token)
-      userStore.setUserInfo({ username: form.username })
+      userStore.setUserInfo(user ? { id: user.id, username: user.username, nickname: user.nickname } : { username: form.username })
       ElMessage.success('登录成功')
       const redirect = (route.query.redirect as string) || '/'
       router.push(redirect)
@@ -66,7 +67,7 @@ async function handleRegister() {
   }
   loading.value = true
   try {
-    await request.post('/user/register', form)
+    await request.post('/users', form)
     ElMessage.success('注册成功，请登录')
   } catch {
   } finally {

@@ -5,7 +5,7 @@
         <el-icon class="creation-icon"><EditPen /></el-icon>
         创作中心
       </h3>
-      <span class="creation-drafts">草稿箱 ({{ draftCount }})</span>
+      <span class="creation-drafts" @click="goDrafts">草稿箱 ({{ draftCount }})</span>
     </div>
     <p class="creation-desc">
       开启你的创作之旅，记录思考与见解。
@@ -19,13 +19,27 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { EditPen } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
+import { requestLogin } from '@/stores/loginModal'
 
 const router = useRouter()
-
+const userStore = useUserStore()
 const draftCount = 0
 
 function goWrite() {
-  router.push('/admin/articles')
+  if (!userStore.isLoggedIn) {
+    requestLogin('/creator')
+    return
+  }
+  router.push('/creator')
+}
+
+function goDrafts() {
+  if (!userStore.isLoggedIn) {
+    requestLogin('/creator')
+    return
+  }
+  router.push('/creator')
 }
 </script>
 
@@ -64,6 +78,11 @@ function goWrite() {
 .creation-drafts {
   font-size: 13px;
   color: #666;
+  cursor: pointer;
+}
+
+.creation-drafts:hover {
+  color: #000;
 }
 
 .creation-desc {
