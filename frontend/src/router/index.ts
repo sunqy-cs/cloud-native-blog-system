@@ -5,9 +5,13 @@ import { useUserStore } from '@/stores/user'
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
+    redirect: '/recommend',
+  },
+  {
+    path: '/blog',
     name: 'home',
     component: () => import('@/views/Home.vue'),
-    meta: { title: '首页' },
+    meta: { title: '博客' },
   },
   {
     path: '/login',

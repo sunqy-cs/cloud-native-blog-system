@@ -17,7 +17,7 @@
             class="nav-menu"
             :ellipsis="false"
           >
-            <el-menu-item index="/"><span class="nav-text">博客</span></el-menu-item>
+            <el-menu-item index="/blog"><span class="nav-text">博客</span></el-menu-item>
             <el-menu-item index="/follow"><span class="nav-text">关注</span></el-menu-item>
             <el-menu-item index="/recommend"><span class="nav-text">推荐</span></el-menu-item>
             <el-menu-item index="/hot"><span class="nav-text">热榜</span></el-menu-item>
@@ -99,7 +99,7 @@ const activeMenu = computed(() => {
   const path = route.path
   if (path.startsWith('/admin')) return '/admin'
   if (path.startsWith('/login')) return '/login'
-  if (path === '/' || path.startsWith('/article')) return '/'
+  if (path === '/blog' || path.startsWith('/article')) return '/blog'
   return path
 })
 
