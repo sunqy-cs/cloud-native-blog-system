@@ -19,10 +19,12 @@
     <!-- 主体：左侧栏 + 中间 + 右侧 -->
     <div class="creator-body">
       <aside class="creator-sidebar-left">
-        <el-button class="create-btn" type="primary">
-          <el-icon><Plus /></el-icon>
-          创作
-        </el-button>
+        <router-link to="/creator/write" custom v-slot="{ navigate }">
+          <el-button class="create-btn create-btn-full" type="primary" @click="navigate">
+            <el-icon><Plus /></el-icon>
+            创作
+          </el-button>
+        </router-link>
         <nav class="creator-nav">
           <router-link to="/creator" :class="['nav-item', { active: route.path === '/creator' }]">
             <el-icon><House /></el-icon>
@@ -194,9 +196,12 @@ const avatarInitial = computed(() => {
   flex-shrink: 0;
 }
 
-.create-btn {
+.create-btn-full {
   width: 100%;
   margin-bottom: 20px;
+}
+
+.create-btn {
   background: #111 !important;
   border-color: #111 !important;
 }

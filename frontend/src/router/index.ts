@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '创作者中心', requireLogin: true },
   },
   {
+    path: '/creator/write',
+    name: 'creator-write',
+    component: () => import('@/views/CreatorWrite.vue'),
+    meta: { title: '发布文章', requireLogin: true },
+  },
+  {
     path: '/article/:id',
     name: 'article',
     component: () => import('@/views/ArticleDetail.vue'),
