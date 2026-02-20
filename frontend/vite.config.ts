@@ -15,8 +15,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // 开发环境：/api 转发到网关，由网关路由到 user-service、file-service 等
       '/api': {
-        target: 'http://localhost:8081',
+        target: 'http://localhost:8080',
         changeOrigin: true,
       },
     },

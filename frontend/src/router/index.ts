@@ -68,6 +68,7 @@ const routes: RouteRecordRaw[] = [
     children: [
       {
         path: '',
+        name: 'admin-default',
         redirect: '/admin/articles',
       },
       {

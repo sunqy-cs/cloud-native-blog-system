@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+        username: nacos
+        password: nacos
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      globalcors:
+        add-on-simple-url-handler-mapping: true
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+      routes:
+        # 用户服务：登录、注册、当前用户、登出（lb = LoadBalancer，从 Nacos 解析实例）
+        - id: user-service
+          uri: lb://user-service
+          predicates:
+            - Path=/api/sessions/**,/api/users/**
+          order: 1
+        # 文件服务：对象存储
+        - id: file-service
+          uri: lb://file-service
+          predicates:
+            - Path=/api/objects,/api/objects/**
+          order: 2
+        # 博客服务（若有）
+        - id: blog-service
+          uri: lb://blog-service
+          predicates:
+            - Path=/api/posts/**,/api/articles/**
+          order: 3
+
+# 与 user-service 一致，用于网关统一鉴权
+jwt:
+  secret: your-256-bit-secret-key-change-in-production-please
+
+# 无需 JWT 的白名单：Method:Path（正则或 Ant 风格）
+gateway:
+  auth:
+    permit-all:
+      - "POST:/api/sessions"
+      - "POST:/api/users"
+      # GET 图片流式地址（?stream=1）用于编辑器/文章内展示，不携带 Token 也放行
+      - "GET:/api/objects/**"

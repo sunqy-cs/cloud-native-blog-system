@@ -54,32 +54,63 @@
         <span class="tool-icon">I</span>
         <span class="tool-label">斜体</span>
       </button>
+      <button type="button" class="tool-btn" @click="onStrikethrough">
+        <span class="tool-icon tool-icon-strike">S</span>
+        <span class="tool-label">删除线</span>
+      </button>
       <el-divider direction="vertical" />
-      <el-dropdown @command="onListCommand">
-        <button type="button" class="tool-btn">
-          <span class="tool-icon">≡</span>
-          <span class="tool-label">列表</span>
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="bullet">无序列表</el-dropdown-item>
-            <el-dropdown-item command="ordered">有序列表</el-dropdown-item>
-            <el-dropdown-item command="task">任务列表</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
-      <button type="button" class="tool-btn" @click="onAlign">
-        <span class="tool-icon">≡</span>
-        <span class="tool-label">对齐</span>
+      <button type="button" class="tool-btn" @click="onBulletList">
+        <el-icon><List /></el-icon>
+        <span class="tool-label">无序列表</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onOrderedList">
+        <el-icon><Rank /></el-icon>
+        <span class="tool-label">有序列表</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onTaskList">
+        <el-icon><CircleCheck /></el-icon>
+        <span class="tool-label">任务列表</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onInsertBefore">
+        <el-icon><Top /></el-icon>
+        <span class="tool-label">前插入行</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onInsertAfter">
+        <el-icon><Bottom /></el-icon>
+        <span class="tool-label">后插入行</span>
+      </button>
+      <el-divider direction="vertical" />
+      <button type="button" class="tool-btn" @click="onQuote">
+        <span class="tool-icon">″</span>
+        <span class="tool-label">引用</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onHorizontalRule">
+        <span class="tool-icon tool-icon-hr">—</span>
+        <span class="tool-label">分隔线</span>
       </button>
       <el-divider direction="vertical" />
       <button type="button" class="tool-btn" @click="onCode">
         <span class="tool-icon">&lt;/&gt;</span>
         <span class="tool-label">代码</span>
       </button>
-      <button type="button" class="tool-btn" @click="onImage">
+      <button type="button" class="tool-btn" @click="onInlineCode">
+        <span class="tool-icon tool-icon-inline-code" aria-hidden="true">&lt;&nbsp;&gt;</span>
+        <span class="tool-label">行内代码</span>
+      </button>
+      <button type="button" class="tool-btn" @click="onTable">
+        <span class="tool-icon">▦</span>
+        <span class="tool-label">表格</span>
+      </button>
+      <input
+        ref="imageInputRef"
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        class="hidden-input"
+        @change="onImageFileChange"
+      />
+      <button type="button" class="tool-btn" :disabled="imageUploading" @click="triggerImageSelect">
         <span class="tool-icon">🖼</span>
-        <span class="tool-label">图片</span>
+        <span class="tool-label">{{ imageUploading ? '上传中…' : '图片' }}</span>
       </button>
       <button type="button" class="tool-btn" @click="onLink">
         <span class="tool-icon">🔗</span>
@@ -109,14 +140,24 @@
       </aside>
       <main class="editor-main">
         <div class="editor-paper">
-          <el-input
-            v-model="title"
-            placeholder="请输入文章标题 (5~100个字)"
-            class="title-input"
-            maxlength="100"
-            show-word-limit
-          />
-          <div class="title-hint" v-if="title.length > 0 && title.length < 5">还需输入{{ 5 - title.length }}个字</div>
+          <div class="title-section">
+            <div class="title-row">
+              <el-input
+                v-model="title"
+                placeholder="请输入文章标题 (5~100个字)"
+                class="title-input"
+                maxlength="100"
+                show-word-limit
+              />
+              <el-tooltip content="AI生成标题" placement="top">
+                <button type="button" class="ai-title-btn" :disabled="aiTitleUsage >= AI_TITLE_QUOTA" @click="onAiGenerateTitle">
+                  <span class="ai-title-btn-icon">✨</span>
+                </button>
+              </el-tooltip>
+              <span class="ai-title-quota">{{ aiTitleUsage }} / {{ AI_TITLE_QUOTA }}</span>
+            </div>
+            <div class="title-hint" v-if="title.length > 0 && title.length < 5">还需输入{{ 5 - title.length }}个字</div>
+          </div>
           <div ref="vditorRef" class="vditor-wrap"></div>
         </div>
       </main>
@@ -154,9 +195,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
+import { uploadImage } from '@/api/upload'
 
 const userStore = useUserStore()
 const title = ref('')
@@ -168,6 +211,12 @@ const tocList = ref<{ level: number; text: string }[]>([])
 const tocExpanded = ref<Set<number>>(new Set())
 const tocSidebarCollapsed = ref(false)
 const aiSidebarCollapsed = ref(false)
+const imageInputRef = ref<HTMLInputElement | null>(null)
+const imageUploading = ref(false)
+
+const AI_TITLE_QUOTA = 100
+const aiTitleUsage = ref(0)
+const aiTitleLoading = ref(false)
 
 const sectionOwners = computed(() => {
   const list = tocList.value
@@ -203,6 +252,30 @@ function toggleToc(index: number) {
   tocExpanded.value = next
 }
 
+async function onAiGenerateTitle() {
+  if (aiTitleUsage.value >= AI_TITLE_QUOTA) {
+    ElMessage.warning('AI 生成标题次数已用尽')
+    return
+  }
+  if (aiTitleLoading.value) return
+  aiTitleLoading.value = true
+  try {
+    const bodyText = getMarkdownValue().replace(/^#+\s.*$/gm, '').trim().slice(0, 500)
+    if (!bodyText) {
+      ElMessage.info('请先输入一些正文内容，再使用 AI 生成标题')
+      return
+    }
+    aiTitleUsage.value += 1
+    ElMessage.success('AI 生成标题（演示：可根据正文前文生成，后续接入真实 API）')
+    if (!title.value && bodyText.length >= 5) {
+      title.value = bodyText.slice(0, 50).replace(/\n/g, ' ').trim()
+      if (title.value.length > 50) title.value = title.value.slice(0, 47) + '...'
+    }
+  } finally {
+    aiTitleLoading.value = false
+  }
+}
+
 function updateTocFromMarkdown(md: string) {
   const lines = md.split(/\r?\n/)
   const items: { level: number; text: string }[] = []
@@ -230,6 +303,9 @@ onMounted(() => {
     mode: 'wysiwyg',
     theme: 'classic',
     cache: { enable: false },
+    toolbarConfig: { hide: true },
+    // 3.11.x 在 WYSIWYG 下会调用此选项，未传会报 customWysiwygToolbar is not a function，传空函数即可
+    customWysiwygToolbar: () => [],
     counter: {
       enable: true,
       type: 'markdown',
@@ -277,66 +353,171 @@ function insertMD(md: string) {
   vditor.insertMD(md)
 }
 
+/** 检测当前选区/光标是否处于加粗、斜体或删除线；兼容 WYSIWYG 与 IR(data-type) */
+function getSelectionInlineFormat(): { bold: boolean; italic: boolean; strike: boolean } {
+  const v = vditor?.vditor
+  if (!v) return { bold: false, italic: false, strike: false }
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return { bold: false, italic: false, strike: false }
+  const range = sel.getRangeAt(0)
+  const modeEl = v[v.currentMode]
+  const editorEl = modeEl?.element
+  if (!editorEl?.contains(range.startContainer)) return { bold: false, italic: false, strike: false }
+  let node: Node | null = range.startContainer
+  if (node.nodeType === Node.TEXT_NODE) node = (node as Text).parentElement
+  const el = node as HTMLElement | null
+  if (!el?.closest) return { bold: false, italic: false, strike: false }
+  return {
+    bold: !!(el.closest('strong') || el.closest('b') || el.closest('[data-type="strong"]')),
+    italic: !!(el.closest('em') || el.closest('i') || el.closest('[data-type="em"]')),
+    strike: !!(el.closest('s') || el.closest('strike') || el.closest('[data-type="s"]')),
+  }
+}
+
 function onUndo() {
-  // Vditor 未公开 undo/redo API，这里暂留占位，未来可考虑自定义历史栈
+  // Vditor 内部有 undo 栈，通过实例的 vditor.undo.undo 调用
+  if (!vditor?.vditor?.undo) return
+  vditor.vditor.undo.undo(vditor.vditor)
 }
 
 function onRedo() {
-  // 同上，占位
+  if (!vditor?.vditor?.undo) return
+  vditor.vditor.undo.redo(vditor.vditor)
 }
 
 function onBold() {
   if (!vditor) return
   const sel = vditor.getSelection() || '加粗文本'
-  insertMD(`**${sel}**`)
+  const hasRealSelection = !!vditor.getSelection()
+  const fmt = hasRealSelection ? getSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  // 已是加粗则取消加粗（保留斜体或变回纯文本）
+  if (fmt.bold) {
+    insertMD(fmt.italic ? `*${sel}*` : sel)
+    return
+  }
+  insertMD(fmt.italic ? `***${sel}***` : `**${sel}**`)
 }
 
 function onItalic() {
   if (!vditor) return
   const sel = vditor.getSelection() || '斜体文本'
-  insertMD(`*${sel}*`)
+  const hasRealSelection = !!vditor.getSelection()
+  const fmt = hasRealSelection ? getSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  // 已是斜体则取消斜体（保留加粗或变回纯文本）
+  if (fmt.italic) {
+    insertMD(fmt.bold ? `**${sel}**` : sel)
+    return
+  }
+  insertMD(fmt.bold ? `***${sel}***` : `*${sel}*`)
+}
+
+function onStrikethrough() {
+  if (!vditor) return
+  const sel = vditor.getSelection() || '删除线文本'
+  const hasRealSelection = !!vditor.getSelection()
+  const fmt = hasRealSelection ? getSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  // 已是删除线则取消删除线（Markdown 使用 ~~文本~~）
+  if (fmt.strike) {
+    insertMD(sel)
+    return
+  }
+  insertMD(`~~${sel}~~`)
+}
+
+/** 触发 Vditor 内置工具栏按钮，返回是否触发成功 */
+function triggerVditorToolbar(name: 'list' | 'ordered-list' | 'check' | 'insert-before' | 'insert-after' | 'table' | 'inline-code' | 'quote' | 'line'): boolean {
+  const btn = vditor?.vditor?.toolbar?.elements?.[name]?.firstElementChild as HTMLElement | undefined
+  if (btn) {
+    btn.click()
+    return true
+  }
+  return false
 }
 
 function onBulletList() {
-  insertMD('\n- 列表项\n')
-}
-
-function onListCommand(type: string) {
   if (!vditor) return
-  const sel = vditor.getSelection()
-  if (sel) {
-    const lines = sel.split(/\r?\n/).filter((l) => l.length > 0)
-    if (!lines.length) return
-    let md = ''
-    if (type === 'bullet') {
-      md = lines.map((line) => `- ${line.replace(/^[-*+]\s+/, '')}`).join('\n')
-    } else if (type === 'ordered') {
-      md = lines.map((line, idx) => `${idx + 1}. ${line.replace(/^\d+\.\s+/, '')}`).join('\n')
-    } else if (type === 'task') {
-      md = lines.map((line) => `- [ ] ${line.replace(/^(-\s+)?(\[.\]\s+)?/, '')}`).join('\n')
-    }
-    insertMD(`\n${md}\n`)
-  } else {
-    if (type === 'bullet') {
-      insertMD('\n- 列表项 1\n- 列表项 2\n')
-    } else if (type === 'ordered') {
-      insertMD('\n1. 列表项 1\n2. 列表项 2\n')
-    } else if (type === 'task') {
-      insertMD('\n- [ ] 待办事项 1\n- [ ] 待办事项 2\n')
-    }
-  }
+  const triggered = triggerVditorToolbar('list')
+  if (!triggered) insertMD('\n- 列表项\n')
 }
 
-function onAlign() {
-  // Markdown 本身没有对齐语义，这里仅保留占位
+function onOrderedList() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('ordered-list')
+  if (!triggered) insertMD('\n1. 列表项 1\n2. 列表项 2\n')
+}
+
+function onTaskList() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('check')
+  if (!triggered) insertMD('\n- [ ] 待办事项\n')
+}
+
+function onInsertBefore() {
+  if (!vditor) return
+  triggerVditorToolbar('insert-before')
+}
+
+function onInsertAfter() {
+  if (!vditor) return
+  triggerVditorToolbar('insert-after')
 }
 
 function onCode() {
   insertMD('\n```lang\n代码块\n```\n')
 }
 
-function onImage() {
-  insertMD('![描述](https://example.com/image.png)\n')
+function onInlineCode() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('inline-code')
+  if (!triggered) {
+    const sel = vditor.getSelection() || '行内代码'
+    insertMD(`\`${sel}\``)
+  }
+}
+
+function onTable() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('table')
+  if (!triggered) {
+    insertMD('\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n')
+  }
+}
+
+function onQuote() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('quote')
+  if (!triggered) {
+    const sel = vditor.getSelection()
+    insertMD(sel ? `\n> ${sel.split(/\r?\n/).join('\n> ')}\n` : '\n> 引用内容\n')
+  }
+}
+
+function onHorizontalRule() {
+  if (!vditor) return
+  const triggered = triggerVditorToolbar('line')
+  if (!triggered) insertMD('\n---\n')
+}
+
+function triggerImageSelect() {
+  if (imageUploading.value) return
+  imageInputRef.value?.click()
+}
+
+async function onImageFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!vditor) return
+  imageUploading.value = true
+  try {
+    const res = await uploadImage(file, 'images')
+    const url = (res.url || '').replace(/\s/g, '%20')
+    insertMD(`\n![image](${url})\n`)
+    ElMessage.success('图片已插入')
+  } finally {
+    imageUploading.value = false
+  }
 }
 
 function onLink() {
@@ -460,6 +641,15 @@ const avatarInitial = computed(() => {
   justify-content: center;
 }
 
+.hidden-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .tool-btn {
   padding: 4px 6px;
   min-width: 40px;
@@ -478,12 +668,25 @@ const avatarInitial = computed(() => {
   font-size: 14px;
 }
 
+.tool-icon-strike {
+  text-decoration: line-through;
+}
+
+.tool-icon-hr {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .tool-label {
   font-size: 12px;
 }
 
 .tool-btn:hover {
   color: #111 !important;
+}
+
+.tool-btn .el-icon {
+  font-size: 18px;
 }
 
 .write-toolbar :deep(.el-divider--vertical) {
@@ -639,6 +842,61 @@ const avatarInitial = computed(() => {
     0 18px 45px rgba(15, 23, 42, 0.12);
 }
 
+/* 标题区：与正文用一条线分开（仿 CSDN / A4 纸） */
+.title-section {
+  border-bottom: 1px solid #e8e8e8;
+  padding-bottom: 16px;
+  margin-bottom: 0;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.title-row .title-input {
+  flex: 1;
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+.ai-title-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+.ai-title-btn:hover:not(:disabled) {
+  background: #e5e5e5;
+  color: #111;
+}
+
+.ai-title-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ai-title-btn-icon {
+  font-size: 18px;
+}
+
+.ai-title-quota {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #999;
+}
+
 .title-input {
   font-size: 20px;
   margin-bottom: 8px;
@@ -658,11 +916,35 @@ const avatarInitial = computed(() => {
 .title-hint {
   font-size: 12px;
   color: #999;
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
 .vditor-wrap {
-  margin-top: 8px;
+  margin-top: 0;
+}
+
+/* 隐藏 Vditor 自带工具栏，使用顶栏自定义工具栏 */
+.editor-paper :deep(.vditor-toolbar) {
+  display: none !important;
+}
+
+/* 去掉 Vditor 编辑框外框，使编辑区像一张 A4 纸 */
+.editor-paper :deep(.vditor),
+.editor-paper :deep(.vditor-content) {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.editor-paper :deep(.vditor-content) {
+  background: #fff !important;
+}
+
+/* 编辑区选区样式：柔和灰底深字，替代浏览器默认蓝反色 */
+.editor-paper ::selection {
+  background: #e0e7eb;
+  color: #111;
 }
 
 .ai-sidebar {

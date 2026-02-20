@@ -3,8 +3,9 @@ import { useUserStore } from '@/stores/user'
 import router from '@/router'
 import { ElMessage } from 'element-plus'
 
+// 开发时走 Vite 代理到网关 8080；生产可设 VITE_API_BASE 指向网关（如 http://host:8080/api）
 const request = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE ?? '/api',
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
 })
