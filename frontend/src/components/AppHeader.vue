@@ -18,8 +18,8 @@
             :ellipsis="false"
           >
             <el-menu-item index="/blog"><span class="nav-text">博客</span></el-menu-item>
-            <el-menu-item index="/follow"><span class="nav-text">关注</span></el-menu-item>
             <el-menu-item index="/recommend"><span class="nav-text">推荐</span></el-menu-item>
+            <el-menu-item index="/follow"><span class="nav-text">关注</span></el-menu-item>
             <el-menu-item index="/hot"><span class="nav-text">热榜</span></el-menu-item>
             <el-menu-item index="/knowledge"><span class="nav-text">知识库</span></el-menu-item>
           </el-menu>
@@ -207,7 +207,7 @@ function goWrite() {
   position: absolute;
   bottom: 10px;
   height: 4px;
-  background: #000;
+  background: #BB1919; /* BBC 红 */
   transition: left 0.4s ease, width 0.4s ease;
 }
 

@@ -159,6 +159,84 @@
             <div class="title-hint" v-if="title.length > 0 && title.length < 5">还需输入{{ 5 - title.length }}个字</div>
           </div>
           <div ref="vditorRef" class="vditor-wrap"></div>
+
+          <!-- 发文设置：标签、封面、摘要等（不含 GitCode 备份） -->
+          <section class="publish-settings">
+            <div class="setting-row">
+              <label class="setting-label">文章标签 <span class="required">*</span> <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <el-button type="primary" plain size="small">+ 添加文章标签</el-button>
+            </div>
+            <div class="setting-row">
+              <label class="setting-label">添加封面 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+            </div>
+            <div class="cover-row">
+              <div class="cover-upload" @click="triggerCoverSelect">
+                <el-icon class="cover-plus"><Plus /></el-icon>
+                <span>从本地上传</span>
+              </div>
+              <div class="cover-placeholder">暂无内容图片，请在正文中添加图片</div>
+            </div>
+            <input ref="coverInputRef" type="file" accept="image/*" class="hidden-input" @change="onCoverFileChange" />
+
+            <div class="setting-row">
+              <label class="setting-label">文章摘要 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+            </div>
+            <p class="summary-desc">摘要会在推荐、列表等场景外露，帮助读者快速了解内容，支持一键将正文前 256 字符填入摘要文本框。</p>
+            <div class="summary-wrap">
+              <el-input v-model="summary" type="textarea" :rows="4" maxlength="256" show-word-limit placeholder="请输入文章摘要" class="summary-input" />
+              <el-button type="primary" plain size="small" class="ai-summary-btn" @click="onAiExtractSummary">
+                <span class="ai-summary-icon">✨</span> AI提取摘要
+              </el-button>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">分类专栏 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <el-button type="primary" plain size="small">+ 新建分类专栏</el-button>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">文章类型 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <el-radio-group v-model="articleType" class="article-type-group">
+                <el-radio value="original">原创</el-radio>
+                <el-radio value="reprint">转载</el-radio>
+                <el-radio value="translated">翻译</el-radio>
+              </el-radio-group>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">创作声明</label>
+              <el-select v-model="creationStatement" placeholder="无声明" class="setting-select">
+                <el-option label="无声明" value="none" />
+                <el-option label="部分内容由AI辅助生成" value="ai-assisted" />
+                <el-option label="内容来源网络，进行整合/再创作" value="network" />
+                <el-option label="个人观点，仅供参考" value="personal" />
+              </el-select>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">可见范围 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <el-radio-group v-model="visibility" class="visibility-group">
+                <el-radio value="all">全部可见</el-radio>
+                <el-radio value="self">仅我可见</el-radio>
+                <el-radio value="fans">粉丝可见</el-radio>
+                <el-radio value="vip">VIP可见</el-radio>
+              </el-radio-group>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">参与活动</label>
+              <el-select v-model="activity" placeholder="请选择创作活动" clearable class="setting-select">
+                <el-option label="请选择创作活动" value="" disabled />
+              </el-select>
+            </div>
+
+            <div class="setting-row">
+              <label class="setting-label">话题</label>
+              <el-select v-model="topic" placeholder="请选择创作话题" clearable class="setting-select">
+                <el-option label="请选择创作话题" value="" disabled />
+              </el-select>
+            </div>
+          </section>
         </div>
       </main>
       <aside class="ai-sidebar" :class="{ 'ai-sidebar-collapsed': aiSidebarCollapsed }">
@@ -195,7 +273,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom, QuestionFilled, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
@@ -217,6 +295,14 @@ const imageUploading = ref(false)
 const AI_TITLE_QUOTA = 100
 const aiTitleUsage = ref(0)
 const aiTitleLoading = ref(false)
+
+const coverInputRef = ref<HTMLInputElement | null>(null)
+const summary = ref('')
+const articleType = ref<'original' | 'reprint' | 'translated'>('original')
+const creationStatement = ref('none')
+const visibility = ref<'all' | 'self' | 'fans' | 'vip'>('all')
+const activity = ref('')
+const topic = ref('')
 
 const sectionOwners = computed(() => {
   const list = tocList.value
@@ -250,6 +336,27 @@ function toggleToc(index: number) {
   if (next.has(s)) next.delete(s)
   else next.add(s)
   tocExpanded.value = next
+}
+
+function triggerCoverSelect() {
+  coverInputRef.value?.click()
+}
+
+function onCoverFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (file) ElMessage.success('封面已选择（后续可接入上传）')
+}
+
+function onAiExtractSummary() {
+  const body = getMarkdownValue().replace(/^#+\s.*$/gm, '').trim().slice(0, 256)
+  if (body) {
+    summary.value = body
+    ElMessage.success('已填入正文前 256 字')
+  } else {
+    ElMessage.info('请先输入正文内容')
+  }
 }
 
 async function onAiGenerateTitle() {
@@ -945,6 +1052,123 @@ const avatarInitial = computed(() => {
 .editor-paper ::selection {
   background: #e0e7eb;
   color: #111;
+}
+
+/* 发文设置区域（编辑区下方，不含 GitCode 备份） */
+.publish-settings {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.setting-row {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.setting-label {
+  font-size: 14px;
+  color: #333;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.setting-label .required {
+  color: #f56c6c;
+}
+
+.setting-help {
+  color: #999;
+  font-size: 14px;
+  cursor: help;
+}
+
+.cover-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.cover-upload {
+  width: 160px;
+  height: 100px;
+  border: 1px dashed #d0d0d0;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #999;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.cover-upload:hover {
+  border-color: #409eff;
+  color: #409eff;
+}
+
+.cover-upload .cover-plus {
+  font-size: 28px;
+}
+
+.cover-placeholder {
+  flex: 1;
+  min-height: 100px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+  font-size: 13px;
+  padding: 0 16px;
+  text-align: center;
+}
+
+.summary-desc {
+  font-size: 12px;
+  color: #999;
+  margin: -8px 0 10px 0;
+  line-height: 1.5;
+}
+
+.summary-wrap {
+  margin-bottom: 20px;
+}
+
+.summary-wrap .summary-input {
+  margin-bottom: 10px;
+}
+
+.summary-wrap .summary-input :deep(.el-textarea__inner) {
+  font-size: 13px;
+}
+
+.ai-summary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-summary-icon {
+  font-size: 14px;
+}
+
+.setting-select {
+  min-width: 200px;
+}
+
+.article-type-group,
+.visibility-group {
+  flex-wrap: wrap;
 }
 
 .ai-sidebar {

@@ -6,19 +6,23 @@
     </main>
     <aside class="page-sidebar">
       <CreationCenter />
+      <HotSearch />
+      <RecommendedFollows />
     </aside>
   </div>
 </template>
 
 <script setup lang="ts">
 import CreationCenter from '@/components/CreationCenter.vue'
+import HotSearch from '@/components/HotSearch.vue'
+import RecommendedFollows from '@/components/RecommendedFollows.vue'
 </script>
 
 <style scoped>
 .page-layout {
   min-height: calc(100vh - 64px);
   display: flex;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 24px;
   gap: 24px;
