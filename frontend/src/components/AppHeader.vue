@@ -44,9 +44,12 @@
         </div>
       </nav>
 
-      <!-- 右侧：操作区（简化版） -->
+      <!-- 右侧：操作区（BBC 风格） -->
       <div class="action-area">
-        <el-button text @click="goWrite">写文章</el-button>
+        <button type="button" class="btn-create" @click="goWrite">
+          <span class="btn-create-plus">+</span>
+          <span class="btn-create-text">创作</span>
+        </button>
         <el-button
           v-if="!userStore.isLoggedIn"
           type="primary"
@@ -288,8 +291,44 @@ function goWrite() {
 .action-area {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-left: 24px;
+}
+
+/* +创作：BBC 风格主按钮 */
+.btn-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: #BB1919;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-create:hover {
+  background: #9e1515;
+}
+
+.btn-create:active {
+  transform: scale(0.98);
+}
+
+.btn-create-plus {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 400;
+  opacity: 0.95;
+}
+
+.btn-create-text {
+  letter-spacing: 0.02em;
 }
 
 .user-dropdown {
@@ -369,9 +408,6 @@ function goWrite() {
   color: #000 !important;
 }
 
-.action-area :deep(.el-button--text) {
-  color: #333;
-}
 
 .action-area :deep(.el-button--primary) {
   background-color: #111;
