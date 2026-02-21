@@ -25,17 +25,23 @@
           </el-menu>
           <div class="nav-indicator" :style="indicatorStyle"></div>
         </div>
-        <el-input
-          v-model="keyword"
-          placeholder="搜索文章、标签或作者"
-          class="search-input"
-          size="large"
-          clearable
+        <div
+          class="search-box"
+          :class="{ hover: searchBoxHover }"
+          @mouseenter="searchBoxHover = true"
+          @mouseleave="searchBoxHover = false"
         >
-          <template #prefix>
+          <input
+            v-model="keyword"
+            type="text"
+            class="search-box-input"
+            placeholder="搜索文章、标签或作者"
+            @keyup.enter="onSearch"
+          />
+          <button type="button" class="search-box-btn" title="搜索" @click="onSearch">
             <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
+          </button>
+        </div>
       </nav>
 
       <!-- 右侧：操作区（简化版） -->
@@ -83,7 +89,13 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const keyword = ref('')
+const searchBoxHover = ref(false)
 const menuWrapperRef = ref<HTMLElement | null>(null)
+
+function onSearch() {
+  if (!keyword.value.trim()) return
+  router.push({ path: '/recommend', query: { q: keyword.value.trim() } })
+}
 const indicatorStyle = ref({ left: '0px', width: '0px' })
 
 function updateIndicator() {
@@ -211,10 +223,66 @@ function goWrite() {
   transition: left 0.4s ease, width 0.4s ease;
 }
 
-.search-input {
-  max-width: 320px;
-  /* 在中间区域尽量居中，左右留一点空隙 */
+/* 搜索框：白底 + 右侧黑按钮，悬浮边线加粗 */
+.search-box {
+  min-width: 380px;
+  width: 100%;
+  max-width: 480px;
   margin: 0 auto;
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  transition: border-width 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-box:hover,
+.search-box.hover {
+  border-width: 2px;
+  border-color: #333;
+  box-shadow: 0 0 0 1px #333;
+}
+
+.search-box-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 14px;
+  border: none;
+  border-radius: 4px 0 0 4px;
+  font-size: 14px;
+  color: #222;
+  background: transparent;
+  outline: none;
+}
+
+.search-box-input::placeholder {
+  color: #9ca3af;
+}
+
+.search-box-btn {
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-left: 1px solid #d0d0d0;
+  border-radius: 0 4px 4px 0;
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.search-box-btn:hover {
+  background: #333;
+}
+
+.search-box-btn .el-icon {
+  font-size: 18px;
 }
 
 .action-area {
@@ -299,26 +367,6 @@ function goWrite() {
   background-color: rgba(0, 0, 0, 0.03);
   font-weight: 900; /* 悬停时与选中态同粗 */
   color: #000 !important;
-}
-
-/* 搜索框：去掉 Element Plus 默认的蓝色高亮，用黑/灰色替代 */
-.search-input :deep(.el-input__wrapper) {
-  box-shadow: none;
-  border-radius: 20px;
-}
-
-.search-input :deep(.el-input__wrapper:hover),
-.search-input :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #000 inset;
-  border-color: #000;
-}
-
-.search-input :deep(.el-input__inner) {
-  color: #222;
-}
-
-.search-input :deep(.el-input__inner::placeholder) {
-  color: #999;
 }
 
 .action-area :deep(.el-button--text) {

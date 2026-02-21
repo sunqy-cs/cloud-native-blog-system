@@ -77,11 +77,11 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* BBC 风格：白底、黑顶条、克制用色、清晰层级 */
+/* BBC 风格：白底、红色顶条、统一 #BB1919、清晰层级 */
 .hot-search {
   background: #fff;
   border: 1px solid #e0e0e0;
-  border-top: 3px solid #000;
+  border-top: 3px solid #BB1919;
   border-radius: 0;
   padding: 16px 0 12px;
   min-width: 280px;
@@ -104,7 +104,7 @@ onMounted(() => {
 
 .hot-search-icon {
   font-size: 18px;
-  color: #c00;
+  color: #BB1919;
 }
 
 .hot-search-title {
@@ -169,7 +169,7 @@ onMounted(() => {
 }
 
 .hot-search-rank.rank-top {
-  background: #c00;
+  background: #BB1919;
   color: #fff;
   border-radius: 2px;
 }
@@ -178,7 +178,7 @@ onMounted(() => {
   flex: 1;
   min-width: 0;
   font-size: 14px;
-  color: #333;
+  color: #111;
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -187,7 +187,7 @@ onMounted(() => {
 }
 
 .hot-search-link:hover {
-  color: #000;
+  color: #111;
   text-decoration: underline;
 }
 
@@ -207,12 +207,12 @@ onMounted(() => {
 }
 
 .hot-search-tag.tag-hot {
-  background: #c00;
+  background: #BB1919;
   color: #fff;
 }
 
 .hot-search-tag.tag-new {
-  background: #1474b8;
+  background: #BB1919;
   color: #fff;
 }
 </style>

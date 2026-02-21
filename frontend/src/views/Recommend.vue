@@ -103,7 +103,91 @@
           variant="strip"
           :items="bestAudioItems"
         />
+
+        <div class="rec-section-divider"></div>
       </main>
+    </div>
+
+    <!-- 两栏中间：全宽黑色栏，占满从左到右 -->
+    <div class="rec-dark-strip-wrap">
+      <div class="rec-dark-strip-inner">
+        <EditorPicksStrip title="EDITOR'S PICKS" :items="editorPicksItems" />
+      </div>
+    </div>
+
+    <div class="page-layout">
+      <main class="rec-main">
+        <div class="rec-section-divider"></div>
+
+        <!-- 第四栏：MORE NEWS 风格，4 条 -->
+        <RecommendBlock
+          title="MORE NEWS >"
+          title-link="/recommend?tab=news"
+          variant="four"
+          :items="moreNewsItems"
+        />
+
+        <div class="rec-section-divider"></div>
+
+        <!-- 第五栏：ARTS IN MOTION 风格，2 条 -->
+        <RecommendBlock
+          title="ARTS IN MOTION >"
+          title-link="/recommend?tab=arts"
+          variant="two"
+          :items="artsInMotionItems"
+        />
+
+        <div class="rec-section-divider"></div>
+
+        <!-- 第六栏：IN CASE YOU MISSED IT，3 条 -->
+        <RecommendBlock
+          title="IN CASE YOU MISSED IT"
+          title-link="/recommend?tab=missed"
+          variant="three"
+          :items="inCaseYouMissedItems"
+        />
+
+        <div class="rec-section-divider"></div>
+
+        <!-- 第七栏：TRAVEL，左图右文 + See more -->
+        <RecommendBlock
+          title="TRAVEL >"
+          title-link="/recommend?tab=travel"
+          variant="feature"
+          :image-side="'left'"
+          :items="travelFeatureItems"
+        />
+
+        <div class="rec-section-divider"></div>
+
+        <!-- 第八栏：HEALTH AND WELLNESS，3 张卡片 -->
+        <RecommendBlock
+          title="HEALTH AND WELLNESS >"
+          title-link="/recommend?tab=health"
+          variant="three"
+          :items="healthWellnessItems"
+        />
+
+        <div class="rec-section-divider"></div>
+
+        <!-- 第九栏：CULTURE，左文右图 + See more -->
+        <RecommendBlock
+          title="CULTURE >"
+          title-link="/recommend?tab=culture"
+          variant="feature"
+          :image-side="'right'"
+          :items="cultureFeatureItems"
+        />
+
+        <div class="rec-section-divider"></div>
+      </main>
+    </div>
+
+    <!-- 底部全宽深色栏：EDITOR'S PICKS，占满从左到右 -->
+    <div class="rec-dark-strip-wrap">
+      <div class="rec-dark-strip-inner">
+        <EditorPicksStrip title="EDITOR'S PICKS" :items="editorPicksItems" />
+      </div>
     </div>
   </div>
 </template>
@@ -113,6 +197,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { Refresh, VideoPlay } from '@element-plus/icons-vue'
 import RecommendBlock from '@/components/RecommendBlock.vue'
+import EditorPicksStrip from '@/components/EditorPicksStrip.vue'
 
 interface RecTag {
   id: string
@@ -216,6 +301,53 @@ const bestAudioItems = ref<BbcItem[]>([
   { id: '14', title: 'World of Secrets', subtitle: '1. Meeting a monster', meta: '45 mins', label: 'Podcast' },
 ])
 
+// 第四栏：MORE NEWS，4 条
+const moreNewsItems = ref<BbcItem[]>([
+  { id: '15', title: 'Welcome to Australia\'s hottest beach event - nowhere near the sea', subtitle: 'Sand, tourists and volleyball for a tournament that has become a fixture of the summer calendar.' },
+  { id: '16', title: 'The best looks at London Fashion Week 2026', subtitle: 'More than 90 designers are showcasing their collections across the capital.' },
+  { id: '17', title: 'How photography helped the British empire classify India', subtitle: 'A new exhibition explores the role of the camera in colonial rule.' },
+  { id: '18', title: 'Fixing fashion\'s erratic sizing problem', subtitle: 'A startup is using algorithms to help shoppers find clothes that actually fit.' },
+])
+
+// 第五栏：ARTS IN MOTION，2 条
+const artsInMotionItems = ref<BbcItem[]>([
+  { id: '19', title: 'Jia Zhang-Ke: Nothing brings more freedom than filmmaking', subtitle: 'For acclaimed Chinese filmmaker Jia Zhang-Ke, filmmaking is not just an art - it\'s a space to innovate and redefine cinematic conventions.' },
+  { id: '20', title: 'Mother and infant burnt to death in Indian state over witchcraft allegations', subtitle: 'A mob attacked the family after rumours spread in their village in the eastern state of Jharkhand.' },
+])
+
+// 第六栏：IN CASE YOU MISSED IT，3 条
+const inCaseYouMissedItems = ref<BbcItem[]>([
+  { id: '21', title: 'The Russian village that lost its men to war', subtitle: 'In the remote village of Sedanka in Russia\'s Far East, almost all of its fighting-age men have left to join the Ukraine war.' },
+  { id: '22', title: 'How Eric Dane gave his final months to \'moving the needle\' on ALS', subtitle: 'The Grey\'s Anatomy star spent his last months campaigning towards a cure for the rare, incurable condition.' },
+  { id: '23', title: 'As Trump retreats from climate goals, China is becoming a green superpower', subtitle: 'China, the world\'s top carbon emitter, is also at the helm of a renewables revolution.' },
+])
+
+// 第七栏：TRAVEL，单条大头条（左图右文）
+const travelFeatureItems = ref<BbcItem[]>([
+  { id: '29', title: 'Extreme ways countries are combatting overtourism', subtitle: 'As global travel surges toward 1.8 billion arrivals, destinations are testing controversial new measures to control the crowds.' },
+])
+
+// 第八栏：HEALTH AND WELLNESS，3 条
+const healthWellnessItems = ref<BbcItem[]>([
+  { id: '30', title: 'Some people are just \'born to run\'', subtitle: 'Science is uncovering why certain individuals seem built for endurance—and what the rest of us can learn from them.' },
+  { id: '31', title: 'How male drinking affects babies', subtitle: 'Growing evidence suggests fathers\' alcohol use before conception may have lasting effects on their children\'s health.' },
+  { id: '32', title: 'Is it really possible to \'bank\' sleep?', subtitle: 'We look at the myths and facts behind the idea of storing up rest for later.' },
+])
+
+// 第九栏：CULTURE，单条大头条（左文右图）
+const cultureFeatureItems = ref<BbcItem[]>([
+  { id: '33', title: 'The historic US home that embodied the super-rich', subtitle: 'The largest privately owned home in the US, Biltmore House was an "American chateau built on the scale of a European palace". It reveals much about the dreams of the US\'s one per cent.' },
+])
+
+// 全宽深色栏：EDITOR'S PICKS
+const editorPicksItems = ref<BbcItem[]>([
+  { id: '24', title: 'Breathtaking solar eclipse over glacier in Patagonia', subtitle: 'Thousands gathered to watch the rare celestial event in one of the world\'s most dramatic landscapes.', label: 'Natural wonders' },
+  { id: '25', title: 'The French fortress of a celibate sect', subtitle: 'A remote community in the Pyrenees has fascinated outsiders for decades.', label: 'Travel' },
+  { id: '26', title: 'Inside the search for South America\'s most cryptic bird', subtitle: 'Scientists are racing to find the last remaining individuals of a species thought to be extinct.', label: 'Discover the World' },
+  { id: '27', title: 'How sticky toffee pudding became a British pub classic', subtitle: 'The story behind one of the UK\'s most beloved desserts.', label: 'The Travel Show' },
+  { id: '28', title: 'The Japanese art of finding calm in chaos', subtitle: 'How ancient practices are helping people cope with modern stress.', label: 'The Specialist' },
+])
+
 const recTagBarCenterRef = ref<HTMLElement | null>(null)
 const recTagIndicatorStyle = ref({ left: '0px', width: '0px' })
 
@@ -254,8 +386,11 @@ onBeforeUnmount(() => {
   background: #f5f5f5;
 }
 
-/* 推荐标签栏 */
+/* 推荐标签栏：不随滚动条滚动 */
 .rec-tag-bar {
+  position: sticky;
+  top: 64px;
+  z-index: 100;
   background: #fff;
   border-bottom: 1px solid #e0e0e0;
 }
@@ -266,7 +401,7 @@ onBeforeUnmount(() => {
   padding: 0 24px;
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: 52px;
 }
 
 .rec-tag-bar-left {
@@ -294,16 +429,18 @@ onBeforeUnmount(() => {
 }
 
 .rec-tag-item {
-  padding: 10px 14px;
-  color: #333;
+  padding: 10px 18px;
+  color: #444;
   text-decoration: none;
-  font-size: 14px;
+  font-size: 15px;
+  font-weight: 500;
+  border-radius: 6px;
   transition: color 0.2s, background 0.2s;
 }
 
 .rec-tag-item:hover {
   color: #000;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .rec-tag-item.active {
@@ -354,6 +491,19 @@ onBeforeUnmount(() => {
   border: none;
   border-top: 1px solid #e0e0e0;
   margin: 32px 0 28px;
+}
+
+/* 全宽深色栏：占满从左到右 */
+.rec-dark-strip-wrap {
+  width: 100%;
+  background: #1a1a1a;
+  padding: 32px 0 40px;
+}
+
+.rec-dark-strip-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
 }
 
 /* BBC 三栏网格 */

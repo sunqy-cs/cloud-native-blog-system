@@ -87,11 +87,16 @@
       <div class="blog-bottom">
         <main class="blog-main">
           <section class="section article-list-section">
-            <el-tabs v-model="listTab" class="list-tabs">
-              <el-tab-pane label="Latest" name="latest" />
-              <el-tab-pane label="Top" name="top" />
-              <el-tab-pane label="Discussions" name="discussions" />
-            </el-tabs>
+            <div class="list-section-header">
+              <el-tabs v-model="listTab" class="list-tabs">
+                <el-tab-pane label="Latest" name="latest" />
+                <el-tab-pane label="Top" name="top" />
+                <el-tab-pane label="Discussions" name="discussions" />
+              </el-tabs>
+              <button type="button" class="list-search-btn" title="搜索" @click="onListSearch">
+                <el-icon><Search /></el-icon>
+              </button>
+            </div>
             <div class="article-list">
               <router-link
                 v-for="item in articleList"
@@ -106,11 +111,16 @@
                     {{ item.author.nickname }} · {{ formatDate(item.createdAt) }}
                   </div>
                 </div>
+                <div class="article-item-cover">
+                  <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+                  <span v-else class="article-item-cover-placeholder">{{ item.title.charAt(0) }}</span>
+                </div>
               </router-link>
             </div>
           </section>
         </main>
-        <aside class="blog-sidebar">
+        <aside class="blog-sidebar-wrap">
+          <div class="blog-sidebar-inner">
         <div class="sidebar-block subscribe-block">
           <div class="subscribe-header">
             <div class="subscribe-avatar">
@@ -142,6 +152,7 @@
             </li>
           </ul>
         </div>
+          </div>
         </aside>
       </div>
     </div>
@@ -151,7 +162,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight } from '@element-plus/icons-vue'
+import { ArrowRight, Search } from '@element-plus/icons-vue'
 import {
   getBlogTags,
   getCarouselArticles,
@@ -198,6 +209,11 @@ function onSubscribe() {
   if (!subscribeEmail.value) return
   // 后续对接订阅接口
   subscribeEmail.value = ''
+}
+
+function onListSearch() {
+  // 后续可打开搜索弹窗或跳转搜索页
+  router.push({ path: '/blog', query: { ...route.query, search: '1' } })
 }
 
 function loadData() {
@@ -252,8 +268,11 @@ onBeforeUnmount(() => {
   background-color: var(--el-bg-color-page, #f5f5f5);
 }
 
-/* 顶部栏下方：Home + 标签 */
+/* 顶部栏下方：Home + 标签，不随滚动条滚动 */
 .blog-sub-nav {
+  position: sticky;
+  top: 64px;
+  z-index: 100;
   background: #fff;
   border-bottom: 1px solid #e0e0e0;
 }
@@ -553,8 +572,43 @@ onBeforeUnmount(() => {
   padding-top: 0;
 }
 
-.list-tabs :deep(.el-tabs__header) {
+.list-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.list-section-header .list-tabs {
+  flex: 1;
+}
+
+.list-search-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.list-search-btn:hover {
+  color: #111;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.list-search-btn .el-icon {
+  font-size: 20px;
+}
+
+.list-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
 }
 
 .list-tabs :deep(.el-tabs__nav-wrap::after) {
@@ -589,7 +643,9 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid #eee;
   text-decoration: none;
   color: inherit;
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 24px;
   transition: background 0.1s;
 }
 
@@ -601,18 +657,23 @@ onBeforeUnmount(() => {
   border-bottom: none;
 }
 
+.article-item-main {
+  flex: 1;
+  min-width: 0;
+}
+
 .article-item-title {
-  font-size: 17px;
-  font-weight: 600;
-  margin: 0 0 8px;
-  line-height: 1.4;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  line-height: 1.35;
 }
 
 .article-item-summary {
-  font-size: 14px;
+  font-size: 16px;
   color: #555;
-  margin: 0 0 8px;
-  line-height: 1.5;
+  margin: 0 0 10px;
+  line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -620,14 +681,50 @@ onBeforeUnmount(() => {
 }
 
 .article-item-meta {
-  font-size: 13px;
+  font-size: 14px;
   color: #888;
 }
 
-/* 侧栏 */
-.blog-sidebar {
+.article-item-cover {
+  flex-shrink: 0;
+  width: 180px;
+  height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e8e8e8;
+}
+
+.article-item-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.article-item-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 700;
+  color: #bbb;
+  user-select: none;
+}
+
+/* 侧栏：整列 sticky，粘在顶栏下，不随滚动滑没 */
+.blog-sidebar-wrap {
   width: 300px;
   flex-shrink: 0;
+  align-self: flex-start;
+  position: sticky;
+  top: 64px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.blog-sidebar-inner {
+  max-height: inherit;
 }
 
 .sidebar-block {
@@ -749,7 +846,7 @@ onBeforeUnmount(() => {
     flex-direction: column;
   }
 
-  .blog-sidebar {
+  .blog-sidebar-wrap {
     width: 100%;
   }
 

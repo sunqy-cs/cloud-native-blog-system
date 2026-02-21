@@ -2,6 +2,7 @@
   <div class="app-root">
     <AppHeader v-if="!isCreatorRoute" :open-login-modal="openLoginModal" />
     <router-view />
+    <AppFooter v-if="!isCreatorRoute" />
     <LoginModal v-model:visible="showLoginModal" :redirect="loginRedirect" />
   </div>
 </template>
@@ -10,6 +11,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import AppFooter from '@/components/AppFooter.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import { pendingLogin } from '@/stores/loginModal'
 

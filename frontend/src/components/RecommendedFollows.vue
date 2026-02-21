@@ -99,10 +99,11 @@ function follow(user: RecommendedUser) {
 </script>
 
 <style scoped>
+/* BBC 风格：白底、红色顶条、蓝色关注链接、清晰层级 */
 .recommended-follows {
   background: #fff;
   border: 1px solid #e0e0e0;
-  border-top: 3px solid #000;
+  border-top: 3px solid #BB1919;
   border-radius: 0;
   padding: 16px 20px 20px;
   min-width: 280px;
@@ -190,7 +191,8 @@ function follow(user: RecommendedUser) {
 }
 
 .rec-follows-name:hover {
-  color: #1474b8;
+  color: #111;
+  text-decoration: underline;
 }
 
 .rec-follows-desc {
@@ -207,7 +209,7 @@ function follow(user: RecommendedUser) {
   flex-shrink: 0;
   padding: 0 8px;
   font-size: 14px;
-  color: #1474b8 !important;
+  color: #BB1919 !important;
 }
 
 .rec-follows-btn .btn-icon {
@@ -216,7 +218,7 @@ function follow(user: RecommendedUser) {
 }
 
 .rec-follows-btn:hover {
-  color: #0d5a8f !important;
+  color: #8b1212 !important;
 }
 
 .rec-follows-pagination {

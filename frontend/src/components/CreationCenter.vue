@@ -44,10 +44,11 @@ function goDrafts() {
 </script>
 
 <style scoped>
+/* BBC 风格：白底、红色顶条、黑主按钮、清晰层级 */
 .creation-center {
   background: #fff;
   border: 1px solid #e0e0e0;
-  border-top: 3px solid #000;
+  border-top: 3px solid #BB1919;
   border-radius: 0;
   padding: 20px;
   min-width: 280px;
@@ -57,22 +58,25 @@ function goDrafts() {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-bottom: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 14px;
 }
 
 .creation-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: 'Georgia', 'Times New Roman', 'Songti SC', serif;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  color: #000;
+  color: #111;
   letter-spacing: 0.02em;
+  margin: 0;
 }
 
 .creation-icon {
-  font-size: 20px;
+  font-size: 18px;
+  color: #666;
 }
 
 .creation-drafts {
@@ -82,14 +86,15 @@ function goDrafts() {
 }
 
 .creation-drafts:hover {
-  color: #000;
+  color: #111;
 }
 
 .creation-desc {
   font-size: 14px;
-  color: #444;
+  color: #666;
   line-height: 1.6;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
+  text-align: center;
 }
 
 .creation-btn {

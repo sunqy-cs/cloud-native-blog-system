@@ -35,6 +35,23 @@
       </router-link>
     </div>
 
+    <!-- variant: three - 3 张中卡（如 IN CASE YOU MISSED IT）-->
+    <div v-if="variant === 'three'" class="rec-block-three">
+      <router-link
+        v-for="item in items"
+        :key="item.id"
+        :to="item.link || `/article/${item.id}`"
+        class="rec-three-card"
+      >
+        <div class="rec-three-card-img">
+          <img v-if="item.cover" :src="item.cover" :alt="item.title" />
+          <span v-else class="rec-img-placeholder">{{ item.title.charAt(0) }}</span>
+        </div>
+        <h3 class="rec-three-card-headline">{{ item.title }}</h3>
+        <p class="rec-three-card-desc">{{ item.subtitle || item.summary }}</p>
+      </router-link>
+    </div>
+
     <!-- variant: four - 4 张中卡 -->
     <div v-if="variant === 'four'" class="rec-block-four">
       <router-link
@@ -49,6 +66,21 @@
         </div>
         <h3 class="rec-four-card-headline">{{ item.title }}</h3>
         <p class="rec-four-card-desc">{{ item.subtitle || item.summary }}</p>
+      </router-link>
+    </div>
+
+    <!-- variant: feature - 单条大头条，左图右文或左文右图 + See more -->
+    <div v-if="variant === 'feature' && items.length > 0" class="rec-block-feature" :class="{ 'rec-block-feature--img-right': imageSide === 'right' }">
+      <router-link :to="items[0].link || `/article/${items[0].id}`" class="rec-feature-link">
+        <div class="rec-feature-img">
+          <img v-if="items[0].cover" :src="items[0].cover" :alt="items[0].title" />
+          <span v-else class="rec-img-placeholder">{{ items[0].title.charAt(0) }}</span>
+        </div>
+        <div class="rec-feature-text">
+          <h3 class="rec-feature-headline">{{ items[0].title }}</h3>
+          <p class="rec-feature-desc">{{ items[0].subtitle || items[0].summary }}</p>
+          <span class="rec-feature-more">See more</span>
+        </div>
       </router-link>
     </div>
 
@@ -93,14 +125,15 @@ export interface RecommendBlockItem {
   label?: string
 }
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     title: string
     titleLink?: string
-    variant: 'two' | 'four' | 'strip'
+    variant: 'two' | 'three' | 'four' | 'strip' | 'feature'
     items: RecommendBlockItem[]
+    imageSide?: 'left' | 'right'
   }>(),
-  { titleLink: '' }
+  { titleLink: '', imageSide: 'left' }
 )
 
 const stripRef = ref<HTMLElement | null>(null)
@@ -220,6 +253,146 @@ a.rec-block-title:hover {
   line-height: 1.5;
   color: #444;
   margin: 0;
+}
+
+/* three: 3 张中卡并排 */
+.rec-block-three {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+.rec-three-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rec-three-card:hover .rec-three-card-headline {
+  color: #111;
+  text-decoration: underline;
+  text-decoration-color: #111;
+}
+
+.rec-three-card-img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: #e0e0e0;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.rec-three-card-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rec-three-card-headline {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 8px;
+  color: #1a1a1a;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rec-three-card-desc {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #444;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* feature: 单条大头条，左图右文或左文右图 */
+.rec-block-feature {
+  display: block;
+}
+
+.rec-block-feature--img-right .rec-feature-link {
+  flex-direction: row-reverse;
+}
+
+.rec-feature-link {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.rec-feature-link:hover .rec-feature-headline {
+  color: #111;
+  text-decoration: underline;
+  text-decoration-color: #111;
+}
+
+.rec-feature-link:hover .rec-feature-more {
+  border-color: #111;
+  color: #111;
+}
+
+.rec-feature-img {
+  flex: 0 0 58%;
+  width: 58%;
+  aspect-ratio: 16 / 10;
+  background: #e0e0e0;
+  overflow: hidden;
+}
+
+.rec-feature-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rec-feature-text {
+  flex: 0 0 calc(42% - 24px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 0 0 8px;
+}
+
+.rec-block-feature--img-right .rec-feature-text {
+  padding: 0 8px 0 0;
+}
+
+.rec-feature-headline {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 12px;
+  color: #1a1a1a;
+}
+
+.rec-feature-desc {
+  font-size: 16px;
+  line-height: 1.55;
+  color: #444;
+  margin: 0 0 20px;
+  flex: 1;
+}
+
+.rec-feature-more {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 10px 20px;
+  border: 1px solid #1a1a1a;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-decoration: none;
+  transition: border-color 0.2s, color 0.2s;
 }
 
 /* four: 4 张中卡并排 */
@@ -403,6 +576,32 @@ a.rec-block-title:hover {
 
   .rec-block-four {
     grid-template-columns: 1fr;
+  }
+
+  .rec-block-feature .rec-feature-link {
+    flex-direction: column;
+  }
+
+  .rec-block-feature--img-right .rec-feature-link {
+    flex-direction: column;
+  }
+
+  .rec-block-feature .rec-feature-img,
+  .rec-block-feature .rec-feature-text {
+    flex: none;
+    width: 100%;
+  }
+
+  .rec-block-feature .rec-feature-img {
+    aspect-ratio: 16 / 10;
+  }
+
+  .rec-block-feature .rec-feature-text {
+    padding: 16px 0 0;
+  }
+
+  .rec-block-feature--img-right .rec-feature-text {
+    padding: 16px 0 0;
   }
 
   .rec-strip-card {
