@@ -46,13 +46,6 @@
         </a>
 
         <div class="knowledge-nav-spacer"></div>
-
-        <div class="knowledge-sidebar-footer">
-          <router-link to="/creator" class="knowledge-user" title="个人中心">
-            <img v-if="userStore.user?.avatar" :src="userStore.user.avatar" alt="" class="knowledge-user-avatar" />
-            <span v-else class="knowledge-user-avatar knowledge-user-ph">{{ userInitial }}</span>
-          </router-link>
-        </div>
       </div>
     </aside>
 
@@ -134,20 +127,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Search, Document, FolderOpened, Star, Clock, ArrowDown, Paperclip, Top } from '@element-plus/icons-vue'
-import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 const sidebarExpanded = ref(false)
-
-const userInitial = computed(() => {
-  const n = userStore.user?.nickname || userStore.user?.username || '用'
-  return n.charAt(0)
-})
 
 const question = ref('')
 
@@ -367,38 +353,6 @@ function onSubmit() {
 
 .knowledge-collapse-btn:hover .knowledge-collapse-icon.expanded .collapse-panel-left {
   border-left-color: #333;
-}
-
-.knowledge-sidebar-footer {
-  flex-shrink: 0;
-  padding-top: 12px;
-  border-top: 1px solid #eee;
-}
-
-.knowledge-user {
-  display: block;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-}
-
-.knowledge-user-avatar {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
-}
-
-.knowledge-user-ph {
-  background: #e0e0e0;
-  color: #666;
-  font-size: 16px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
 }
 
 /* 右侧主内容区 */
