@@ -22,13 +22,29 @@
         </div>
         <div class="profile-meta">
           <h1 class="profile-name">{{ displayName }}</h1>
-          <p v-if="profile.intro" class="profile-line profile-intro">{{ profile.intro }}</p>
-          <p v-if="profile.residence" class="profile-line"><span class="profile-label">居住地</span>{{ profile.residence }}</p>
-          <p v-if="profile.industry" class="profile-line"><span class="profile-label">所在行业</span>{{ profile.industry }}</p>
-          <template v-if="!detailCollapsed">
-            <p v-if="profile.gender" class="profile-line"><span class="profile-label">性别</span>{{ profile.gender }}</p>
-            <p v-if="profile.bio" class="profile-line profile-bio">{{ profile.bio }}</p>
-            <p v-if="profile.wechatId" class="profile-line"><span class="profile-label">微信</span>{{ profile.wechatId }}</p>
+          <template v-if="detailCollapsed">
+            <p v-if="profile.intro" class="profile-intro-plain">{{ profile.intro }}</p>
+          </template>
+          <template v-else>
+            <p v-if="profile.residence" class="profile-line">
+              <el-icon class="profile-line-icon"><Location /></el-icon>
+              <span class="profile-label">居住地</span>{{ profile.residence }}
+            </p>
+            <p v-if="profile.industry" class="profile-line">
+              <el-icon class="profile-line-icon"><Briefcase /></el-icon>
+              <span class="profile-label">所在行业</span>{{ profile.industry }}</p>
+            <p v-if="profile.gender" class="profile-line">
+              <el-icon class="profile-line-icon"><User /></el-icon>
+              <span class="profile-label">性别</span>{{ profile.gender }}
+            </p>
+            <p v-if="profile.bio" class="profile-line profile-bio">
+              <el-icon class="profile-line-icon"><Document /></el-icon>
+              <span class="profile-label">简介</span>{{ profile.bio }}
+            </p>
+            <p v-if="profile.wechatId" class="profile-line">
+              <el-icon class="profile-line-icon"><ChatDotRound /></el-icon>
+              <span class="profile-label">微信</span>{{ profile.wechatId }}
+            </p>
           </template>
           <button type="button" class="profile-toggle-detail" @click="detailCollapsed = !detailCollapsed">
             <el-icon><component :is="detailCollapsed ? ArrowDown : ArrowUp" /></el-icon>
@@ -200,7 +216,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
-import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading } from '@element-plus/icons-vue'
+import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound } from '@element-plus/icons-vue'
 import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
@@ -809,22 +825,33 @@ const followerCount = ref(1)
 }
 
 .profile-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
   font-size: 14px;
   color: #555;
   margin: 4px 0;
 }
-.profile-intro {
-  color: #111;
-  font-weight: 500;
+.profile-line-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: #888;
+  margin-top: 1px;
 }
 .profile-bio {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.profile-intro-plain {
+  color: #555;
+  font-size: 14px;
+  margin: 4px 0;
+}
 
 .profile-label {
   color: #888;
-  margin-right: 8px;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .profile-toggle-detail {
