@@ -77,8 +77,9 @@
 
     <div class="profile-body">
       <main class="profile-main">
-        <h2 class="section-title">我的动态</h2>
-        <div class="activity-list">
+        <h2 class="section-title">{{ sectionTitle }}</h2>
+        <!-- 我的动态 -->
+        <div v-if="currentTab === 'dynamic'" class="activity-list">
           <article v-for="item in activities" :key="item.id" class="activity-item">
             <p class="activity-action">{{ item.actionText }}</p>
             <p class="activity-time">{{ item.time }}</p>
@@ -88,6 +89,29 @@
               <span class="activity-author-name">{{ item.authorName }}</span>
               <span v-if="item.authorDesc" class="activity-author-desc">{{ item.authorDesc }}</span>
             </div>
+          </article>
+        </div>
+        <!-- 我的博客 -->
+        <div v-else-if="currentTab === 'blog'" class="profile-card-list">
+          <article v-for="item in blogList" :key="item.id" class="profile-card-item">
+            <router-link :to="`/article/${item.id}`" class="profile-card-title">{{ item.title }}</router-link>
+            <p class="profile-card-meta">{{ item.summary }}</p>
+            <p class="profile-card-time">{{ item.createdAt }}</p>
+          </article>
+        </div>
+        <!-- 我的收藏 -->
+        <div v-else-if="currentTab === 'collection'" class="profile-card-list">
+          <article v-for="item in collectionList" :key="item.id" class="profile-card-item">
+            <router-link :to="`/article/${item.articleId}`" class="profile-card-title">{{ item.title }}</router-link>
+            <p class="profile-card-meta">收藏于 {{ item.collectedAt }}</p>
+          </article>
+        </div>
+        <!-- 我的专栏 -->
+        <div v-else-if="currentTab === 'column'" class="profile-card-list">
+          <article v-for="item in columnList" :key="item.id" class="profile-card-item">
+            <router-link :to="`/column/${item.id}`" class="profile-card-title">{{ item.name }}</router-link>
+            <p class="profile-card-meta">{{ item.description }}</p>
+            <p class="profile-card-time">{{ item.articleCount }} 篇内容</p>
           </article>
         </div>
       </main>
@@ -545,15 +569,20 @@ onMounted(() => {
 
 const tabs = ref([
   { key: 'dynamic', label: '动态', count: undefined },
-  { key: 'answers', label: '回答', count: 0 },
-  { key: 'videos', label: '视频', count: 0 },
-  { key: 'questions', label: '提问', count: 0 },
-  { key: 'articles', label: '文章', count: 0 },
-  { key: 'columns', label: '专栏', count: 0 },
-  { key: 'ideas', label: '想法', count: 0 },
-  { key: 'collections', label: '收藏', count: 1 },
-  { key: 'highlights', label: '划线', count: 0 },
+  { key: 'blog', label: '博客', count: 2 },
+  { key: 'collection', label: '收藏', count: 1 },
+  { key: 'column', label: '专栏', count: 2 },
 ])
+
+const sectionTitle = computed(() => {
+  const map: Record<string, string> = {
+    dynamic: '我的动态',
+    blog: '我的博客',
+    collection: '我的收藏',
+    column: '我的专栏',
+  }
+  return map[currentTab.value] || '我的动态'
+})
 
 const activities = ref([
   {
@@ -565,6 +594,18 @@ const activities = ref([
     authorDesc: '公众号「非著名程序员」和「MOSS 进化论」主理人。',
     contentId: '1',
   },
+])
+
+const blogList = ref([
+  { id: '1', title: '云原生入门：从零到部署', summary: '容器、编排与可观测性简介。', createdAt: '2026-02-15' },
+  { id: '2', title: '一天内理顺生活的办法', summary: '极简行动清单。', createdAt: '2026-02-14' },
+])
+const collectionList = ref([
+  { id: '1', articleId: '1', title: 'Purpose & Profit – 发现你一生的事业', collectedAt: '2026-02-20' },
+])
+const columnList = ref([
+  { id: '1', name: '技术笔记', description: '开发与架构相关文章汇总。', articleCount: 3 },
+  { id: '2', name: '读书札记', description: '阅读与思考。', articleCount: 0 },
 ])
 
 const followingCount = ref(4)
@@ -966,15 +1007,47 @@ const followerCount = ref(1)
   margin: 0 0 20px;
 }
 
-.activity-list {
+.activity-list,
+.profile-card-list {
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.activity-item {
+.activity-item,
+.profile-card-item {
   padding-bottom: 20px;
   border-bottom: 1px solid #f0f0f0;
+}
+
+.profile-card-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.profile-card-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: #111;
+  margin-bottom: 6px;
+  text-decoration: none;
+}
+
+.profile-card-title:hover {
+  color: #BB1919;
+}
+
+.profile-card-meta,
+.profile-card-time {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 4px;
+}
+
+.profile-card-time {
+  font-size: 13px;
+  color: #999;
 }
 
 .activity-item:last-child {
@@ -1054,18 +1127,24 @@ const followerCount = ref(1)
 
 .sidebar-stats {
   display: flex;
-  gap: 24px;
-  padding: 20px;
+  padding: 20px 0;
   background: #fff;
-  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  border-top: 3px solid #BB1919;
+  border-radius: 0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .stat-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+}
+.stat-item:first-child {
+  border-right: 1px solid #e8e8e8;
 }
 
 .stat-value {
