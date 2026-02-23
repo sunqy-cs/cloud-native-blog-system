@@ -61,6 +61,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '文章详情' },
   },
   {
+    path: '/profile',
+    name: 'profile',
+    component: () => import('@/views/Profile.vue'),
+    meta: { title: '个人主页', requireLogin: true },
+  },
+  {
     path: '/admin',
     name: 'admin',
     component: () => import('@/views/admin/Layout.vue'),

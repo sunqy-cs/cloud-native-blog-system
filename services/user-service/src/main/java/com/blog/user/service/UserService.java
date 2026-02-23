@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.blog.user.dto.LoginRequest;
 import com.blog.user.dto.LoginResponse;
 import com.blog.user.dto.RegisterRequest;
+import com.blog.user.dto.UpdateProfileRequest;
 import com.blog.user.dto.UserVO;
 import com.blog.user.entity.User;
 import com.blog.user.mapper.UserMapper;
@@ -63,8 +64,32 @@ public class UserService {
         vo.setId(user.getId());
         vo.setUsername(user.getUsername());
         vo.setNickname(user.getNickname());
+        vo.setAvatar(user.getAvatar());
+        vo.setCover(user.getCover());
+        vo.setGender(user.getGender());
+        vo.setIntro(user.getIntro());
+        vo.setResidence(user.getResidence());
+        vo.setIndustry(user.getIndustry());
+        vo.setBio(user.getBio());
+        vo.setWechatId(user.getWechatId());
         vo.setRole(user.getRole());
         vo.setCreatedAt(user.getCreatedAt());
         return vo;
+    }
+
+    public UserVO updateProfile(Long userId, UpdateProfileRequest req) {
+        User user = userMapper.selectById(userId);
+        if (user == null) return null;
+        if (req.getNickname() != null) user.setNickname(req.getNickname());
+        if (req.getAvatar() != null) user.setAvatar(req.getAvatar());
+        if (req.getCover() != null) user.setCover(req.getCover());
+        if (req.getGender() != null) user.setGender(req.getGender());
+        if (req.getIntro() != null) user.setIntro(req.getIntro());
+        if (req.getResidence() != null) user.setResidence(req.getResidence());
+        if (req.getIndustry() != null) user.setIndustry(req.getIndustry());
+        if (req.getBio() != null) user.setBio(req.getBio());
+        if (req.getWechatId() != null) user.setWechatId(req.getWechatId());
+        userMapper.updateById(user);
+        return getById(userId);
     }
 }

@@ -57,7 +57,7 @@
         >
           登录 / 注册
         </el-button>
-        <el-dropdown v-else>
+        <el-dropdown v-else @command="onDropdownCommand">
           <span class="user-dropdown">
             <span class="user-avatar">
               <img v-if="avatarUrl" :src="avatarUrl" alt="头像" class="avatar-img" />
@@ -67,8 +67,8 @@
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item @click="goAdmin">进入后台</el-dropdown-item>
-              <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
+              <el-dropdown-item command="profile">个人主页</el-dropdown-item>
+              <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -143,12 +143,17 @@ function goLogin() {
   props.openLoginModal?.(route.fullPath)
 }
 
-function goAdmin() {
+function goProfile() {
   if (!userStore.isLoggedIn) {
-    props.openLoginModal?.('/admin')
+    props.openLoginModal?.('/profile')
     return
   }
-  router.push('/admin')
+  router.push('/profile')
+}
+
+function onDropdownCommand(command: string) {
+  if (command === 'profile') goProfile()
+  else if (command === 'logout') logout()
 }
 
 function logout() {

@@ -2,13 +2,9 @@ package com.blog.user.dto;
 
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
 @Data
-public class UserVO {
+public class UpdateProfileRequest {
 
-    private Long id;
-    private String username;
     private String nickname;
     private String avatar;
     private String cover;
@@ -18,6 +14,4 @@ public class UserVO {
     private String industry;
     private String bio;
     private String wechatId;
-    private String role;
-    private LocalDateTime createdAt;
 }
