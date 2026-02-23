@@ -154,7 +154,6 @@
                   <span class="ai-title-btn-icon">✨</span>
                 </button>
               </el-tooltip>
-              <span class="ai-title-quota">{{ aiTitleUsage }} / {{ AI_TITLE_QUOTA }}</span>
             </div>
             <div class="title-hint" v-if="title.length > 0 && title.length < 5">还需输入{{ 5 - title.length }}个字</div>
           </div>
@@ -996,12 +995,6 @@ const avatarInitial = computed(() => {
 
 .ai-title-btn-icon {
   font-size: 18px;
-}
-
-.ai-title-quota {
-  flex-shrink: 0;
-  font-size: 13px;
-  color: #999;
 }
 
 .title-input {
