@@ -34,12 +34,30 @@ spring:
           predicates:
             - Path=/api/objects,/api/objects/**
           order: 2
+        # 内容/博客服务：我的博客列表
+        - id: content-service
+          uri: lb://content-service
+          predicates:
+            - Path=/api/contents/**
+          order: 3
+        # 内容服务：收藏夹
+        - id: content-service-folders
+          uri: lb://content-service
+          predicates:
+            - Path=/api/collection-folders/**
+          order: 3
+        # 互动服务：赞同（我赞同的文章，用于动态）
+        - id: interaction-service
+          uri: lb://interaction-service
+          predicates:
+            - Path=/api/content-likes/**
+          order: 3
         # 博客服务（若有）
         - id: blog-service
           uri: lb://blog-service
           predicates:
             - Path=/api/posts/**,/api/articles/**
-          order: 3
+          order: 4
 
 # 与 user-service 一致，用于网关统一鉴权
 jwt:

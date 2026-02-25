@@ -77,24 +77,82 @@
 
     <div class="profile-body">
       <main class="profile-main">
-        <h2 class="section-title">{{ sectionTitle }}</h2>
-        <!-- 我的动态 -->
-        <div v-if="currentTab === 'dynamic'" class="activity-list">
-          <article v-for="item in activities" :key="item.id" class="activity-item">
-            <p class="activity-action">{{ item.actionText }}</p>
-            <p class="activity-time">{{ item.time }}</p>
-            <router-link :to="`/article/${item.contentId}`" class="activity-title">{{ item.title }}</router-link>
-            <div class="activity-author">
-              <span class="activity-author-avatar">{{ item.authorName.charAt(0) }}</span>
-              <span class="activity-author-name">{{ item.authorName }}</span>
-              <span v-if="item.authorDesc" class="activity-author-desc">{{ item.authorDesc }}</span>
+        <template v-if="currentTab === 'collection'">
+          <div class="blog-header-row collection-header-row">
+            <h2 class="section-title">我的收藏</h2>
+            <button type="button" class="btn-new-folder" @click="openCreateFolder">
+              <el-icon><Plus /></el-icon>
+              新建收藏夹
+            </button>
+          </div>
+        </template>
+        <template v-if="currentTab === 'blog'">
+          <div class="blog-header-row">
+            <h2 class="section-title">我的博客</h2>
+            <div class="blog-filters">
+              <el-dropdown trigger="click" popper-class="blog-visibility-dropdown" @command="setVisibility">
+                <span class="blog-sort blog-sort--dropdown">
+                  {{ blogVisibilityLabel }}
+                  <el-icon class="blog-sort-arrow"><ArrowDown /></el-icon>
+                </span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="ALL">全部可见</el-dropdown-item>
+                    <el-dropdown-item command="SELF">仅我可见</el-dropdown-item>
+                    <el-dropdown-item command="FANS">粉丝可见</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <span class="blog-sort" :class="{ active: blogSortBy === 'time' }" @click="setSort('time')">
+                按时间排序 {{ blogSortBy === 'time' ? (blogOrder === 'desc' ? '↓' : '↑') : '↑↓' }}
+              </span>
+              <span class="blog-sort" :class="{ active: blogSortBy === 'likes' }" @click="setSort('likes')">
+                按点赞量排序 {{ blogSortBy === 'likes' ? (blogOrder === 'desc' ? '↓' : '↑') : '↑↓' }}
+              </span>
+              <span class="blog-sort" :class="{ active: blogSortBy === 'views' }" @click="setSort('views')">
+                按浏览量排序 {{ blogSortBy === 'views' ? (blogOrder === 'desc' ? '↓' : '↑') : '↑↓' }}
+              </span>
             </div>
-          </article>
+          </div>
+        </template>
+        <h2 v-else-if="currentTab !== 'collection'" class="section-title">{{ sectionTitle }}</h2>
+        <!-- 我的动态：赞同了文章 + 发表了博客 混合时间线，滚动加载更多 -->
+        <div v-if="currentTab === 'dynamic'" ref="dynamicTabWrapRef" class="dynamic-tab-wrap">
+          <div v-if="dynamicLoading" class="blog-loading">加载中…</div>
+          <template v-else>
+            <div class="activity-list">
+              <article v-for="item in dynamicFeedList" :key="item.id" class="activity-item">
+                <p class="activity-action">{{ item.actionText }}</p>
+                <p class="activity-time">{{ item.time }}</p>
+                <router-link :to="`/article/${item.contentId}`" class="activity-title">{{ item.title }}</router-link>
+                <div v-if="item.authorName" class="activity-author">
+                  <span class="activity-author-avatar">{{ item.authorName.charAt(0) }}</span>
+                  <span class="activity-author-name">{{ item.authorName }}</span>
+                  <span v-if="item.authorDesc" class="activity-author-desc">{{ item.authorDesc }}</span>
+                </div>
+              </article>
+            </div>
+            <div v-if="dynamicFeedList.length === 0" class="blog-empty">
+              <p class="blog-empty-text">暂无动态</p>
+            </div>
+            <div
+              v-show="dynamicFeedList.length > 0 && hasMoreDynamic"
+              ref="dynamicSentinelRef"
+              class="dynamic-sentinel"
+            />
+            <div v-if="dynamicLoadingMore" class="blog-loading dynamic-load-more">加载更多…</div>
+            <p v-if="dynamicFeedList.length > 0 && !hasMoreDynamic && !dynamicLoading" class="dynamic-no-more">没有更多了</p>
+          </template>
         </div>
         <!-- 我的博客 -->
         <div v-else-if="currentTab === 'blog'" class="blog-tab-wrap">
-          <div class="profile-card-list">
-            <article v-for="item in blogPageList" :key="item.id" class="profile-card-item profile-card-item--blog">
+          <div v-if="blogLoading" class="blog-loading">加载中…</div>
+          <div v-else-if="blogList.length === 0" class="blog-empty">
+            <el-icon class="blog-empty-icon"><Document /></el-icon>
+            <p class="blog-empty-text">还没有博客</p>
+          </div>
+          <div v-else class="profile-card-list">
+            <article v-for="item in blogList" :key="item.id" class="profile-card-item profile-card-item--blog">
               <div class="profile-card-body">
                 <router-link :to="`/article/${item.id}`" class="profile-card-title">{{ item.title }}</router-link>
                 <p class="profile-card-meta">{{ item.summary }}</p>
@@ -102,7 +160,7 @@
                   <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatCount(item.viewCount) }}</span>
                   <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatCount(item.likeCount) }}</span>
                   <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatCount(item.collectionCount) }}</span>
-                  <span class="stat profile-card-time">发布时间 {{ item.createdAt }}</span>
+                  <span class="stat profile-card-time">发布时间 {{ formatCreatedAt(item.createdAt) }}</span>
                 </div>
               </div>
               <router-link :to="`/article/${item.id}`" class="profile-card-thumb">
@@ -111,23 +169,41 @@
               </router-link>
             </article>
           </div>
-          <div class="blog-pagination-wrap">
-            <span class="blog-total-text">共 <span class="blog-total-num">{{ blogList.length }}</span> 条</span>
+          <div v-if="blogTotal > 0" class="blog-pagination-wrap">
+            <span class="blog-total-text">共 <span class="blog-total-num">{{ blogTotal }}</span> 条</span>
             <el-pagination
               v-model:current-page="blogPage"
               :page-size="blogPageSize"
-              :total="blogList.length"
+              :total="blogTotal"
               layout="prev, pager, next"
               class="blog-pagination"
             />
           </div>
         </div>
-        <!-- 我的收藏 -->
-        <div v-else-if="currentTab === 'collection'" class="profile-card-list">
-          <article v-for="item in collectionList" :key="item.id" class="profile-card-item">
-            <router-link :to="`/article/${item.articleId}`" class="profile-card-title">{{ item.title }}</router-link>
-            <p class="profile-card-meta">收藏于 {{ item.collectedAt }}</p>
-          </article>
+        <!-- 我的收藏：收藏夹列表 -->
+        <div v-else-if="currentTab === 'collection'" class="collection-tab-wrap">
+          <div v-if="folderLoading" class="blog-loading">加载中…</div>
+          <div v-else-if="folderList.length === 0" class="blog-empty collection-empty">
+            <el-icon class="blog-empty-icon"><FolderOpened /></el-icon>
+            <p class="blog-empty-text">还没有收藏夹</p>
+            <button type="button" class="btn-new-folder-inline" @click="openCreateFolder">新建收藏夹</button>
+          </div>
+          <div v-else class="profile-card-list folder-list">
+            <article v-for="folder in folderList" :key="folder.id" class="profile-card-item folder-item">
+              <div class="folder-main">
+                <span class="folder-name">{{ folder.name }}</span>
+                <el-tag v-if="folder.isDefault" type="info" size="small" class="folder-tag-default">默认</el-tag>
+                <div v-if="!folder.isDefault" class="folder-actions">
+                  <button type="button" class="folder-action-btn" @click="openEditFolder(folder)">编辑</button>
+                  <button type="button" class="folder-action-btn folder-action-btn--danger" @click="confirmDeleteFolder(folder)">删除</button>
+                </div>
+              </div>
+              <p v-if="folder.description" class="profile-card-meta folder-desc">{{ folder.description }}</p>
+              <p class="profile-card-meta folder-meta">
+                {{ folder.count }} 条内容 · 创建于 {{ folder.createdAt }}
+              </p>
+            </article>
+          </div>
         </div>
         <!-- 我的专栏 -->
         <div v-else-if="currentTab === 'column'" class="profile-card-list">
@@ -256,15 +332,65 @@
         <el-button class="btn-save-profile" type="primary" :loading="editProfileSubmitting" @click="submitEditProfile">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 创建新收藏夹弹窗：仅标题 + 简介，无可见性 -->
+    <el-dialog
+      v-model="createFolderVisible"
+      title="创建新收藏夹"
+      width="480px"
+      top="12vh"
+      class="create-folder-dialog"
+      @closed="resetCreateFolderForm"
+    >
+      <el-form :model="createFolderForm" label-position="top">
+        <el-form-item label="收藏标题">
+          <el-input v-model="createFolderForm.name" placeholder="收藏标题" maxlength="64" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="收藏描述（可选）">
+          <el-input v-model="createFolderForm.description" type="textarea" :rows="3" placeholder="收藏描述 (可选)" maxlength="256" show-word-limit clearable />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createFolderVisible = false">取消</el-button>
+        <el-button class="btn-confirm-folder" type="primary" :loading="createFolderSubmitting" @click="submitCreateFolder">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑收藏夹弹窗：仅非默认收藏夹可编辑 -->
+    <el-dialog
+      v-model="editFolderVisible"
+      title="编辑收藏夹"
+      width="480px"
+      top="12vh"
+      class="create-folder-dialog edit-folder-dialog"
+      @closed="resetEditFolderForm"
+    >
+      <el-form :model="editFolderForm" label-position="top">
+        <el-form-item label="收藏标题">
+          <el-input v-model="editFolderForm.name" placeholder="收藏标题" maxlength="64" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="收藏描述（可选）">
+          <el-input v-model="editFolderForm.description" type="textarea" :rows="3" placeholder="收藏描述 (可选)" maxlength="256" show-word-limit clearable />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editFolderVisible = false">取消</el-button>
+        <el-button class="btn-confirm-folder" type="primary" :loading="editFolderSubmitting" @click="submitEditFolder">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
-import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound, View, Star, Collection } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
+import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound, View, Star, Collection, FolderOpened } from '@element-plus/icons-vue'
 import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
+import { getContentsMe, getContentsByIds, type ContentListItem } from '@/api/content'
+import { getContentLikesMe } from '@/api/contentLike'
+import { getCollectionFoldersMe, createCollectionFolder, updateCollectionFolder, deleteCollectionFolder, type CollectionFolderItem } from '@/api/collectionFolder'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
 import pcData from 'china-division/dist/pc.json'
@@ -588,12 +714,16 @@ onMounted(() => {
     profile.value.bio = user.bio
     profile.value.wechatId = user.wechatId
   }).catch(() => {})
+  if (currentTab.value === 'blog') fetchBlogList()
+  if (currentTab.value === 'dynamic') fetchDynamicBlogs()
+  // 预拉取收藏夹列表，使 Tab 上「收藏」数量在首屏/刷新后正确显示
+  fetchFolderList()
 })
 
 const tabs = computed(() => [
   { key: 'dynamic', label: '动态', count: undefined as number | undefined },
-  { key: 'blog', label: '博客', count: blogList.value.length },
-  { key: 'collection', label: '收藏', count: collectionList.value.length },
+  { key: 'blog', label: '博客', count: blogTotal.value },
+  { key: 'collection', label: '收藏', count: folderList.value.length },
   { key: 'column', label: '专栏', count: columnList.value.length },
 ])
 
@@ -607,39 +737,293 @@ const sectionTitle = computed(() => {
   return map[currentTab.value] || '我的动态'
 })
 
-const activities = ref([
-  {
-    id: '1',
-    actionText: '赞同了文章',
-    time: '2026-02-23 11:33',
-    title: '硅谷公司核心高管残酷预言:会做事的人越来越值钱,会管人的正在贬值',
-    authorName: '非著名程序员',
-    authorDesc: '公众号「非著名程序员」和「MOSS 进化论」主理人。',
-    contentId: '1',
-  },
-])
+// 动态：赞同了文章（来自 interaction-service content-likes/me + contents/by-ids）
+const likedActivities = ref<{ id: string; actionText: string; time: string; title: string; contentId: string; authorName?: string; authorDesc?: string }[]>([])
+// 动态：混合时间线，滚动到底时按页拉取博客并追加（不一次全加载）
+const dynamicBlogList = ref<ContentListItem[]>([])
+const dynamicBlogTotal = ref(0)
+const dynamicBlogPage = ref(0)       // 已拉到第几页（0 表示未拉过）
+const dynamicPageSize = 10
+const dynamicLoading = ref(false)
+const dynamicLoadingMore = ref(false)
+const dynamicTabWrapRef = ref<HTMLElement | null>(null)
+const dynamicSentinelRef = ref<HTMLElement | null>(null)
 
-const blogList = ref([
-  { id: '1', title: '云原生入门：从零到部署', summary: '容器、编排与可观测性简介。', createdAt: '2026-02-15', viewCount: 1520, likeCount: 24, collectionCount: 18, cover: 'https://picsum.photos/seed/blog1/200/140' },
-  { id: '2', title: '一天内理顺生活的办法', summary: '极简行动清单。', createdAt: '2026-02-14', viewCount: 156, likeCount: 12, collectionCount: 5, cover: 'https://picsum.photos/seed/blog2/200/140' },
-  { id: '3', title: '示例博客三', summary: '用于分页展示。', createdAt: '2026-02-13', viewCount: 88, likeCount: 3, collectionCount: 1, cover: null },
-  { id: '4', title: '示例博客四', summary: '用于分页展示。', createdAt: '2026-02-12', viewCount: 210, likeCount: 8, collectionCount: 2, cover: null },
-  { id: '5', title: '示例博客五', summary: '用于分页展示。', createdAt: '2026-02-11', viewCount: 45, likeCount: 2, collectionCount: 0, cover: null },
-])
-const blogPage = ref(1)
-const blogPageSize = 2
-const blogPageList = computed(() => {
-  const list = blogList.value
-  const start = (blogPage.value - 1) * blogPageSize
-  return list.slice(start, start + blogPageSize)
+const hasMoreDynamic = computed(
+  () => dynamicBlogList.value.length < dynamicBlogTotal.value
+)
+
+function parseTimeForSort(t: string): number {
+  if (!t) return 0
+  const s = t.replace(/-/g, '').replace(/:/g, '').replace(/\s/g, '')
+  return parseInt(s.slice(0, 12), 10) || 0
+}
+
+async function fetchDynamicBlogs() {
+  if (!userStore.isLoggedIn) return
+  dynamicLoading.value = true
+  dynamicBlogPage.value = 0
+  dynamicBlogList.value = []
+  likedActivities.value = []
+  try {
+    const [blogRes, likedRes] = await Promise.all([
+      getContentsMe({
+        page: 1,
+        pageSize: dynamicPageSize,
+        sortBy: 'time',
+        order: 'desc',
+      }),
+      getContentLikesMe({ page: 1, pageSize: 20 }),
+    ])
+    dynamicBlogList.value = blogRes.list
+    dynamicBlogTotal.value = blogRes.total
+    dynamicBlogPage.value = 1
+    if (likedRes.list.length > 0) {
+      const ids = likedRes.list.map((l) => l.contentId)
+      const contents = await getContentsByIds(ids)
+      const contentMap = Object.fromEntries(contents.map((c) => [c.id, c]))
+      likedActivities.value = likedRes.list.map((l) => ({
+        id: String(l.contentId),
+        actionText: '赞同了文章',
+        time: l.likedAt,
+        title: contentMap[l.contentId]?.title ?? '',
+        contentId: String(l.contentId),
+        authorName: undefined as string | undefined,
+        authorDesc: undefined as string | undefined,
+      }))
+    }
+  } finally {
+    dynamicLoading.value = false
+  }
+}
+
+async function loadMoreDynamic() {
+  if (!userStore.isLoggedIn || dynamicLoadingMore.value || !hasMoreDynamic.value) return
+  dynamicLoadingMore.value = true
+  try {
+    const nextPage = dynamicBlogPage.value + 1
+    const res = await getContentsMe({
+      page: nextPage,
+      pageSize: dynamicPageSize,
+      sortBy: 'time',
+      order: 'desc',
+    })
+    dynamicBlogList.value = [...dynamicBlogList.value, ...res.list]
+    dynamicBlogTotal.value = res.total
+    dynamicBlogPage.value = nextPage
+  } finally {
+    dynamicLoadingMore.value = false
+  }
+}
+
+// 混合时间线：赞同了文章 + 发表了博客，按时间倒序
+const dynamicFeedList = computed(() => {
+  const likeItems = likedActivities.value.map((a) => ({
+    id: 'like-' + a.id,
+    actionText: a.actionText,
+    time: a.time,
+    title: a.title,
+    contentId: a.contentId,
+    authorName: a.authorName,
+    authorDesc: a.authorDesc,
+    _sort: parseTimeForSort(a.time),
+  }))
+  const blogItems = dynamicBlogList.value.map((b) => ({
+    id: 'blog-' + b.id,
+    actionText: '发表了博客',
+    time: formatCreatedAt(b.createdAt) || b.createdAt || '',
+    title: b.title,
+    contentId: String(b.id),
+    authorName: undefined as string | undefined,
+    authorDesc: undefined as string | undefined,
+    _sort: parseTimeForSort(b.createdAt || ''),
+  }))
+  const merged = [...likeItems, ...blogItems]
+  merged.sort((a, b) => b._sort - a._sort)
+  return merged.map(({ _sort, ...rest }) => rest)
 })
+
+// 动态无限滚动：触底时加载下一页
+let dynamicSentinelObserver: IntersectionObserver | null = null
+function setupDynamicSentinelObserver() {
+  const el = dynamicSentinelRef.value
+  dynamicSentinelObserver?.disconnect()
+  dynamicSentinelObserver = null
+  if (!el || currentTab.value !== 'dynamic') return
+  dynamicSentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries[0]?.isIntersecting) return
+      if (currentTab.value !== 'dynamic' || !hasMoreDynamic.value || dynamicLoadingMore.value) return
+      loadMoreDynamic()
+    },
+    { rootMargin: '80px', threshold: 0 }
+  )
+  dynamicSentinelObserver.observe(el)
+}
+watch(
+  () => [currentTab.value, dynamicLoading.value],
+  () => {
+    if (currentTab.value === 'dynamic' && !dynamicLoading.value) {
+      nextTick(() => setupDynamicSentinelObserver())
+    } else {
+      dynamicSentinelObserver?.disconnect()
+      dynamicSentinelObserver = null
+    }
+  }
+)
+onUnmounted(() => {
+  dynamicSentinelObserver?.disconnect()
+  dynamicSentinelObserver = null
+})
+
+const blogList = ref<ContentListItem[]>([])
+const blogTotal = ref(0)
+const blogPage = ref(1)
+const blogPageSize = 10
+const blogLoading = ref(false)
+const blogVisibility = ref<'ALL' | 'SELF' | 'FANS'>('ALL')
+const blogSortBy = ref<'time' | 'likes' | 'views'>('time')
+const blogOrder = ref<'asc' | 'desc'>('desc')
+const blogVisibilityLabel = computed(() => {
+  const map = { ALL: '全部可见', SELF: '仅我可见', FANS: '粉丝可见' }
+  return map[blogVisibility.value]
+})
+function setVisibility(v: 'ALL' | 'SELF' | 'FANS') {
+  blogVisibility.value = v
+  blogPage.value = 1
+  fetchBlogList()
+}
+function setSort(field: 'time' | 'likes' | 'views') {
+  if (blogSortBy.value === field) {
+    blogOrder.value = blogOrder.value === 'desc' ? 'asc' : 'desc'
+  } else {
+    blogSortBy.value = field
+    blogOrder.value = 'desc'
+  }
+  blogPage.value = 1
+  fetchBlogList()
+}
+async function fetchBlogList() {
+  if (!userStore.isLoggedIn) return
+  blogLoading.value = true
+  try {
+    const res = await getContentsMe({
+      page: blogPage.value,
+      pageSize: blogPageSize,
+      visibility: blogVisibility.value,
+      sortBy: blogSortBy.value,
+      order: blogOrder.value,
+    })
+    blogList.value = res.list
+    blogTotal.value = res.total
+  } finally {
+    blogLoading.value = false
+  }
+}
 function formatCount(n: number) {
   if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
   return String(n)
 }
-const collectionList = ref([
-  { id: '1', articleId: '1', title: 'Purpose & Profit – 发现你一生的事业', collectedAt: '2026-02-20' },
-])
+function formatCreatedAt(s: string) {
+  if (!s) return ''
+  return s.slice(0, 10)
+}
+watch([currentTab, blogPage], () => {
+  if (currentTab.value === 'dynamic') fetchDynamicBlogs()
+  if (currentTab.value === 'blog') fetchBlogList()
+  if (currentTab.value === 'collection') fetchFolderList()
+})
+// 收藏夹列表（我的收藏下展示所有收藏夹）
+const folderList = ref<CollectionFolderItem[]>([])
+const folderLoading = ref(false)
+const createFolderVisible = ref(false)
+const createFolderSubmitting = ref(false)
+const createFolderForm = ref({ name: '', description: '' })
+function openCreateFolder() {
+  createFolderForm.value = { name: '', description: '' }
+  createFolderVisible.value = true
+}
+function resetCreateFolderForm() {
+  createFolderForm.value = { name: '', description: '' }
+}
+async function fetchFolderList() {
+  if (!userStore.isLoggedIn) return
+  folderLoading.value = true
+  try {
+    const list = await getCollectionFoldersMe()
+    folderList.value = list
+  } finally {
+    folderLoading.value = false
+  }
+}
+function submitCreateFolder() {
+  const name = createFolderForm.value.name?.trim()
+  if (!name) return
+  createFolderSubmitting.value = true
+  createCollectionFolder({
+    name,
+    description: createFolderForm.value.description?.trim() || undefined,
+  })
+    .then((created) => {
+      // 确保有创建时间（部分环境接口可能未立即回填，前端兜底）
+      const item: CollectionFolderItem = {
+        ...created,
+        createdAt: created.createdAt ?? new Date().toISOString().slice(0, 10),
+      }
+      folderList.value = [...folderList.value, item]
+      createFolderVisible.value = false
+      resetCreateFolderForm()
+    })
+    .finally(() => { createFolderSubmitting.value = false })
+}
+
+// 编辑收藏夹（仅非默认收藏夹显示编辑按钮，默认收藏夹不能修改名字和简介）
+const editFolderVisible = ref(false)
+const editFolderId = ref<number | null>(null)
+const editFolderSubmitting = ref(false)
+const editFolderForm = ref({ name: '', description: '' })
+function openEditFolder(folder: CollectionFolderItem) {
+  if (folder.isDefault) return
+  editFolderId.value = folder.id
+  editFolderForm.value = {
+    name: folder.name,
+    description: folder.description ?? '',
+  }
+  editFolderVisible.value = true
+}
+function resetEditFolderForm() {
+  editFolderId.value = null
+  editFolderForm.value = { name: '', description: '' }
+}
+function submitEditFolder() {
+  const id = editFolderId.value
+  if (id == null) return
+  const name = editFolderForm.value.name?.trim()
+  if (!name) return
+  editFolderSubmitting.value = true
+  updateCollectionFolder(id, {
+    name,
+    description: editFolderForm.value.description?.trim() || undefined,
+  })
+    .then((updated) => {
+      folderList.value = folderList.value.map((f) => (f.id === id ? updated : f))
+      editFolderVisible.value = false
+      resetEditFolderForm()
+    })
+    .finally(() => { editFolderSubmitting.value = false })
+}
+function confirmDeleteFolder(folder: CollectionFolderItem) {
+  if (folder.isDefault) return
+  ElMessageBox.confirm(`确定要删除收藏夹「${folder.name}」吗？`, '删除收藏夹', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => deleteCollectionFolder(folder.id))
+    .then(() => {
+      folderList.value = folderList.value.filter((f) => f.id !== folder.id)
+    })
+}
 const columnList = ref([
   { id: '1', name: '技术笔记', description: '开发与架构相关文章汇总。', articleCount: 3 },
   { id: '2', name: '读书札记', description: '阅读与思考。', articleCount: 0 },
@@ -1162,10 +1546,208 @@ const followerCount = ref(1)
   color: #999;
 }
 
-.blog-tab-wrap {
+.blog-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.blog-header-row .section-title {
+  margin: 0;
+}
+.collection-header-row {
+  margin-bottom: 20px;
+}
+.btn-new-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #BB1919;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.btn-new-folder:hover {
+  color: #9e1515;
+}
+.btn-new-folder .el-icon {
+  font-size: 16px;
+}
+.create-folder-dialog,
+.create-folder-dialog :deep(.el-dialog__body) {
+  --el-color-primary: #BB1919;
+}
+.create-folder-dialog :deep(.el-dialog__header) {
+  color: #111;
+}
+.create-folder-dialog :deep(.el-input__wrapper) {
+  --el-input-focus-border-color: #BB1919;
+  --el-input-hover-border-color: #BB1919;
+}
+.create-folder-dialog :deep(.el-input.is-focus .el-input__wrapper),
+.create-folder-dialog :deep(.el-input__wrapper:focus-within) {
+  box-shadow: 0 0 0 1px #BB1919 inset;
+}
+.create-folder-dialog .btn-confirm-folder {
+  background: #BB1919;
+  border-color: #BB1919;
+}
+.create-folder-dialog .btn-confirm-folder:hover {
+  background: #9e1515;
+  border-color: #9e1515;
+}
+.collection-empty {
+  padding: 48px 24px;
+}
+.btn-new-folder-inline {
+  margin-top: 16px;
+  padding: 8px 20px;
+  font-size: 14px;
+  color: #BB1919;
+  background: #fff;
+  border: 1px solid #BB1919;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-new-folder-inline:hover {
+  background: #BB1919;
+  color: #fff;
+}
+.folder-list .folder-item .folder-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.folder-list .folder-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111;
+}
+.folder-tag-default {
+  font-size: 12px;
+}
+.folder-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-action-btn {
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #666;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+.folder-action-btn:hover {
+  color: #BB1919;
+  background: rgba(187, 25, 25, 0.06);
+}
+.folder-action-btn--danger:hover {
+  color: #c45656;
+  background: rgba(196, 86, 86, 0.08);
+}
+.edit-folder-dialog .btn-confirm-folder {
+  background: #BB1919;
+  border-color: #BB1919;
+}
+.edit-folder-dialog .btn-confirm-folder:hover {
+  background: #9e1515;
+  border-color: #9e1515;
+}
+.folder-desc {
+  color: #666;
+  margin-bottom: 2px;
+}
+.folder-meta {
+  font-size: 13px;
+  color: #999;
+  margin: 0;
+}
+.blog-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.blog-sort {
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+.blog-sort:hover,
+.blog-sort.active {
+  color: #BB1919;
+}
+.blog-sort--dropdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.blog-sort-arrow {
+  font-size: 12px;
+  color: #999;
+}
+.blog-sort--dropdown:hover .blog-sort-arrow {
+  color: #BB1919;
+}
+.blog-tab-wrap,
+.dynamic-tab-wrap {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+.dynamic-sentinel {
+  height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+}
+.dynamic-load-more {
+  padding: 16px 0;
+  margin-top: 0;
+}
+.dynamic-no-more {
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+  padding: 16px 0;
+  margin: 0;
+}
+.blog-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+}
+.blog-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  min-height: 200px;
+}
+.blog-empty-icon {
+  font-size: 80px;
+  color: #d0d0d0;
+  margin-bottom: 16px;
+}
+.blog-empty-text {
+  margin: 0;
+  font-size: 15px;
+  color: #999;
 }
 .blog-pagination-wrap {
   display: flex;
@@ -1371,6 +1953,18 @@ const followerCount = ref(1)
   background-color: rgba(187, 25, 25, 0.08);
 }
 .edit-profile-cascader-popper .el-cascader-node:hover {
+  background-color: rgba(187, 25, 25, 0.08);
+}
+
+/* 我的博客 - 可见性下拉：红色主题，去掉蓝色 */
+.blog-visibility-dropdown {
+  --el-color-primary: #BB1919;
+}
+.blog-visibility-dropdown .el-dropdown-menu__item {
+  color: #606266;
+}
+.blog-visibility-dropdown .el-dropdown-menu__item:hover {
+  color: #BB1919;
   background-color: rgba(187, 25, 25, 0.08);
 }
 </style>
