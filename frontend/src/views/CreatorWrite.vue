@@ -218,22 +218,7 @@
                 <el-radio value="all">全部可见</el-radio>
                 <el-radio value="self">仅我可见</el-radio>
                 <el-radio value="fans">粉丝可见</el-radio>
-                <el-radio value="vip">VIP可见</el-radio>
               </el-radio-group>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">参与活动</label>
-              <el-select v-model="activity" placeholder="请选择创作活动" clearable class="setting-select">
-                <el-option label="请选择创作活动" value="" disabled />
-              </el-select>
-            </div>
-
-            <div class="setting-row">
-              <label class="setting-label">话题</label>
-              <el-select v-model="topic" placeholder="请选择创作话题" clearable class="setting-select">
-                <el-option label="请选择创作话题" value="" disabled />
-              </el-select>
             </div>
           </section>
         </div>
@@ -299,9 +284,7 @@ const coverInputRef = ref<HTMLInputElement | null>(null)
 const summary = ref('')
 const articleType = ref<'original' | 'reprint' | 'translated'>('original')
 const creationStatement = ref('none')
-const visibility = ref<'all' | 'self' | 'fans' | 'vip'>('all')
-const activity = ref('')
-const topic = ref('')
+const visibility = ref<'all' | 'self' | 'fans'>('all')
 
 const sectionOwners = computed(() => {
   const list = tocList.value

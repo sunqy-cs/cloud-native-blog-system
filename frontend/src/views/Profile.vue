@@ -92,12 +92,35 @@
           </article>
         </div>
         <!-- 我的博客 -->
-        <div v-else-if="currentTab === 'blog'" class="profile-card-list">
-          <article v-for="item in blogList" :key="item.id" class="profile-card-item">
-            <router-link :to="`/article/${item.id}`" class="profile-card-title">{{ item.title }}</router-link>
-            <p class="profile-card-meta">{{ item.summary }}</p>
-            <p class="profile-card-time">{{ item.createdAt }}</p>
-          </article>
+        <div v-else-if="currentTab === 'blog'" class="blog-tab-wrap">
+          <div class="profile-card-list">
+            <article v-for="item in blogPageList" :key="item.id" class="profile-card-item profile-card-item--blog">
+              <div class="profile-card-body">
+                <router-link :to="`/article/${item.id}`" class="profile-card-title">{{ item.title }}</router-link>
+                <p class="profile-card-meta">{{ item.summary }}</p>
+                <div class="profile-card-stats">
+                  <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatCount(item.viewCount) }}</span>
+                  <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatCount(item.likeCount) }}</span>
+                  <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatCount(item.collectionCount) }}</span>
+                  <span class="stat profile-card-time">发布时间 {{ item.createdAt }}</span>
+                </div>
+              </div>
+              <router-link :to="`/article/${item.id}`" class="profile-card-thumb">
+                <img v-if="item.cover" :src="item.cover" :alt="item.title" class="profile-card-thumb-img" />
+                <span v-else class="profile-card-thumb-ph"></span>
+              </router-link>
+            </article>
+          </div>
+          <div class="blog-pagination-wrap">
+            <span class="blog-total-text">共 <span class="blog-total-num">{{ blogList.length }}</span> 条</span>
+            <el-pagination
+              v-model:current-page="blogPage"
+              :page-size="blogPageSize"
+              :total="blogList.length"
+              layout="prev, pager, next"
+              class="blog-pagination"
+            />
+          </div>
         </div>
         <!-- 我的收藏 -->
         <div v-else-if="currentTab === 'collection'" class="profile-card-list">
@@ -240,7 +263,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
-import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound } from '@element-plus/icons-vue'
+import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound, View, Star, Collection } from '@element-plus/icons-vue'
 import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
@@ -567,11 +590,11 @@ onMounted(() => {
   }).catch(() => {})
 })
 
-const tabs = ref([
-  { key: 'dynamic', label: '动态', count: undefined },
-  { key: 'blog', label: '博客', count: 2 },
-  { key: 'collection', label: '收藏', count: 1 },
-  { key: 'column', label: '专栏', count: 2 },
+const tabs = computed(() => [
+  { key: 'dynamic', label: '动态', count: undefined as number | undefined },
+  { key: 'blog', label: '博客', count: blogList.value.length },
+  { key: 'collection', label: '收藏', count: collectionList.value.length },
+  { key: 'column', label: '专栏', count: columnList.value.length },
 ])
 
 const sectionTitle = computed(() => {
@@ -597,9 +620,23 @@ const activities = ref([
 ])
 
 const blogList = ref([
-  { id: '1', title: '云原生入门：从零到部署', summary: '容器、编排与可观测性简介。', createdAt: '2026-02-15' },
-  { id: '2', title: '一天内理顺生活的办法', summary: '极简行动清单。', createdAt: '2026-02-14' },
+  { id: '1', title: '云原生入门：从零到部署', summary: '容器、编排与可观测性简介。', createdAt: '2026-02-15', viewCount: 1520, likeCount: 24, collectionCount: 18, cover: 'https://picsum.photos/seed/blog1/200/140' },
+  { id: '2', title: '一天内理顺生活的办法', summary: '极简行动清单。', createdAt: '2026-02-14', viewCount: 156, likeCount: 12, collectionCount: 5, cover: 'https://picsum.photos/seed/blog2/200/140' },
+  { id: '3', title: '示例博客三', summary: '用于分页展示。', createdAt: '2026-02-13', viewCount: 88, likeCount: 3, collectionCount: 1, cover: null },
+  { id: '4', title: '示例博客四', summary: '用于分页展示。', createdAt: '2026-02-12', viewCount: 210, likeCount: 8, collectionCount: 2, cover: null },
+  { id: '5', title: '示例博客五', summary: '用于分页展示。', createdAt: '2026-02-11', viewCount: 45, likeCount: 2, collectionCount: 0, cover: null },
 ])
+const blogPage = ref(1)
+const blogPageSize = 2
+const blogPageList = computed(() => {
+  const list = blogList.value
+  const start = (blogPage.value - 1) * blogPageSize
+  return list.slice(start, start + blogPageSize)
+})
+function formatCount(n: number) {
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return String(n)
+}
 const collectionList = ref([
   { id: '1', articleId: '1', title: 'Purpose & Profit – 发现你一生的事业', collectedAt: '2026-02-20' },
 ])
@@ -1025,6 +1062,41 @@ const followerCount = ref(1)
   padding-bottom: 0;
 }
 
+/* 博客列表：左侧缩略图，上沿与标题对齐 */
+.profile-card-item--blog {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.profile-card-thumb {
+  flex-shrink: 0;
+  width: 120px;
+  height: 84px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #e8e8e8;
+  display: block;
+}
+.profile-card-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.profile-card-thumb-ph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #e0e0e0 0%, #eee 100%);
+}
+.profile-card-item--blog .profile-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.profile-card-item--blog .profile-card-title {
+  margin-top: 0;
+}
+
 .profile-card-title {
   display: block;
   font-size: 16px;
@@ -1038,6 +1110,46 @@ const followerCount = ref(1)
   color: #BB1919;
 }
 
+.profile-card-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 16px;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  line-height: 20px;
+  height: 20px;
+  color: #666;
+}
+.profile-card-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 13px;
+}
+.profile-card-stats .stat :deep(.el-icon) {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  color: #999;
+  flex-shrink: 0;
+}
+.profile-card-stats .stat :deep(.el-icon svg) {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+.profile-card-stats .profile-card-time {
+  font-size: 13px;
+  line-height: 20px;
+  height: 20px;
+  color: #999;
+  display: inline-flex;
+  align-items: center;
+  transform: translateY(2px);
+}
 .profile-card-meta,
 .profile-card-time {
   font-size: 14px;
@@ -1048,6 +1160,34 @@ const followerCount = ref(1)
 .profile-card-time {
   font-size: 13px;
   color: #999;
+}
+
+.blog-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.blog-pagination-wrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+.blog-total-text {
+  font-size: 14px;
+  color: var(--el-text-color-regular, #606266);
+  line-height: 32px;
+}
+.blog-total-num {
+  display: inline-block;
+  transform: translateY(-2px);
+}
+.blog-pagination {
+  justify-content: flex-start;
+}
+.blog-pagination :deep(.el-pager li.is-active) {
+  background-color: #BB1919;
+  color: #fff;
 }
 
 .activity-item:last-child {
