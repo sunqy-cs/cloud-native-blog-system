@@ -8,8 +8,11 @@ public class ContentListItemVO {
     private String title;
     private String summary;
     private String cover;
+    private String status;       // DRAFT / PUBLISHED
+    private String articleType;  // ORIGINAL / REPRINT / TRANSLATED
     private Integer viewCount;
     private Integer likeCount;
     private Integer collectionCount;
+    private Integer commentCount;
     private String createdAt;
 }

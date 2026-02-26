@@ -22,3 +22,7 @@ mybatis-plus:
   global-config:
     db-config:
       id-type: auto
+
+# 互动服务地址，用于创作者统计昨日点赞数（服务间调用）
+app:
+  interaction-service-url: http://localhost:8085

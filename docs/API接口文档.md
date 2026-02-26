@@ -186,6 +186,7 @@
 | page       | number | 否   | 页码，从 1 开始，默认 1 |
 | pageSize   | number | 否   | 每页条数，默认 10      |
 | visibility | string | 否   | 可见范围筛选：ALL-全部可见 / SELF-仅我可见 / FANS-粉丝可见；不传则不过滤 |
+| status     | string | 否   | 状态筛选：ALL-全部 / PUBLISHED-已发布 / REJECTED-审核不通过 / DRAFT-草稿；不传则不过滤 |
 | sortBy     | string | 否   | 排序字段：time-按发布时间 / likes-按点赞量 / views-按浏览量，默认 time |
 | order      | string | 否   | 排序方向：asc-升序 / desc-降序，默认 desc |
 
@@ -199,9 +200,12 @@
       "title": "string",
       "summary": "string",
       "cover": "string",
+      "status": "PUBLISHED",
+      "articleType": "ORIGINAL",
       "viewCount": 0,
       "likeCount": 0,
       "collectionCount": 0,
+      "commentCount": 0,
       "createdAt": "2026-02-15"
     }
   ],
@@ -216,9 +220,12 @@
 | list[].title    | string | 标题         |
 | list[].summary  | string | 摘要，可选   |
 | list[].cover    | string | 封面图 URL，可选 |
+| list[].status   | string | 状态：DRAFT-草稿 / PUBLISHED-已发布 / REJECTED-审核不通过 |
+| list[].articleType | string | 文章类型：ORIGINAL-原创 / REPRINT-转载 / TRANSLATED-翻译 |
 | list[].viewCount      | number | 浏览数 |
 | list[].likeCount      | number | 点赞数 |
 | list[].collectionCount| number | 收藏数 |
+| list[].commentCount   | number | 评论数 |
 | list[].createdAt| string | 创建时间，格式 YYYY-MM-DD 或 ISO 8601 |
 | total           | number | 总条数（符合条件的内容总数） |
 
@@ -441,6 +448,254 @@
 ```
 
 返回顺序与请求 `ids` 顺序一致；已删除或不存在的 ID 不返回对应项。
+
+---
+
+### 13. 获取有评论的文章列表（评论管理左侧）
+
+**`GET /api/comments/commented-articles`**（interaction-service）
+
+需要认证。获取当前用户作为作者、且至少有一条评论的文章列表，用于创作者中心「评论管理」左侧列表。按更新时间倒序。
+
+**Response** `200 OK`：
+
+```json
+[
+  {
+    "contentId": 1,
+    "title": "文章标题",
+    "commentCount": 3,
+    "lastCommentAt": "2026-02-26 13:42"
+  }
+]
+```
+
+| 字段            | 类型   | 说明           |
+|-----------------|--------|----------------|
+| contentId       | number | 内容 ID        |
+| title           | string | 文章标题       |
+| commentCount    | number | 该文章评论数   |
+| lastCommentAt   | string | 最后评论时间   |
+
+---
+
+### 14. 获取某篇文章的评论列表（评论管理右侧）
+
+**`GET /api/comments/list?contentId={contentId}`**（interaction-service）
+
+需要认证。仅允许该文章作者调用。返回该文章下所有评论，热评在前、再按时间倒序。
+
+**Query 参数**：`contentId` 内容 ID。
+
+**Response** `200 OK`：
+
+```json
+[
+  {
+    "id": 1,
+    "userId": 2,
+    "userNickname": "用户2",
+    "contentId": 1,
+    "body": "评论内容",
+    "parentId": null,
+    "isHot": true,
+    "createdAt": "2026-02-26 13:42",
+    "isAuthor": false
+  }
+]
+```
+
+| 字段          | 类型    | 说明                         |
+|---------------|---------|------------------------------|
+| id            | number  | 评论 ID                      |
+| userId        | number  | 评论者用户 ID                |
+| userNickname  | string  | 评论者昵称（可后续接用户服务） |
+| contentId     | number  | 所属内容 ID                  |
+| body          | string  | 评论正文                     |
+| parentId      | number  | 父评论 ID，回复时存在        |
+| isHot         | boolean | 是否热评（作者推荐）          |
+| createdAt     | string  | 评论时间                     |
+| isAuthor      | boolean | 是否文章作者本人评论         |
+
+---
+
+### 15. 设置/取消热评
+
+**`PATCH /api/comments/{id}/hot`**（interaction-service）
+
+需要认证。仅文章作者可操作。将某条评论设为热评或取消热评。
+
+**路径参数**：`id` 评论 ID。
+
+**Request Body**：
+
+```json
+{ "hot": true }
+```
+
+| 字段 | 类型    | 说明                |
+|------|---------|---------------------|
+| hot  | boolean | true-设为热评，false-取消热评 |
+
+**Response** `204 No Content`
+
+---
+
+## 专栏相关（content-service）
+
+个人页「我的专栏」展示当前用户创建的专栏列表，支持新建专栏（名称、描述、封面）。
+
+### 16. 获取当前用户的专栏列表
+
+**`GET /api/columns/me`**
+
+需要认证。获取当前登录用户创建的所有专栏，用于个人页「我的专栏」展示。每条返回专栏名称、描述、封面、文章数、更新时间等。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Response** `200 OK`：
+
+```json
+[
+  {
+    "id": 1,
+    "name": "技术笔记",
+    "description": "开发与架构相关文章汇总。",
+    "cover": "https://example.com/cover.jpg",
+    "articleCount": 3,
+    "createdAt": "2026-02-20",
+    "updatedAt": "2026-02-25"
+  }
+]
+```
+
+| 字段          | 类型   | 说明           |
+|---------------|--------|----------------|
+| id            | number | 专栏 ID        |
+| name          | string | 专栏名称       |
+| description   | string | 专栏描述，可选 |
+| cover         | string | 封面图 URL，可选 |
+| articleCount  | number | 该专栏下文章数（类型为 BLOG 且 column_id 为本专栏） |
+| createdAt     | string | 创建时间，格式 YYYY-MM-DD |
+| updatedAt     | string | 更新时间，格式 YYYY-MM-DD |
+
+---
+
+### 17. 创建专栏
+
+**`POST /api/columns`**
+
+需要认证。创建新专栏，用于个人页「新建专栏」弹窗提交。
+
+**Request Body**：
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "cover": "string"
+}
+```
+
+| 字段        | 类型   | 必填 | 说明         |
+|-------------|--------|------|--------------|
+| name        | string | 是   | 专栏名称，最长 128 字符 |
+| description | string | 否   | 专栏描述，最长 512 字符 |
+| cover       | string | 否   | 封面图 URL   |
+
+**Response** `201 Created`：
+
+返回新建的专栏对象，格式同「获取当前用户的专栏列表」单条（含 `id`、`articleCount` 为 0、`createdAt` / `updatedAt` 由服务端生成）。
+
+---
+
+## 关注相关（interaction-service）
+
+个人页右侧展示当前用户的「关注了」与「关注者」数量，由 interaction-service 基于 `follow` 表统计。
+
+### 18. 获取当前用户关注统计
+
+**`GET /api/follow/me`**
+
+需要认证。获取当前登录用户的关注数（我关注了多少人）与被关注数（多少人关注了我），用于个人页右侧「关注了」「关注者」展示。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Response** `200 OK`：
+
+```json
+{
+  "followingCount": 4,
+  "followerCount": 1
+}
+```
+
+| 字段            | 类型   | 说明                         |
+|-----------------|--------|------------------------------|
+| followingCount  | number | 关注了：当前用户关注的人数（follow 表中 follower_id = 当前用户） |
+| followerCount   | number | 关注者：关注当前用户的人数（follow 表中 followee_id = 当前用户） |
+
+---
+
+## 创作者中心统计
+
+创作者中心首页需展示：总阅读量、总点赞量、粉丝数、收藏数，及每项对应的「昨日增长」。总阅读量/总点赞量/收藏数由当前用户发布的内容汇总得到，粉丝数由关注表统计；昨日增长为昨日 0 点至今日 0 点（服务器时区）的新增数。
+
+### 19. 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长）
+
+**`GET /api/contents/me/stats`**
+
+需要认证。获取当前用户作为创作者的内容汇总统计，用于创作者中心数据卡片。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Response** `200 OK`：
+
+```json
+{
+  "totalViewCount": 10334,
+  "totalLikeCount": 128,
+  "totalCollectionCount": 151,
+  "yesterdayViewDelta": 0,
+  "yesterdayLikeDelta": 2,
+  "yesterdayCollectionDelta": 1
+}
+```
+
+| 字段                    | 类型   | 说明                                                         |
+|-------------------------|--------|--------------------------------------------------------------|
+| totalViewCount          | number | 总阅读量：当前用户所有内容 view_count 之和                   |
+| totalLikeCount          | number | 总点赞量：当前用户所有内容 like_count 之和                   |
+| totalCollectionCount    | number | 收藏数：当前用户所有内容 collection_count 之和               |
+| yesterdayViewDelta      | number | 昨日阅读增长。无按日浏览日志时固定为 0，前端可展示「昨日无变化」 |
+| yesterdayLikeDelta      | number | 昨日点赞增长：昨日新增的 content_like 中，content 属于当前用户的数量 |
+| yesterdayCollectionDelta| number | 昨日收藏增长：昨日新增的 content_collection 中，content 属于当前用户的数量 |
+
+---
+
+### 20. 获取当前用户关注统计（扩展：昨日粉丝增长）
+
+**`GET /api/follow/me`**（在原有接口上扩展返回字段）
+
+需要认证。获取当前用户的关注数、被关注数（粉丝数），及昨日新增粉丝数，用于创作者中心与个人页。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Response** `200 OK`：
+
+```json
+{
+  "followingCount": 4,
+  "followerCount": 46,
+  "yesterdayFollowerDelta": 0
+}
+```
+
+| 字段                   | 类型   | 说明                                                         |
+|------------------------|--------|--------------------------------------------------------------|
+| followingCount         | number | 关注了：当前用户关注的人数                                   |
+| followerCount          | number | 粉丝数：关注当前用户的人数                                   |
+| yesterdayFollowerDelta | number | 昨日粉丝增长：follow 表中 followee_id=当前用户且 created_at 为昨日 0 点至今日 0 点的记录数 |
 
 ---
 

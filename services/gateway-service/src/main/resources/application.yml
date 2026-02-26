@@ -46,11 +46,29 @@ spring:
           predicates:
             - Path=/api/collection-folders/**
           order: 3
-        # 互动服务：赞同（我赞同的文章，用于动态）
-        - id: interaction-service
+        # 内容服务：专栏
+        - id: content-service-columns
+          uri: lb://content-service
+          predicates:
+            - Path=/api/columns/**
+          order: 3
+        # 互动服务：评论（有评论的文章、评论列表、热评）
+        - id: interaction-service-comments
+          uri: lb://interaction-service
+          predicates:
+            - Path=/api/comments/**
+          order: 3
+        # 互动服务：赞同（我赞同的文章）
+        - id: interaction-service-likes
           uri: lb://interaction-service
           predicates:
             - Path=/api/content-likes/**
+          order: 3
+        # 互动服务：关注统计
+        - id: interaction-service-follow
+          uri: lb://interaction-service
+          predicates:
+            - Path=/api/follow/**
           order: 3
         # 博客服务（若有）
         - id: blog-service

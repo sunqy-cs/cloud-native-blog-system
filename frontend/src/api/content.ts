@@ -5,9 +5,12 @@ export interface ContentListItem {
   title: string
   summary?: string
   cover?: string | null
+  status?: string   // DRAFT | PUBLISHED
+  articleType?: string // ORIGINAL | REPRINT | TRANSLATED
   viewCount: number
   likeCount: number
   collectionCount: number
+  commentCount?: number
   createdAt: string
 }
 
@@ -20,8 +23,26 @@ export interface ContentsMeParams {
   page?: number
   pageSize?: number
   visibility?: 'ALL' | 'SELF' | 'FANS'
+  status?: 'ALL' | 'PUBLISHED' | 'REJECTED' | 'DRAFT'
   sortBy?: 'time' | 'likes' | 'views'
   order?: 'asc' | 'desc'
+}
+
+/** 创作者中心：当前用户内容汇总统计及昨日增长 */
+export interface ContentMeStats {
+  totalViewCount: number
+  totalLikeCount: number
+  totalCollectionCount: number
+  yesterdayViewDelta: number
+  yesterdayLikeDelta: number
+  yesterdayCollectionDelta: number
+}
+
+/**
+ * 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长），用于创作者中心数据卡片
+ */
+export function getContentMeStats(): Promise<ContentMeStats> {
+  return request.get<ContentMeStats>('contents/me/stats').then((data) => data as ContentMeStats)
 }
 
 /**

@@ -86,6 +86,15 @@
             </button>
           </div>
         </template>
+        <template v-if="currentTab === 'column'">
+          <div class="blog-header-row collection-header-row">
+            <h2 class="section-title">我的专栏</h2>
+            <button type="button" class="btn-new-folder" @click="openCreateColumn">
+              <el-icon><Plus /></el-icon>
+              新建专栏
+            </button>
+          </div>
+        </template>
         <template v-if="currentTab === 'blog'">
           <div class="blog-header-row">
             <h2 class="section-title">我的博客</h2>
@@ -115,7 +124,7 @@
             </div>
           </div>
         </template>
-        <h2 v-else-if="currentTab !== 'collection'" class="section-title">{{ sectionTitle }}</h2>
+        <h2 v-else-if="currentTab !== 'collection' && currentTab !== 'column'" class="section-title">{{ sectionTitle }}</h2>
         <!-- 我的动态：赞同了文章 + 发表了博客 混合时间线，滚动加载更多 -->
         <div v-if="currentTab === 'dynamic'" ref="dynamicTabWrapRef" class="dynamic-tab-wrap">
           <div v-if="dynamicLoading" class="blog-loading">加载中…</div>
@@ -205,13 +214,27 @@
             </article>
           </div>
         </div>
-        <!-- 我的专栏 -->
-        <div v-else-if="currentTab === 'column'" class="profile-card-list">
-          <article v-for="item in columnList" :key="item.id" class="profile-card-item">
-            <router-link :to="`/column/${item.id}`" class="profile-card-title">{{ item.name }}</router-link>
-            <p class="profile-card-meta">{{ item.description }}</p>
-            <p class="profile-card-time">{{ item.articleCount }} 篇内容</p>
-          </article>
+        <!-- 我的专栏：参考收藏布局，右侧新建专栏 + 每条右侧显示专栏封面 -->
+        <div v-else-if="currentTab === 'column'" class="column-tab-wrap">
+          <div v-if="columnLoading" class="blog-loading">加载中…</div>
+          <div v-else-if="columnList.length === 0" class="blog-empty">
+            <el-icon class="blog-empty-icon"><FolderOpened /></el-icon>
+            <p class="blog-empty-text">还没有专栏</p>
+            <button type="button" class="btn-new-folder-inline" @click="openCreateColumn">新建专栏</button>
+          </div>
+          <div v-else class="profile-card-list column-list">
+            <article v-for="item in columnList" :key="item.id" class="profile-card-item profile-card-item--column">
+              <div class="profile-card-body">
+                <router-link :to="`/column/${item.id}`" class="profile-card-title">{{ item.name }}</router-link>
+                <p class="profile-card-meta">{{ item.description }}</p>
+                <p class="profile-card-time">{{ item.articleCount }} 篇内容 · 更新于 {{ item.updatedAt ? item.updatedAt.slice(0, 10) : '—' }}</p>
+              </div>
+              <router-link :to="`/column/${item.id}`" class="profile-card-thumb column-cover">
+                <img v-if="item.cover" :src="item.cover" :alt="item.name" class="profile-card-thumb-img" />
+                <span v-else class="profile-card-thumb-ph"></span>
+              </router-link>
+            </article>
+          </div>
         </div>
       </main>
       <aside class="profile-sidebar">
@@ -378,6 +401,78 @@
         <el-button class="btn-confirm-folder" type="primary" :loading="editFolderSubmitting" @click="submitEditFolder">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 新建专栏弹窗 -->
+    <el-dialog
+      v-model="createColumnVisible"
+      title="新建专栏"
+      width="480px"
+      top="12vh"
+      class="create-folder-dialog create-column-dialog"
+      @closed="resetCreateColumnForm"
+    >
+      <el-form :model="createColumnForm" label-position="top">
+        <el-form-item label="专栏名称">
+          <el-input v-model="createColumnForm.name" placeholder="专栏名称" maxlength="128" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="专栏描述（可选）">
+          <el-input v-model="createColumnForm.description" type="textarea" :rows="3" placeholder="专栏描述 (可选)" maxlength="512" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="封面图（可选）">
+          <div class="column-cover-upload" :class="{ 'has-cover': !!createColumnForm.cover }">
+            <div class="column-cover-preview" :style="createColumnForm.cover ? { backgroundImage: `url(${createColumnForm.cover})` } : {}">
+              <input
+                ref="columnCoverFileInputRef"
+                type="file"
+                accept="image/*"
+                class="cover-file-input"
+                @change="onColumnCoverFileChange"
+              />
+              <button v-if="!createColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">
+                <el-icon><Camera /></el-icon>
+                上传封面图片
+              </button>
+              <template v-else>
+                <button type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">更换</button>
+                <button type="button" class="column-cover-remove" @click.stop="createColumnForm.cover = ''">移除</button>
+              </template>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createColumnVisible = false">取消</el-button>
+        <el-button class="btn-confirm-folder" type="primary" :loading="createColumnSubmitting" @click="submitCreateColumn">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 专栏封面裁剪弹窗：比例与专栏卡片封面一致 -->
+    <el-dialog
+      v-model="columnCropDialogVisible"
+      title="选择封面区域"
+      width="440px"
+      :close-on-click-modal="false"
+      class="cover-crop-dialog column-cover-crop-dialog"
+      @closed="resetColumnCropState"
+    >
+      <div class="crop-viewport column-crop-viewport" ref="columnCropViewportRef">
+        <img
+          v-if="columnCropImageUrl"
+          ref="columnCropImageRef"
+          :src="columnCropImageUrl"
+          class="crop-image"
+          :style="columnCropImageStyle"
+          draggable="false"
+          @mousedown.prevent="onColumnCropMouseDown"
+          @load="onColumnCropImageLoad"
+        />
+      </div>
+      <p class="crop-tip">拖动图片调整位置，将截取与封面相同比例的区域</p>
+      <template #footer>
+        <el-button @click="columnCropDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="columnCoverUploading" @click="confirmColumnCrop">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -385,12 +480,14 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound, View, Star, Collection, FolderOpened } from '@element-plus/icons-vue'
 import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
 import { getContentsMe, getContentsByIds, type ContentListItem } from '@/api/content'
 import { getContentLikesMe } from '@/api/contentLike'
 import { getCollectionFoldersMe, createCollectionFolder, updateCollectionFolder, deleteCollectionFolder, type CollectionFolderItem } from '@/api/collectionFolder'
+import { getColumnsMe, createColumn, type ColumnItem } from '@/api/column'
+import { getFollowMe } from '@/api/follow'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
 import pcData from 'china-division/dist/pc.json'
@@ -701,6 +798,154 @@ function resetCropState() {
   }
 }
 
+// 专栏封面裁剪：比例与列表展示一致 120:84（约 10:7）
+const COLUMN_COVER_VIEWPORT_W = 400
+const COLUMN_COVER_VIEWPORT_H = 280
+const COLUMN_COVER_OUTPUT_W = 400
+const COLUMN_COVER_OUTPUT_H = 280
+
+const columnCoverFileInputRef = ref<HTMLInputElement | null>(null)
+const columnCropDialogVisible = ref(false)
+const columnCropImageUrl = ref('')
+const columnCropImageRef = ref<HTMLImageElement | null>(null)
+const columnCropViewportRef = ref<HTMLDivElement | null>(null)
+const columnCoverUploading = ref(false)
+
+const columnCropState = ref({
+  naturalW: 0,
+  naturalH: 0,
+  scale: 1,
+  translateX: 0,
+  translateY: 0,
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  startTranslateX: 0,
+  startTranslateY: 0,
+})
+
+const columnCropImageStyle = computed(() => {
+  const s = columnCropState.value
+  const w = s.naturalW * s.scale
+  const h = s.naturalH * s.scale
+  return {
+    width: `${w}px`,
+    height: `${h}px`,
+    transform: `translate(${s.translateX}px, ${s.translateY}px)`,
+    cursor: s.isDragging ? 'grabbing' : 'grab',
+  }
+})
+
+function triggerColumnCoverUpload() {
+  columnCoverFileInputRef.value?.click()
+}
+
+function onColumnCoverFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  columnCropImageUrl.value = URL.createObjectURL(file)
+  columnCropDialogVisible.value = true
+  input.value = ''
+}
+
+function onColumnCropImageLoad() {
+  const img = columnCropImageRef.value
+  if (!img || !columnCropViewportRef.value) return
+  const nw = img.naturalWidth
+  const nh = img.naturalHeight
+  const scale = Math.max(COLUMN_COVER_VIEWPORT_W / nw, COLUMN_COVER_VIEWPORT_H / nh)
+  const displayW = nw * scale
+  const displayH = nh * scale
+  columnCropState.value = {
+    ...columnCropState.value,
+    naturalW: nw,
+    naturalH: nh,
+    scale,
+    translateX: (COLUMN_COVER_VIEWPORT_W - displayW) / 2,
+    translateY: (COLUMN_COVER_VIEWPORT_H - displayH) / 2,
+  }
+}
+
+function onColumnCropMouseDown(e: MouseEvent) {
+  columnCropState.value.isDragging = true
+  columnCropState.value.startX = e.clientX
+  columnCropState.value.startY = e.clientY
+  columnCropState.value.startTranslateX = columnCropState.value.translateX
+  columnCropState.value.startTranslateY = columnCropState.value.translateY
+  const onMove = (e2: MouseEvent) => {
+    const dx = e2.clientX - columnCropState.value.startX
+    const dy = e2.clientY - columnCropState.value.startY
+    const s = columnCropState.value
+    const displayW = s.naturalW * s.scale
+    const displayH = s.naturalH * s.scale
+    let tx = s.startTranslateX + dx
+    let ty = s.startTranslateY + dy
+    tx = Math.max(COLUMN_COVER_VIEWPORT_W - displayW, Math.min(0, tx))
+    ty = Math.max(COLUMN_COVER_VIEWPORT_H - displayH, Math.min(0, ty))
+    columnCropState.value.translateX = tx
+    columnCropState.value.translateY = ty
+  }
+  const onUp = () => {
+    columnCropState.value.isDragging = false
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
+
+function confirmColumnCrop() {
+  const img = columnCropImageRef.value
+  if (!img || !img.complete) return
+  const s = columnCropState.value
+  const sx = -s.translateX / s.scale
+  const sy = -s.translateY / s.scale
+  const sw = COLUMN_COVER_VIEWPORT_W / s.scale
+  const sh = COLUMN_COVER_VIEWPORT_H / s.scale
+  const canvas = document.createElement('canvas')
+  canvas.width = COLUMN_COVER_OUTPUT_W
+  canvas.height = COLUMN_COVER_OUTPUT_H
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, COLUMN_COVER_OUTPUT_W, COLUMN_COVER_OUTPUT_H)
+  columnCoverUploading.value = true
+  canvas.toBlob(
+    (blob) => {
+      if (!blob) {
+        columnCoverUploading.value = false
+        return
+      }
+      const file = new File([blob], 'column-cover.jpg', { type: 'image/jpeg' })
+      uploadImage(file, 'cover')
+        .then((meta) => {
+          createColumnForm.value.cover = meta.url
+          columnCropDialogVisible.value = false
+        })
+        .finally(() => { columnCoverUploading.value = false })
+    },
+    'image/jpeg',
+    0.9
+  )
+}
+
+function resetColumnCropState() {
+  if (columnCropImageUrl.value) URL.revokeObjectURL(columnCropImageUrl.value)
+  columnCropImageUrl.value = ''
+  columnCropState.value = {
+    naturalW: 0,
+    naturalH: 0,
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    startTranslateX: 0,
+    startTranslateY: 0,
+  }
+}
+
 onMounted(() => {
   if (!userStore.isLoggedIn) return
   getMe().then((user) => {
@@ -716,8 +961,10 @@ onMounted(() => {
   }).catch(() => {})
   if (currentTab.value === 'blog') fetchBlogList()
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
-  // 预拉取收藏夹列表，使 Tab 上「收藏」数量在首屏/刷新后正确显示
+  // 预拉取收藏夹、专栏列表、关注统计，使 Tab 数量与右侧关注数正确显示
   fetchFolderList()
+  fetchColumnList()
+  fetchFollowStats()
 })
 
 const tabs = computed(() => [
@@ -932,6 +1179,7 @@ watch([currentTab, blogPage], () => {
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
   if (currentTab.value === 'blog') fetchBlogList()
   if (currentTab.value === 'collection') fetchFolderList()
+  if (currentTab.value === 'column') fetchColumnList()
 })
 // 收藏夹列表（我的收藏下展示所有收藏夹）
 const folderList = ref<CollectionFolderItem[]>([])
@@ -1024,13 +1272,64 @@ function confirmDeleteFolder(folder: CollectionFolderItem) {
       folderList.value = folderList.value.filter((f) => f.id !== folder.id)
     })
 }
-const columnList = ref([
-  { id: '1', name: '技术笔记', description: '开发与架构相关文章汇总。', articleCount: 3 },
-  { id: '2', name: '读书札记', description: '阅读与思考。', articleCount: 0 },
-])
+const columnList = ref<ColumnItem[]>([])
+const columnLoading = ref(false)
+const createColumnVisible = ref(false)
+const createColumnSubmitting = ref(false)
+const createColumnForm = ref({ name: '', description: '', cover: '' })
 
-const followingCount = ref(4)
-const followerCount = ref(1)
+async function fetchColumnList() {
+  if (!userStore.isLoggedIn) return
+  columnLoading.value = true
+  try {
+    const list = await getColumnsMe()
+    columnList.value = list
+  } finally {
+    columnLoading.value = false
+  }
+}
+
+function openCreateColumn() {
+  createColumnForm.value = { name: '', description: '', cover: '' }
+  createColumnVisible.value = true
+}
+function resetCreateColumnForm() {
+  createColumnForm.value = { name: '', description: '', cover: '' }
+}
+function submitCreateColumn() {
+  const name = createColumnForm.value.name?.trim()
+  if (!name) {
+    ElMessage.warning('请输入专栏名称')
+    return
+  }
+  createColumnSubmitting.value = true
+  createColumn({
+    name,
+    description: createColumnForm.value.description?.trim() || undefined,
+    cover: createColumnForm.value.cover?.trim() || undefined,
+  })
+    .then((created) => {
+      columnList.value = [...columnList.value, created]
+      createColumnVisible.value = false
+      resetCreateColumnForm()
+      ElMessage.success('专栏已创建')
+    })
+    .finally(() => { createColumnSubmitting.value = false })
+}
+
+const followingCount = ref(0)
+const followerCount = ref(0)
+
+async function fetchFollowStats() {
+  if (!userStore.isLoggedIn) return
+  try {
+    const stats = await getFollowMe()
+    followingCount.value = stats.followingCount
+    followerCount.value = stats.followerCount
+  } catch {
+    // 忽略错误，保持 0
+  }
+}
 </script>
 
 <style scoped>
@@ -1118,6 +1417,72 @@ const followerCount = ref(1)
   margin: 12px 0 0;
   font-size: 13px;
   color: #666;
+}
+
+/* 新建专栏：封面上传区（点击上传 + 裁剪） */
+.column-cover-upload {
+  width: 100%;
+}
+.column-cover-preview {
+  position: relative;
+  width: 100%;
+  height: 140px;
+  background-color: #e8e8e8;
+  background-size: cover;
+  background-position: center;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.column-cover-preview .cover-file-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+.column-cover-upload-btn {
+  position: relative;
+  z-index: 1;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #666;
+  background: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.column-cover-upload-btn:hover {
+  color: #333;
+  background: #f5f5f5;
+}
+.column-cover-upload .has-cover .column-cover-preview .column-cover-upload-btn {
+  margin-right: 8px;
+}
+.column-cover-remove {
+  position: relative;
+  z-index: 1;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #666;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.column-cover-remove:hover {
+  color: #BB1919;
+  background: #fff;
+}
+.column-cover-crop-dialog .column-crop-viewport {
+  width: 400px;
+  height: 280px;
+  margin: 0 auto;
 }
 
 /* 编辑个人资料弹窗：头像置顶居中、圆形、低透明白遮罩、居中加号 icon；保存按钮配色与全站一致；禁止蓝色 */
@@ -1704,10 +2069,44 @@ const followerCount = ref(1)
   color: #BB1919;
 }
 .blog-tab-wrap,
-.dynamic-tab-wrap {
+.dynamic-tab-wrap,
+.column-tab-wrap {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+.column-list .profile-card-item--column {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+.column-list .profile-card-item--column .profile-card-body {
+  flex: 1;
+  min-width: 0;
+}
+.column-list .profile-card-item--column .profile-card-title {
+  margin-top: 0;
+}
+.column-list .column-cover {
+  flex-shrink: 0;
+  width: 120px;
+  height: 84px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #e8e8e8;
+  display: block;
+}
+.column-list .column-cover .profile-card-thumb-img,
+.column-list .column-cover .profile-card-thumb-ph {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.column-list .column-cover .profile-card-thumb-img {
+  object-fit: cover;
+}
+.column-list .column-cover .profile-card-thumb-ph {
+  background: linear-gradient(135deg, #e0e0e0 0%, #eee 100%);
 }
 .dynamic-sentinel {
   height: 1px;

@@ -49,6 +49,24 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '创作者中心', requireLogin: true },
   },
   {
+    path: '/creator/content',
+    name: 'creator-content',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: '内容管理', requireLogin: true },
+  },
+  {
+    path: '/creator/comments',
+    name: 'creator-comments',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: '评论管理', requireLogin: true },
+  },
+  {
+    path: '/creator/columns',
+    name: 'creator-columns',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: '专栏管理', requireLogin: true },
+  },
+  {
     path: '/creator/write',
     name: 'creator-write',
     component: () => import('@/views/CreatorWrite.vue'),

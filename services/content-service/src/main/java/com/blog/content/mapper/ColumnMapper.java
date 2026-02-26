@@ -1,9 +1,9 @@
 package com.blog.content.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.blog.content.entity.ContentLike;
+import com.blog.content.entity.Column;
 import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
-public interface ContentLikeMapper extends BaseMapper<ContentLike> {
+public interface ColumnMapper extends BaseMapper<Column> {
 }

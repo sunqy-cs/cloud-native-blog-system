@@ -1,6 +1,7 @@
 package com.blog.content.controller;
 
 import com.blog.content.dto.ContentListItemVO;
+import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
 import com.blog.content.service.ContentService;
 import lombok.RequiredArgsConstructor;
@@ -27,12 +28,19 @@ public class ContentController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String visibility,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String order) {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
-        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, sortBy, order);
+        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, status, sortBy, order);
         return ResponseEntity.ok(res);
+    }
+
+    @GetMapping("/me/stats")
+    public ResponseEntity<ContentMeStatsVO> meStats(@RequestHeader(HEADER_USER_ID) Long userId) {
+        ContentMeStatsVO stats = contentService.getStats(userId);
+        return ResponseEntity.ok(stats);
     }
 
     @GetMapping("/by-ids")
