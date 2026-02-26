@@ -70,7 +70,8 @@ export interface SaveDraftBody {
   articleType?: string
   creationStatement?: string
   visibility?: string
-  tagIds?: number[]
+  /** 标签名称列表，最多 5 个；后端按名称查询或创建后关联 */
+  tagNames?: string[]
 }
 
 export interface SaveDraftResponse {

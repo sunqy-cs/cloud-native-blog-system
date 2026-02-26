@@ -163,34 +163,57 @@
           <section class="publish-settings">
             <div class="setting-row">
               <label class="setting-label">文章标签 <span class="required">*</span> <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
-              <el-button type="primary" plain size="small">+ 添加文章标签</el-button>
+            </div>
+            <div class="tag-row">
+              <el-select v-model="mainTagId" placeholder="请选择主标签（必选）" class="tag-main-select" clearable>
+                <el-option v-for="t in mainTagList" :key="t.id" :label="t.name" :value="t.id" />
+              </el-select>
+              <div class="tag-custom">
+                <span class="tag-custom-label">其他标签：</span>
+                <el-input v-model="customTagInput" placeholder="输入后回车添加，最多 5 个" class="tag-custom-input" maxlength="20" @keyup.enter="addCustomTag" />
+                <el-button type="primary" plain size="small" :disabled="!customTagInput.trim() || tagTotalCount >= 5" @click="addCustomTag">添加</el-button>
+              </div>
+              <div v-if="customTagNames.length > 0" class="tag-chips">
+                <el-tag v-for="(name, idx) in customTagNames" :key="idx" closable size="small" @close="removeCustomTag(idx)">{{ name }}</el-tag>
+              </div>
             </div>
             <div class="setting-row">
               <label class="setting-label">添加封面 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
             </div>
             <div class="cover-row">
-              <div class="cover-upload" @click="triggerCoverSelect">
-                <el-icon class="cover-plus"><Plus /></el-icon>
-                <span>从本地上传</span>
+              <div class="cover-upload" :class="{ uploading: coverUploading }" @click="!coverUploading && triggerCoverSelect()">
+                <el-icon v-if="coverUploading" class="cover-plus is-loading"><Loading /></el-icon>
+                <template v-else>
+                  <el-icon class="cover-plus"><Plus /></el-icon>
+                  <span>从本地上传</span>
+                </template>
               </div>
-              <div class="cover-placeholder">暂无内容图片，请在正文中添加图片</div>
+              <div class="cover-placeholder">
+                <template v-if="cover">
+                  <img :src="cover" alt="封面" class="cover-preview-img" />
+                  <button type="button" class="cover-remove-btn" @click="clearCover">移除封面</button>
+                </template>
+                <span v-else>暂无封面，点击左侧上传</span>
+              </div>
             </div>
             <input ref="coverInputRef" type="file" accept="image/*" class="hidden-input" @change="onCoverFileChange" />
 
             <div class="setting-row">
               <label class="setting-label">文章摘要 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
             </div>
-            <p class="summary-desc">摘要会在推荐、列表等场景外露，帮助读者快速了解内容，支持一键将正文前 256 字符填入摘要文本框。</p>
+            <p class="summary-desc">摘要会在推荐、列表等场景外露，帮助读者快速了解内容</p>
             <div class="summary-wrap">
               <el-input v-model="summary" type="textarea" :rows="4" maxlength="256" show-word-limit placeholder="请输入文章摘要" class="summary-input" />
-              <el-button type="primary" plain size="small" class="ai-summary-btn" @click="onAiExtractSummary">
+              <el-button type="primary" plain size="small" class="ai-summary-btn" :loading="aiSummaryLoading" @click="onAiExtractSummary">
                 <span class="ai-summary-icon">✨</span> AI提取摘要
               </el-button>
             </div>
 
             <div class="setting-row">
               <label class="setting-label">分类专栏 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
-              <el-button type="primary" plain size="small">+ 新建分类专栏</el-button>
+              <el-select v-model="columnId" placeholder="选择专栏（可选）" clearable class="column-select">
+                <el-option v-for="col in columnList" :key="col.id" :label="col.name" :value="col.id" />
+              </el-select>
             </div>
 
             <div class="setting-row">
@@ -257,13 +280,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useUserStore } from '@/stores/user'
-import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom, QuestionFilled, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom, QuestionFilled, Plus, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { uploadImage } from '@/api/upload'
 import { saveDraft } from '@/api/content'
-import { generateTitle } from '@/api/ai'
+import { generateTitle, generateSummary } from '@/api/ai'
+import { getColumnsMe, type ColumnItem } from '@/api/column'
+import { getMainTags, type TagItem } from '@/api/tag'
 
 const userStore = useUserStore()
 const title = ref('')
@@ -281,13 +306,22 @@ const imageUploading = ref(false)
 const AI_TITLE_QUOTA = 100
 const aiTitleUsage = ref(0)
 const aiTitleLoading = ref(false)
+const aiSummaryLoading = ref(false)
 
 const coverInputRef = ref<HTMLInputElement | null>(null)
+const cover = ref('')
+const coverUploading = ref(false)
 const summary = ref('')
 const draftSaving = ref(false)
 const articleType = ref<'original' | 'reprint' | 'translated'>('original')
 const creationStatement = ref('none')
 const visibility = ref<'all' | 'self' | 'fans'>('all')
+const columnList = ref<ColumnItem[]>([])
+const columnId = ref<number | undefined>(undefined)
+const mainTagList = ref<TagItem[]>([])
+const mainTagId = ref<number | undefined>(undefined)
+const customTagNames = ref<string[]>([])
+const customTagInput = ref('')
 
 const sectionOwners = computed(() => {
   const list = tocList.value
@@ -327,20 +361,50 @@ function triggerCoverSelect() {
   coverInputRef.value?.click()
 }
 
-function onCoverFileChange(e: Event) {
+async function onCoverFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
-  if (file) ElMessage.success('封面已选择（后续可接入上传）')
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    return
+  }
+  coverUploading.value = true
+  try {
+    const meta = await uploadImage(file, 'covers')
+    if (meta?.url) {
+      cover.value = meta.url
+      ElMessage.success('封面上传成功')
+    }
+  } finally {
+    coverUploading.value = false
+  }
 }
 
-function onAiExtractSummary() {
-  const body = getMarkdownValue().replace(/^#+\s.*$/gm, '').trim().slice(0, 256)
-  if (body) {
-    summary.value = body
-    ElMessage.success('已填入正文前 256 字')
-  } else {
+function clearCover() {
+  cover.value = ''
+}
+
+async function onAiExtractSummary() {
+  const bodyText = getMarkdownValue().trim().slice(0, 2000)
+  if (!bodyText) {
     ElMessage.info('请先输入正文内容')
+    return
+  }
+  if (aiSummaryLoading.value) return
+  aiSummaryLoading.value = true
+  try {
+    const res = await generateSummary(bodyText)
+    const s = res?.summary?.trim()
+    if (s !== undefined && s !== null) {
+      summary.value = s.length > 100 ? s.slice(0, 100) : s
+      ElMessage.success('摘要已生成（最多 100 字）')
+    } else {
+      ElMessage.warning('未能生成摘要，请重试')
+    }
+  } finally {
+    aiSummaryLoading.value = false
   }
 }
 
@@ -389,7 +453,30 @@ function updateTocFromMarkdown(md: string) {
 
 let vditor: Vditor | null = null
 
+const tagTotalCount = computed(() => (mainTagId.value != null ? 1 : 0) + customTagNames.value.length)
+
+function addCustomTag() {
+  const name = customTagInput.value.trim()
+  customTagInput.value = ''
+  if (!name) return
+  if (tagTotalCount.value >= 5) {
+    ElMessage.warning('最多 5 个标签')
+    return
+  }
+  if (customTagNames.value.includes(name)) {
+    ElMessage.warning('已存在相同标签')
+    return
+  }
+  customTagNames.value.push(name)
+}
+
+function removeCustomTag(index: number) {
+  customTagNames.value.splice(index, 1)
+}
+
 onMounted(() => {
+  getColumnsMe().then((list) => { columnList.value = list ?? [] })
+  getMainTags().then((list) => { mainTagList.value = list ?? [] })
   if (!vditorRef.value) return
   vditor = new Vditor(vditorRef.value, {
     height: 420,
@@ -426,17 +513,36 @@ function getMarkdownValue(): string {
   return vditor?.getValue() ?? ''
 }
 
+const articleTypeMap = { original: 'ORIGINAL', reprint: 'REPRINT', translated: 'TRANSLATED' } as const
+const visibilityMap = { all: 'ALL', self: 'SELF', fans: 'FANS' } as const
+
+function buildTagNames(): string[] | undefined {
+  const main = mainTagId.value != null ? mainTagList.value.find((t) => t.id === mainTagId.value)?.name : undefined
+  const list = [main, ...customTagNames.value].filter(Boolean) as string[]
+  return list.length > 0 ? list.slice(0, 5) : undefined
+}
+
 function onSaveDraft() {
   const body = getMarkdownValue().trim()
   if (!body) {
     ElMessage.warning('请先输入内容')
     return
   }
+  if (mainTagId.value == null) {
+    ElMessage.warning('请选择主标签')
+    return
+  }
   draftSaving.value = true
   saveDraft({
-    title: title.value.trim() || '[无标题]',
+    title: title.value.trim() || undefined,
     body,
     summary: summary.value?.trim() || undefined,
+    cover: cover.value?.trim() || undefined,
+    columnId: columnId.value,
+    articleType: articleTypeMap[articleType.value],
+    creationStatement: creationStatement.value,
+    visibility: visibilityMap[visibility.value],
+    tagNames: buildTagNames(),
   })
     .then(() => {
       ElMessage.success('草稿已保存')
@@ -1127,12 +1233,51 @@ const avatarInitial = computed(() => {
   background: #f5f5f5;
   border-radius: 8px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   color: #999;
   font-size: 13px;
   padding: 0 16px;
   text-align: center;
+  position: relative;
+}
+
+.cover-placeholder .cover-preview-img {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.cover-remove-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #666;
+  background: #fff;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cover-remove-btn:hover {
+  color: #409eff;
+  border-color: #409eff;
+}
+
+.cover-upload.uploading {
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.cover-upload .cover-plus.is-loading {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .summary-desc {
@@ -1164,8 +1309,39 @@ const avatarInitial = computed(() => {
   font-size: 14px;
 }
 
-.setting-select {
+.setting-select,
+.column-select,
+.tag-main-select {
   min-width: 200px;
+}
+
+.tag-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.tag-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-custom-label {
+  font-size: 13px;
+  color: #606266;
+}
+
+.tag-custom-input {
+  width: 220px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .article-type-group,

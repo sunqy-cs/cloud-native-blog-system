@@ -52,6 +52,12 @@ spring:
           predicates:
             - Path=/api/columns/**
           order: 3
+        # 内容服务：标签（主标签列表等）
+        - id: content-service-tags
+          uri: lb://content-service
+          predicates:
+            - Path=/api/tags/**
+          order: 3
         # 互动服务：评论（有评论的文章、评论列表、热评）
         - id: interaction-service-comments
           uri: lb://interaction-service

@@ -96,4 +96,30 @@ public class DeepSeekService {
         }
         return title.isEmpty() ? "未生成标题" : title;
     }
+
+    private static final int SUMMARY_MAX_LENGTH = 100;
+
+    /**
+     * 根据正文生成文章摘要，最多 100 个字符。
+     */
+    public String generateSummaryFromBody(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("正文不能为空");
+        }
+        String input = body.length() > TITLE_BODY_MAX_LENGTH ? body.substring(0, TITLE_BODY_MAX_LENGTH) : body;
+        List<ChatMessage> messages = List.of(
+                new ChatMessage("system",
+                        "你是一个博客助手。根据用户给出的正文内容，生成一则简短的文章摘要。要求：仅输出摘要文字，不要引号、不要解释、不要换行，最多 100 个字符，使用中文。"),
+                new ChatMessage("user", "请根据以下正文生成摘要：\n\n" + input)
+        );
+        String raw = chat(messages);
+        if (raw == null || raw.isBlank()) {
+            return "";
+        }
+        String summary = raw.replace("\"", "").replace("\n", " ").trim();
+        if (summary.length() > SUMMARY_MAX_LENGTH) {
+            summary = summary.substring(0, SUMMARY_MAX_LENGTH);
+        }
+        return summary;
+    }
 }

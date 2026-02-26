@@ -5,14 +5,22 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.SaveDraftRequest;
+import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.entity.Content;
 import com.blog.content.entity.ContentCollection;
+import com.blog.content.entity.ContentTag;
+import com.blog.content.entity.Tag;
 import com.blog.content.mapper.ContentCollectionMapper;
 import com.blog.content.mapper.ContentMapper;
+import com.blog.content.mapper.ContentTagMapper;
+import com.blog.content.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,9 +35,15 @@ import java.util.stream.Collectors;
 public class ContentService {
 
     private static final String TYPE_BLOG = "BLOG";
+    private static final String STATUS_DRAFT = "DRAFT";
+    private static final String TITLE_EMPTY = "[无标题]";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    private static final int MAX_TAG_NAMES = 5;
 
     private final ContentMapper contentMapper;
+    private final ContentTagMapper contentTagMapper;
+    private final TagMapper tagMapper;
     private final ContentCollectionMapper contentCollectionMapper;
     private final RestTemplate restTemplate;
 
@@ -134,6 +148,79 @@ public class ContentService {
         vo.setYesterdayLikeDelta(yesterdayLike);
         vo.setYesterdayCollectionDelta(yesterdayCollection);
         return vo;
+    }
+
+    /**
+     * 保存草稿：正文不为空才允许保存；标题为空则存为 [无标题]。标签按名称先查询，不存在则创建再关联，最多 5 个。
+     */
+    public SaveDraftResponse saveDraft(Long userId, SaveDraftRequest request) {
+        String body = request.getBody() != null ? request.getBody().trim() : "";
+        if (body.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "正文不能为空");
+        }
+        String title = request.getTitle() != null ? request.getTitle().trim() : "";
+        if (title.isEmpty()) title = TITLE_EMPTY;
+
+        Content c = new Content();
+        c.setUserId(userId);
+        c.setType(TYPE_BLOG);
+        c.setTitle(title);
+        c.setBody(body);
+        c.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
+        c.setCover(request.getCover() != null ? request.getCover().trim() : null);
+        c.setColumnId(request.getColumnId());
+        c.setStatus(STATUS_DRAFT);
+        String articleType = request.getArticleType() != null && !request.getArticleType().isBlank()
+                ? request.getArticleType().trim().toUpperCase() : "ORIGINAL";
+        if (!"ORIGINAL".equals(articleType) && !"REPRINT".equals(articleType) && !"TRANSLATED".equals(articleType)) articleType = "ORIGINAL";
+        c.setArticleType(articleType);
+        String creationStatement = request.getCreationStatement() != null && !request.getCreationStatement().isBlank()
+                ? request.getCreationStatement().trim().toLowerCase() : "none";
+        c.setCreationStatement(creationStatement);
+        String visibility = request.getVisibility() != null && !request.getVisibility().isBlank()
+                ? request.getVisibility().trim().toUpperCase() : "ALL";
+        if (!"ALL".equals(visibility) && !"SELF".equals(visibility) && !"FANS".equals(visibility)) visibility = "ALL";
+        c.setVisibility(visibility);
+        c.setLikeCount(0);
+        c.setCollectionCount(0);
+        c.setViewCount(0);
+        c.setCommentCount(0);
+        contentMapper.insert(c);
+
+        List<String> tagNames = request.getTagNames();
+        if (tagNames != null && !tagNames.isEmpty()) {
+            int limit = Math.min(tagNames.size(), MAX_TAG_NAMES);
+            for (int i = 0; i < limit; i++) {
+                String name = tagNames.get(i);
+                if (name == null || (name = name.trim()).isEmpty()) continue;
+                Long tagId = ensureTagByName(name);
+                if (tagId != null) {
+                    ContentTag ct = new ContentTag();
+                    ct.setContentId(c.getId());
+                    ct.setTagId(tagId);
+                    contentTagMapper.insert(ct);
+                }
+            }
+        }
+
+        Content saved = contentMapper.selectById(c.getId());
+        SaveDraftResponse res = new SaveDraftResponse();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setStatus(STATUS_DRAFT);
+        res.setCreatedAt(saved != null && saved.getCreatedAt() != null ? saved.getCreatedAt().format(ISO_FORMAT) : null);
+        return res;
+    }
+
+    /** 按名称查询标签，不存在则插入（is_main=0）并返回 id */
+    private Long ensureTagByName(String name) {
+        Tag existing = tagMapper.selectOne(new LambdaQueryWrapper<Tag>().eq(Tag::getName, name).last("LIMIT 1"));
+        if (existing != null) return existing.getId();
+        Tag t = new Tag();
+        t.setName(name);
+        t.setIsMain(0);
+        tagMapper.insert(t);
+        return t.getId();
     }
 
     private ContentListItemVO toListItemVO(Content c) {

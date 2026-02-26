@@ -30,8 +30,26 @@ public class AiTitleController {
         return ResponseEntity.ok(Map.of("title", title != null ? title : ""));
     }
 
+    /**
+     * 根据正文生成文章摘要，上限 100 字。需认证（由网关校验）。
+     */
+    @PostMapping("/summary")
+    public ResponseEntity<Map<String, String>> generateSummary(@RequestBody SummaryRequest req) {
+        String body = req != null && req.getBody() != null ? req.getBody().trim() : "";
+        if (body.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        String summary = deepSeekService.generateSummaryFromBody(body);
+        return ResponseEntity.ok(Map.of("summary", summary != null ? summary : ""));
+    }
+
     @lombok.Data
     public static class TitleRequest {
+        private String body;
+    }
+
+    @lombok.Data
+    public static class SummaryRequest {
         private String body;
     }
 }

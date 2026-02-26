@@ -249,7 +249,7 @@
   "articleType": "ORIGINAL",
   "creationStatement": "none",
   "visibility": "ALL",
-  "tagIds": [1, 2]
+  "tagNames": ["大模型与对齐（LLM/RLHF/DPO）", "自定义标签"]
 }
 ```
 
@@ -263,7 +263,7 @@
 | articleType       | string   | 否   | 文章类型：ORIGINAL-原创 / REPRINT-转载 / TRANSLATED-翻译，默认 ORIGINAL |
 | creationStatement | string   | 否   | 创作声明：none-无声明 / ai-assisted-AI辅助 / network-网络 / personal-个人，默认 none |
 | visibility        | string   | 否   | 可见范围：ALL-全部可见 / SELF-仅我可见 / FANS-粉丝可见，默认 ALL |
-| tagIds            | number[] | 否   | 文章标签 ID 列表，可为空数组 |
+| tagNames          | string[] | 否   | 文章标签名称列表，最多 5 个。保存时后端按名称查询标签，不存在则创建（is_main=0）再建立 content_tag 关联 |
 
 **Response** `201 Created`:
 
@@ -284,6 +284,32 @@
 | createdAt | string | 创建时间 |
 
 **错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`，报错信息如「正文不能为空」。
+
+---
+
+## 标签相关（content-service）
+
+### 获取主标签列表
+
+**`GET /api/tags/main`**
+
+需要认证。获取全部主标签（12 个），用于创作页「文章标签」必须选择其一；可与自定义标签组合，最多 5 个标签。
+
+**Response** `200 OK`:
+
+```json
+[
+  { "id": 1, "name": "机器学习理论与优化" },
+  { "id": 2, "name": "深度学习架构与表示学习" },
+  { "id": 3, "name": "大模型与对齐（LLM/RLHF/DPO）" },
+  { "id": 12, "name": "其他" }
+]
+```
+
+| 字段  | 类型   | 说明     |
+|-------|--------|----------|
+| id    | number | 标签 ID  |
+| name  | string | 标签名称 |
 
 ---
 
@@ -786,6 +812,40 @@
 | 字段   | 类型   | 说明           |
 |--------|--------|----------------|
 | title  | string | 生成的标题建议 |
+
+**错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 服务不可用，返回 `502 Bad Gateway` 或 `503 Service Unavailable`。
+
+---
+
+### 根据正文生成文章摘要
+
+**`POST /api/ai/summary`**
+
+需要认证。根据正文内容（Markdown 或纯文本）调用大模型生成文章摘要，用于创作页「AI 提取摘要」。**摘要上限 100 个字符**，服务端会截断超出部分。
+
+**Request Body**:
+
+```json
+{
+  "body": "string"
+}
+```
+
+| 字段  | 类型   | 必填 | 说明                                   |
+|-------|--------|------|----------------------------------------|
+| body  | string | 是   | 正文内容；可为 Markdown，建议前 2000 字参与生成 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "summary": "string"
+}
+```
+
+| 字段     | 类型   | 说明                                   |
+|----------|--------|----------------------------------------|
+| summary  | string | 生成的摘要，最多 100 个字符             |
 
 **错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 服务不可用，返回 `502 Bad Gateway` 或 `503 Service Unavailable`。
 
