@@ -42,14 +42,14 @@ export interface ContentMeStats {
  * 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长），用于创作者中心数据卡片
  */
 export function getContentMeStats(): Promise<ContentMeStats> {
-  return request.get<ContentMeStats>('contents/me/stats').then((data) => data as ContentMeStats)
+  return request.get('contents/me/stats').then((data) => data as unknown as ContentMeStats)
 }
 
 /**
  * 分页获取当前用户的博客列表（我的博客）
  */
 export function getContentsMe(params?: ContentsMeParams): Promise<ContentsMeResponse> {
-  return request.get<ContentsMeResponse>('contents/me', { params }).then((data) => data as ContentsMeResponse)
+  return request.get('contents/me', { params }).then((data) => data as unknown as ContentsMeResponse)
 }
 
 /**
@@ -59,4 +59,30 @@ export function getContentsByIds(ids: number[]): Promise<ContentListItem[]> {
   if (!ids.length) return Promise.resolve([])
   const params = { ids: ids.join(',') }
   return request.get<ContentListItem[]>('contents/by-ids', { params }).then((data) => (Array.isArray(data) ? data : []))
+}
+
+export interface SaveDraftBody {
+  title?: string
+  body: string
+  summary?: string
+  cover?: string
+  columnId?: number
+  articleType?: string
+  creationStatement?: string
+  visibility?: string
+  tagIds?: number[]
+}
+
+export interface SaveDraftResponse {
+  id: number
+  title: string
+  status: string
+  createdAt: string
+}
+
+/**
+ * 保存草稿：正文必填；标题为空时后端存为 [无标题]
+ */
+export function saveDraft(body: SaveDraftBody): Promise<SaveDraftResponse> {
+  return request.post('contents/draft', body).then((data) => data as unknown as SaveDraftResponse)
 }

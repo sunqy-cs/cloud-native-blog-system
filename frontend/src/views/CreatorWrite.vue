@@ -246,7 +246,7 @@
         <span class="footer-link">发文设置 <el-icon><ArrowDown /></el-icon></span>
       </div>
       <div class="footer-right">
-        <el-button class="footer-btn">保存草稿 <el-icon><ArrowDown /></el-icon></el-button>
+        <el-button class="footer-btn" :loading="draftSaving" @click="onSaveDraft">保存草稿 <el-icon><ArrowDown /></el-icon></el-button>
         <el-button class="footer-btn">定时发布 &gt;</el-button>
         <el-button type="primary" class="publish-btn">发布博客</el-button>
       </div>
@@ -262,6 +262,8 @@ import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { uploadImage } from '@/api/upload'
+import { saveDraft } from '@/api/content'
+import { generateTitle } from '@/api/ai'
 
 const userStore = useUserStore()
 const title = ref('')
@@ -282,6 +284,7 @@ const aiTitleLoading = ref(false)
 
 const coverInputRef = ref<HTMLInputElement | null>(null)
 const summary = ref('')
+const draftSaving = ref(false)
 const articleType = ref<'original' | 'reprint' | 'translated'>('original')
 const creationStatement = ref('none')
 const visibility = ref<'all' | 'self' | 'fans'>('all')
@@ -347,18 +350,21 @@ async function onAiGenerateTitle() {
     return
   }
   if (aiTitleLoading.value) return
+  const bodyText = getMarkdownValue().trim().slice(0, 2000)
+  if (!bodyText) {
+    ElMessage.info('请先输入一些正文内容，再使用 AI 生成标题')
+    return
+  }
   aiTitleLoading.value = true
   try {
-    const bodyText = getMarkdownValue().replace(/^#+\s.*$/gm, '').trim().slice(0, 500)
-    if (!bodyText) {
-      ElMessage.info('请先输入一些正文内容，再使用 AI 生成标题')
-      return
-    }
-    aiTitleUsage.value += 1
-    ElMessage.success('AI 生成标题（演示：可根据正文前文生成，后续接入真实 API）')
-    if (!title.value && bodyText.length >= 5) {
-      title.value = bodyText.slice(0, 50).replace(/\n/g, ' ').trim()
-      if (title.value.length > 50) title.value = title.value.slice(0, 47) + '...'
+    const res = await generateTitle(bodyText)
+    const t = res?.title?.trim()
+    if (t) {
+      title.value = t.length > 100 ? t.slice(0, 100) : t
+      aiTitleUsage.value += 1
+      ElMessage.success('标题已生成')
+    } else {
+      ElMessage.warning('未能生成标题，请重试')
     }
   } finally {
     aiTitleLoading.value = false
@@ -418,6 +424,26 @@ onBeforeUnmount(() => {
 
 function getMarkdownValue(): string {
   return vditor?.getValue() ?? ''
+}
+
+function onSaveDraft() {
+  const body = getMarkdownValue().trim()
+  if (!body) {
+    ElMessage.warning('请先输入内容')
+    return
+  }
+  draftSaving.value = true
+  saveDraft({
+    title: title.value.trim() || '[无标题]',
+    body,
+    summary: summary.value?.trim() || undefined,
+  })
+    .then(() => {
+      ElMessage.success('草稿已保存')
+    })
+    .finally(() => {
+      draftSaving.value = false
+    })
 }
 
 // 工具栏操作封装

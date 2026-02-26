@@ -3,8 +3,11 @@ package com.blog.content.controller;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.SaveDraftRequest;
+import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.service.ContentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -41,6 +44,14 @@ public class ContentController {
     public ResponseEntity<ContentMeStatsVO> meStats(@RequestHeader(HEADER_USER_ID) Long userId) {
         ContentMeStatsVO stats = contentService.getStats(userId);
         return ResponseEntity.ok(stats);
+    }
+
+    @PostMapping("/draft")
+    public ResponseEntity<SaveDraftResponse> saveDraft(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @RequestBody SaveDraftRequest request) {
+        SaveDraftResponse res = contentService.saveDraft(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
     @GetMapping("/by-ids")

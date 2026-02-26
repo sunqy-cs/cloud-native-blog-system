@@ -48,6 +48,21 @@
               </router-link>
             </div>
           </div>
+          <div class="nav-group">
+            <button type="button" class="nav-item nav-group-title" @click="aiWorkbenchOpen = !aiWorkbenchOpen">
+              <el-icon><Document /></el-icon>
+              <span>AI 工作台</span>
+              <el-icon class="nav-chevron" :class="{ open: aiWorkbenchOpen }"><ArrowDown /></el-icon>
+            </button>
+            <div v-show="aiWorkbenchOpen" class="nav-sub">
+              <router-link to="/creator/ai/blog" :class="['nav-item nav-sub-item', { active: route.path === '/creator/ai/blog' }]">
+                <span>博客生成</span>
+              </router-link>
+              <router-link to="/creator/ai/auto-comment" :class="['nav-item nav-sub-item', { active: route.path === '/creator/ai/auto-comment' }]">
+                <span>自动评论</span>
+              </router-link>
+            </div>
+          </div>
         </nav>
       </aside>
 
@@ -530,6 +545,7 @@ import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const contentManageOpen = ref(true)
+const aiWorkbenchOpen = ref(true)
 const userStore = useUserStore()
 
 const isCreatorHome = computed(() => route.path === '/creator')
@@ -537,10 +553,14 @@ const managementPlaceholderTitle = computed(() => {
   if (route.path === '/creator/content') return '内容管理'
   if (route.path === '/creator/comments') return '评论管理'
   if (route.path === '/creator/columns') return '专栏管理'
+  if (route.path === '/creator/ai/blog') return 'AI 博客生成'
+  if (route.path === '/creator/ai/auto-comment') return 'AI 自动评论'
   return '管理'
 })
 const managementPlaceholderDesc = computed(() => {
   if (route.path === '/creator/comments') return '在此查看与管理读者评论，后续将支持回复、置顶、删除等操作。'
+  if (route.path === '/creator/ai/blog') return '使用 AI 辅助生成博客内容，输入主题或大纲即可快速成文，后续将开放。'
+  if (route.path === '/creator/ai/auto-comment') return '使用 AI 对文章下的评论进行智能回复或归纳，后续将开放。'
   return '请从左侧选择具体管理项。'
 })
 
@@ -1241,7 +1261,9 @@ const avatarInitial = computed(() => {
   text-align: right;
 }
 .cm-col-action {
-  width: 140px;
+  width: 1%;
+  min-width: 160px;
+  white-space: nowrap;
 }
 .cm-article-cell {
   display: flex;

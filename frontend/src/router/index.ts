@@ -67,6 +67,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '专栏管理', requireLogin: true },
   },
   {
+    path: '/creator/ai/blog',
+    name: 'creator-ai-blog',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: 'AI 博客生成', requireLogin: true },
+  },
+  {
+    path: '/creator/ai/auto-comment',
+    name: 'creator-ai-auto-comment',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: 'AI 自动评论', requireLogin: true },
+  },
+  {
     path: '/creator/write',
     name: 'creator-write',
     component: () => import('@/views/CreatorWrite.vue'),

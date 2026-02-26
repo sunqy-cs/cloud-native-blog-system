@@ -231,6 +231,62 @@
 
 ---
 
+### 5.1 保存草稿
+
+**`POST /api/contents/draft`**
+
+需要认证。将当前编辑内容保存为草稿。**仅当正文（body）不为空时允许保存**；若标题（title）为空，服务端将标题存为「[无标题]」。
+
+**Request Body**:
+
+```json
+{
+  "title": "string",
+  "body": "string",
+  "summary": "string",
+  "cover": "string",
+  "columnId": 0,
+  "articleType": "ORIGINAL",
+  "creationStatement": "none",
+  "visibility": "ALL",
+  "tagIds": [1, 2]
+}
+```
+
+| 字段              | 类型     | 必填 | 说明 |
+|-------------------|----------|------|------|
+| title             | string   | 否   | 标题；空或不传时存为「[无标题]」 |
+| body              | string   | 是   | 正文（Markdown）；为空时返回 400，不允许保存 |
+| summary           | string   | 否   | 摘要 |
+| cover             | string   | 否   | 封面图 URL |
+| columnId          | number   | 否   | 所属专栏 ID |
+| articleType       | string   | 否   | 文章类型：ORIGINAL-原创 / REPRINT-转载 / TRANSLATED-翻译，默认 ORIGINAL |
+| creationStatement | string   | 否   | 创作声明：none-无声明 / ai-assisted-AI辅助 / network-网络 / personal-个人，默认 none |
+| visibility        | string   | 否   | 可见范围：ALL-全部可见 / SELF-仅我可见 / FANS-粉丝可见，默认 ALL |
+| tagIds            | number[] | 否   | 文章标签 ID 列表，可为空数组 |
+
+**Response** `201 Created`:
+
+```json
+{
+  "id": 1,
+  "title": "[无标题]",
+  "status": "DRAFT",
+  "createdAt": "2026-02-21T10:00:00"
+}
+```
+
+| 字段      | 类型   | 说明 |
+|-----------|--------|------|
+| id        | number | 内容 ID（草稿） |
+| title     | string | 保存后的标题 |
+| status    | string | 固定为 DRAFT |
+| createdAt | string | 创建时间 |
+
+**错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`，报错信息如「正文不能为空」。
+
+---
+
 ## 收藏夹相关
 
 ### 6. 获取当前用户的收藏夹列表
@@ -696,6 +752,42 @@
 | followingCount         | number | 关注了：当前用户关注的人数                                   |
 | followerCount          | number | 粉丝数：关注当前用户的人数                                   |
 | yesterdayFollowerDelta | number | 昨日粉丝增长：follow 表中 followee_id=当前用户且 created_at 为昨日 0 点至今日 0 点的记录数 |
+
+---
+
+## AI 相关（ai-service）
+
+### 根据正文生成博客标题
+
+**`POST /api/ai/title`**
+
+需要认证。根据正文内容（Markdown 或纯文本）调用大模型生成建议标题，用于创作页「AI 生成标题」等场景。
+
+**Request Body**:
+
+```json
+{
+  "body": "string"
+}
+```
+
+| 字段  | 类型   | 必填 | 说明                                   |
+|-------|--------|------|----------------------------------------|
+| body  | string | 是   | 正文内容；可为 Markdown，建议前 2000 字参与生成 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "title": "string"
+}
+```
+
+| 字段   | 类型   | 说明           |
+|--------|--------|----------------|
+| title  | string | 生成的标题建议 |
+
+**错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 服务不可用，返回 `502 Bad Gateway` 或 `503 Service Unavailable`。
 
 ---
 

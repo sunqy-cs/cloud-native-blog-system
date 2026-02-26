@@ -70,6 +70,12 @@ spring:
           predicates:
             - Path=/api/follow/**
           order: 3
+        # AI 服务：生成标题等
+        - id: ai-service
+          uri: lb://ai-service
+          predicates:
+            - Path=/api/ai/**
+          order: 3
         # 博客服务（若有）
         - id: blog-service
           uri: lb://blog-service

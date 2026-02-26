@@ -1,0 +1,19 @@
+server:
+  port: ${SERVER_PORT:8086}
+
+spring:
+  application:
+    name: ai-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_SERVER:127.0.0.1:8848}
+        username: nacos
+        password: nacos
+
+# DeepSeek API（与 OpenAI 兼容），API Key 请通过环境变量 DEEPSEEK_API_KEY 配置，勿写入仓库
+app:
+  deepseek:
+    base-url: https://api.deepseek.com
+    api-key: ${DEEPSEEK_API_KEY:}
+    default-model: deepseek-chat
