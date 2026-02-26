@@ -122,4 +122,31 @@ public class DeepSeekService {
         }
         return summary;
     }
+
+    private static final int TAGS_MAX_COUNT = 5;
+
+    public List<String> generateTagNamesFromBody(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("正文不能为空");
+        }
+        String input = body.length() > TITLE_BODY_MAX_LENGTH ? body.substring(0, TITLE_BODY_MAX_LENGTH) : body;
+        List<ChatMessage> messages = List.of(
+                new ChatMessage("system",
+                        "你是一个博客助手。根据用户给出的正文内容，生成 3～5 个文章标签，用于分类。要求：仅输出标签，每行一个，不要编号、不要解释，使用中文或英文，最多 5 个。"),
+                new ChatMessage("user", "请根据以下正文生成标签（每行一个）：\n\n" + input)
+        );
+        String raw = chat(messages);
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        List<String> names = new java.util.ArrayList<>();
+        for (String line : raw.split("\n")) {
+            String t = line.replaceAll("^[\\d.、\\s]+", "").trim();
+            if (!t.isEmpty() && t.length() <= 32) {
+                names.add(t);
+                if (names.size() >= TAGS_MAX_COUNT) break;
+            }
+        }
+        return names;
+    }
 }

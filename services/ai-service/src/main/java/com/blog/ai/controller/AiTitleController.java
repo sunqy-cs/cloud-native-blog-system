@@ -43,6 +43,19 @@ public class AiTitleController {
         return ResponseEntity.ok(Map.of("summary", summary != null ? summary : ""));
     }
 
+    /**
+     * 根据正文生成标签，最多 5 个。需认证（由网关校验）。
+     */
+    @PostMapping("/tags")
+    public ResponseEntity<Map<String, Object>> generateTags(@RequestBody TagsRequest req) {
+        String body = req != null && req.getBody() != null ? req.getBody().trim() : "";
+        if (body.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+        java.util.List<String> tagNames = deepSeekService.generateTagNamesFromBody(body);
+        return ResponseEntity.ok(Map.of("tagNames", tagNames != null ? tagNames : java.util.List.of()));
+    }
+
     @lombok.Data
     public static class TitleRequest {
         private String body;
@@ -50,6 +63,11 @@ public class AiTitleController {
 
     @lombok.Data
     public static class SummaryRequest {
+        private String body;
+    }
+
+    @lombok.Data
+    public static class TagsRequest {
         private String body;
     }
 }

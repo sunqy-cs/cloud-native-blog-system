@@ -162,23 +162,27 @@
           <!-- 发文设置：标签、封面、摘要等（不含 GitCode 备份） -->
           <section class="publish-settings">
             <div class="setting-row">
-              <label class="setting-label">文章标签 <span class="required">*</span> <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">文章标签 <span class="required">*</span> <el-tooltip content="必选一个主标签；其他标签可从已有非主标签中多选或由 AI 生成，合计最多 5 个" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
             </div>
             <div class="tag-row">
               <el-select v-model="mainTagId" placeholder="请选择主标签（必选）" class="tag-main-select" clearable>
                 <el-option v-for="t in mainTagList" :key="t.id" :label="t.name" :value="t.id" />
               </el-select>
-              <div class="tag-custom">
+              <div class="tag-other-row">
                 <span class="tag-custom-label">其他标签：</span>
-                <el-input v-model="customTagInput" placeholder="输入后回车添加，最多 5 个" class="tag-custom-input" maxlength="20" @keyup.enter="addCustomTag" />
-                <el-button type="primary" plain size="small" :disabled="!customTagInput.trim() || tagTotalCount >= 5" @click="addCustomTag">添加</el-button>
+                <el-select v-model="selectedOtherIds" multiple placeholder="从已有非主标签选择（可选）" class="tag-other-select" clearable @change="onOtherTagSelectChange">
+                  <el-option v-for="t in otherTagList" :key="t.id" :label="t.name" :value="t.id" />
+                </el-select>
+                <el-button type="primary" plain size="small" :loading="aiTagsLoading" :disabled="!getMarkdownValue().trim()" @click="onAiGenerateTags">
+                  <span class="ai-summary-icon">✨</span> AI生成标签
+                </el-button>
               </div>
-              <div v-if="customTagNames.length > 0" class="tag-chips">
-                <el-tag v-for="(name, idx) in customTagNames" :key="idx" closable size="small" @close="removeCustomTag(idx)">{{ name }}</el-tag>
+              <div v-if="otherTagNamesForShow.length > 0" class="tag-chips">
+                <el-tag v-for="(name, idx) in otherTagNamesForShow" :key="idx" size="small" closable @close="onRemoveOtherTag(idx)">{{ name }}</el-tag>
               </div>
             </div>
             <div class="setting-row">
-              <label class="setting-label">添加封面 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">添加封面 <el-tooltip content="文章封面图，用于列表和详情展示，支持从本地上传图片" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
             </div>
             <div class="cover-row">
               <div class="cover-upload" :class="{ uploading: coverUploading }" @click="!coverUploading && triggerCoverSelect()">
@@ -199,7 +203,7 @@
             <input ref="coverInputRef" type="file" accept="image/*" class="hidden-input" @change="onCoverFileChange" />
 
             <div class="setting-row">
-              <label class="setting-label">文章摘要 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">文章摘要 <el-tooltip content="摘要会在推荐、列表等场景外露，可手动填写或使用 AI 提取" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
             </div>
             <p class="summary-desc">摘要会在推荐、列表等场景外露，帮助读者快速了解内容</p>
             <div class="summary-wrap">
@@ -210,14 +214,14 @@
             </div>
 
             <div class="setting-row">
-              <label class="setting-label">分类专栏 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">分类专栏 <el-tooltip content="将文章归类到某个专栏，便于读者按专题浏览（可选）" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
               <el-select v-model="columnId" placeholder="选择专栏（可选）" clearable class="column-select">
                 <el-option v-for="col in columnList" :key="col.id" :label="col.name" :value="col.id" />
               </el-select>
             </div>
 
             <div class="setting-row">
-              <label class="setting-label">文章类型 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">文章类型 <el-tooltip content="原创、转载或翻译，用于标识内容来源" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
               <el-radio-group v-model="articleType" class="article-type-group">
                 <el-radio value="original">原创</el-radio>
                 <el-radio value="reprint">转载</el-radio>
@@ -236,7 +240,7 @@
             </div>
 
             <div class="setting-row">
-              <label class="setting-label">可见范围 <el-icon class="setting-help"><QuestionFilled /></el-icon></label>
+              <label class="setting-label">可见范围 <el-tooltip content="全部可见：所有人可看；仅我可见：仅自己可见；粉丝可见：仅关注你的用户可见" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
               <el-radio-group v-model="visibility" class="visibility-group">
                 <el-radio value="all">全部可见</el-radio>
                 <el-radio value="self">仅我可见</el-radio>
@@ -266,11 +270,9 @@
     <footer class="write-footer">
       <div class="footer-left">
         <span class="word-count">共{{ wordCount }}字</span>
-        <span class="footer-link">发文设置 <el-icon><ArrowDown /></el-icon></span>
       </div>
       <div class="footer-right">
         <el-button class="footer-btn" :loading="draftSaving" @click="onSaveDraft">保存草稿 <el-icon><ArrowDown /></el-icon></el-button>
-        <el-button class="footer-btn">定时发布 &gt;</el-button>
         <el-button type="primary" class="publish-btn">发布博客</el-button>
       </div>
     </footer>
@@ -286,9 +288,9 @@ import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { uploadImage } from '@/api/upload'
 import { saveDraft } from '@/api/content'
-import { generateTitle, generateSummary } from '@/api/ai'
+import { generateTitle, generateSummary, generateTags } from '@/api/ai'
 import { getColumnsMe, type ColumnItem } from '@/api/column'
-import { getMainTags, type TagItem } from '@/api/tag'
+import { getMainTags, getOtherTags, type TagItem } from '@/api/tag'
 
 const userStore = useUserStore()
 const title = ref('')
@@ -320,8 +322,10 @@ const columnList = ref<ColumnItem[]>([])
 const columnId = ref<number | undefined>(undefined)
 const mainTagList = ref<TagItem[]>([])
 const mainTagId = ref<number | undefined>(undefined)
-const customTagNames = ref<string[]>([])
-const customTagInput = ref('')
+const otherTagList = ref<TagItem[]>([])
+const selectedOtherIds = ref<number[]>([])
+const aiGeneratedTagNames = ref<string[]>([])
+const aiTagsLoading = ref(false)
 
 const sectionOwners = computed(() => {
   const list = tocList.value
@@ -453,30 +457,54 @@ function updateTocFromMarkdown(md: string) {
 
 let vditor: Vditor | null = null
 
-const tagTotalCount = computed(() => (mainTagId.value != null ? 1 : 0) + customTagNames.value.length)
+const otherTagNamesForShow = computed(() => {
+  if (aiGeneratedTagNames.value.length > 0) return aiGeneratedTagNames.value.slice(0, 5)
+  return selectedOtherIds.value
+    .map((id) => otherTagList.value.find((t) => t.id === id)?.name)
+    .filter(Boolean) as string[]
+})
 
-function addCustomTag() {
-  const name = customTagInput.value.trim()
-  customTagInput.value = ''
-  if (!name) return
-  if (tagTotalCount.value >= 5) {
-    ElMessage.warning('最多 5 个标签')
-    return
-  }
-  if (customTagNames.value.includes(name)) {
-    ElMessage.warning('已存在相同标签')
-    return
-  }
-  customTagNames.value.push(name)
+function onOtherTagSelectChange() {
+  aiGeneratedTagNames.value = []
+  if (selectedOtherIds.value.length > 4) selectedOtherIds.value = selectedOtherIds.value.slice(0, 4)
 }
 
-function removeCustomTag(index: number) {
-  customTagNames.value.splice(index, 1)
+function onRemoveOtherTag(idx: number) {
+  if (aiGeneratedTagNames.value.length > 0) {
+    aiGeneratedTagNames.value = aiGeneratedTagNames.value.filter((_, i) => i !== idx)
+  } else {
+    const id = selectedOtherIds.value[idx]
+    if (id != null) selectedOtherIds.value = selectedOtherIds.value.filter((_, i) => i !== idx)
+  }
+}
+
+async function onAiGenerateTags() {
+  const bodyText = getMarkdownValue().trim().slice(0, 2000)
+  if (!bodyText) {
+    ElMessage.info('请先输入正文内容')
+    return
+  }
+  aiTagsLoading.value = true
+  selectedOtherIds.value = []
+  try {
+    const res = await generateTags(bodyText)
+    const names = res?.tagNames
+    if (Array.isArray(names) && names.length > 0) {
+      aiGeneratedTagNames.value = names.slice(0, 5)
+      ElMessage.success('已生成 ' + aiGeneratedTagNames.value.length + ' 个标签')
+    } else {
+      aiGeneratedTagNames.value = []
+      ElMessage.warning('未能生成标签，请重试')
+    }
+  } finally {
+    aiTagsLoading.value = false
+  }
 }
 
 onMounted(() => {
   getColumnsMe().then((list) => { columnList.value = list ?? [] })
   getMainTags().then((list) => { mainTagList.value = list ?? [] })
+  getOtherTags().then((list) => { otherTagList.value = list ?? [] })
   if (!vditorRef.value) return
   vditor = new Vditor(vditorRef.value, {
     height: 420,
@@ -518,7 +546,8 @@ const visibilityMap = { all: 'ALL', self: 'SELF', fans: 'FANS' } as const
 
 function buildTagNames(): string[] | undefined {
   const main = mainTagId.value != null ? mainTagList.value.find((t) => t.id === mainTagId.value)?.name : undefined
-  const list = [main, ...customTagNames.value].filter(Boolean) as string[]
+  const others = otherTagNamesForShow.value
+  const list = [main, ...others].filter(Boolean) as string[]
   return list.length > 0 ? list.slice(0, 5) : undefined
 }
 
@@ -1338,6 +1367,17 @@ const avatarInitial = computed(() => {
   width: 220px;
 }
 
+.tag-other-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-other-select {
+  min-width: 260px;
+}
+
 .tag-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1445,16 +1485,6 @@ const avatarInitial = computed(() => {
 .word-count {
   font-size: 14px;
   color: #666;
-}
-
-.footer-link {
-  font-size: 14px;
-  color: #666;
-  cursor: pointer;
-}
-
-.footer-link:hover {
-  color: #111;
 }
 
 .footer-right {

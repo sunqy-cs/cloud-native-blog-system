@@ -24,4 +24,9 @@ public class TagController {
     public ResponseEntity<List<TagVO>> main() {
         return ResponseEntity.ok(tagService.listMainTags());
     }
+
+    @GetMapping("/others")
+    public ResponseEntity<List<TagVO>> others() {
+        return ResponseEntity.ok(tagService.listOtherTags());
+    }
 }

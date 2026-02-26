@@ -19,6 +19,17 @@ public class TagService {
     public List<TagVO> listMainTags() {
         List<Tag> list = tagMapper.selectList(
                 new LambdaQueryWrapper<Tag>().eq(Tag::getIsMain, 1).orderByAsc(Tag::getId));
+        return toVOList(list);
+    }
+
+    /** 获取全部非主标签（is_main=0），用于创作页「其他标签」多选 */
+    public List<TagVO> listOtherTags() {
+        List<Tag> list = tagMapper.selectList(
+                new LambdaQueryWrapper<Tag>().eq(Tag::getIsMain, 0).orderByAsc(Tag::getId));
+        return toVOList(list);
+    }
+
+    private List<TagVO> toVOList(List<Tag> list) {
         return list.stream().map(t -> {
             TagVO vo = new TagVO();
             vo.setId(t.getId());

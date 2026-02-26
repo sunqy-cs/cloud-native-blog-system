@@ -13,3 +13,10 @@ export function generateTitle(body: string): Promise<{ title: string }> {
 export function generateSummary(body: string): Promise<{ summary: string }> {
   return request.post('ai/summary', { body }).then((data) => data as unknown as { summary: string })
 }
+
+/**
+ * 根据正文生成标签（AI），最多 5 个标签名
+ */
+export function generateTags(body: string): Promise<{ tagNames: string[] }> {
+  return request.post('ai/tags', { body }).then((data) => data as unknown as { tagNames: string[] })
+}
