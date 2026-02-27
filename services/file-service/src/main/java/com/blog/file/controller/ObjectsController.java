@@ -1,5 +1,6 @@
 package com.blog.file.controller;
 
+import com.blog.file.dto.FromUrlRequest;
 import com.blog.file.dto.ObjectMetaVO;
 import com.blog.file.service.ObjectStorageService;
 import io.minio.GetObjectResponse;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -33,6 +35,18 @@ public class ObjectsController {
             @RequestParam(value = "bucket", required = false) String bucket,
             @RequestParam(value = "prefix", required = false) String prefix) {
         ObjectMetaVO meta = objectStorageService.upload(file, bucket, prefix);
+        return ResponseEntity.status(HttpStatus.CREATED).body(meta);
+    }
+
+    /**
+     * 从 URL 拉取图片并存入 MinIO（供 ai-service 等内部调用）
+     * POST /api/objects/from-url
+     */
+    @PostMapping(value = "/from-url", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ObjectMetaVO> createFromUrl(@RequestBody FromUrlRequest request) {
+        String url = request != null ? request.getUrl() : null;
+        String prefix = request != null ? request.getPrefix() : null;
+        ObjectMetaVO meta = objectStorageService.uploadFromUrl(url, prefix);
         return ResponseEntity.status(HttpStatus.CREATED).body(meta);
     }
 

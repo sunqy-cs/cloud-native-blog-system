@@ -61,7 +61,30 @@ export function getContentsByIds(ids: number[]): Promise<ContentListItem[]> {
   return request.get<ContentListItem[]>('contents/by-ids', { params }).then((data) => (Array.isArray(data) ? data : []))
 }
 
+/** 编辑用内容详情（含正文、标签等） */
+export interface ContentDetail {
+  id: number
+  title: string
+  body: string
+  summary?: string
+  cover?: string
+  columnId?: number
+  articleType?: string
+  creationStatement?: string
+  visibility?: string
+  tagNames?: string[]
+}
+
+/**
+ * 获取单篇内容详情（仅当前用户可编辑时使用）
+ */
+export function getContentForEdit(id: number): Promise<ContentDetail> {
+  return request.get(`contents/${id}`).then((data) => data as unknown as ContentDetail)
+}
+
 export interface SaveDraftBody {
+  /** 传则更新该草稿，不传则新建 */
+  id?: number
   title?: string
   body: string
   summary?: string
@@ -86,4 +109,18 @@ export interface SaveDraftResponse {
  */
 export function saveDraft(body: SaveDraftBody): Promise<SaveDraftResponse> {
   return request.post('contents/draft', body).then((data) => data as unknown as SaveDraftResponse)
+}
+
+export interface PublishResponse {
+  id: number
+  title: string
+  status: string
+  publishedAt: string
+}
+
+/**
+ * 发布博客：将指定草稿设为已发布
+ */
+export function publishContent(id: number): Promise<PublishResponse> {
+  return request.post(`contents/${id}/publish`).then((data) => data as unknown as PublishResponse)
 }

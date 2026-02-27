@@ -56,10 +56,7 @@
             </button>
             <div v-show="aiWorkbenchOpen" class="nav-sub">
               <router-link to="/creator/ai/blog" :class="['nav-item nav-sub-item', { active: route.path === '/creator/ai/blog' }]">
-                <span>博客生成</span>
-              </router-link>
-              <router-link to="/creator/ai/auto-comment" :class="['nav-item nav-sub-item', { active: route.path === '/creator/ai/auto-comment' }]">
-                <span>自动评论</span>
+                <span>博客机器人</span>
               </router-link>
             </div>
           </div>
@@ -404,7 +401,33 @@
           </div>
         </div>
 
-        <!-- 评论管理：占位卡片 -->
+        <!-- 博客机器人：标题 + 描述 + 新建机器人 -->
+        <div v-else-if="route.path === '/creator/ai/blog'" class="card blog-bot-card">
+          <div class="blog-header-row blog-bot-header">
+            <h2 class="section-title">博客机器人</h2>
+            <button type="button" class="btn-new-column" @click="openCreateBot">
+              <el-icon><Plus /></el-icon>
+              新建机器人
+            </button>
+          </div>
+          <p class="blog-bot-desc">使用 AI 辅助生成博客内容，可配置发文风格、主标签等，输入主题或大纲即可快速成文。</p>
+          <div v-if="botLoading" class="cm-loading">加载中...</div>
+          <div v-else-if="botList.length === 0" class="blog-bot-empty">
+            <p class="blog-bot-empty-text">暂无机器人，点击「新建机器人」添加写博客 AI 配置</p>
+          </div>
+          <div v-else class="blog-bot-list">
+            <article v-for="bot in botList" :key="bot.id" class="blog-bot-item">
+              <img v-if="bot.avatar" :src="bot.avatar" :alt="bot.name" class="blog-bot-item-avatar" />
+              <span v-else class="blog-bot-item-avatar-ph">{{ bot.name.charAt(0) }}</span>
+              <div class="blog-bot-item-body">
+                <div class="blog-bot-item-name">{{ bot.name }}</div>
+                <div class="blog-bot-item-meta">风格：{{ BOT_STYLE_LABELS[bot.style] || bot.style }} · 主标签：{{ bot.mainTagName || '未设置' }}</div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <!-- 其他占位 -->
         <div v-else class="management-placeholder-wrap">
           <div class="card management-placeholder-card">
             <h2 class="management-placeholder-title">{{ managementPlaceholderTitle }}</h2>
@@ -525,6 +548,69 @@
         <el-button type="primary" :loading="columnCoverUploading" @click="confirmColumnCrop">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 新建博客机器人弹窗 -->
+    <el-dialog
+      v-model="createBotVisible"
+      title="新建机器人"
+      width="480px"
+      top="12vh"
+      class="creator-bot-dialog"
+      @closed="resetCreateBotForm"
+    >
+      <el-form :model="createBotForm" label-position="top">
+        <el-form-item label="机器人名称">
+          <el-input v-model="createBotForm.name" placeholder="例如：技术博客助手" maxlength="32" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="头像（可选）">
+          <div class="bot-avatar-upload" :class="{ uploading: botAvatarUploading }">
+            <div v-if="createBotForm.avatar" class="bot-avatar-preview">
+              <img :src="createBotForm.avatar" alt="头像" class="bot-avatar-img" />
+              <button type="button" class="bot-avatar-remove" @click="createBotForm.avatar = ''">移除</button>
+            </div>
+            <template v-else>
+              <input ref="botAvatarInputRef" type="file" accept="image/*" class="bot-avatar-input" @change="onBotAvatarChange" />
+              <button type="button" class="bot-avatar-btn" :disabled="botAvatarUploading" @click="botAvatarInputRef?.click()">
+                <el-icon v-if="botAvatarUploading" class="bot-avatar-icon is-loading"><Loading /></el-icon>
+                <el-icon v-else class="bot-avatar-icon"><Camera /></el-icon>
+                <span>上传头像</span>
+              </button>
+            </template>
+          </div>
+        </el-form-item>
+        <el-form-item label="发文风格">
+          <el-select v-model="createBotForm.style" placeholder="选择风格" class="bot-form-select">
+            <el-option label="专业严谨" value="professional" />
+            <el-option label="轻松活泼" value="casual" />
+            <el-option label="技术向" value="technical" />
+            <el-option label="故事向" value="narrative" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="博客主标签">
+          <el-select v-model="createBotForm.mainTagId" placeholder="选择主标签（可选）" clearable class="bot-form-select">
+            <el-option v-for="t in mainTagListForBot" :key="t.id" :label="t.name" :value="t.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="默认摘要风格">
+          <el-select v-model="createBotForm.summaryStyle" placeholder="选择摘要风格" class="bot-form-select">
+            <el-option label="简洁" value="concise" />
+            <el-option label="详细" value="detailed" />
+            <el-option label="金句提炼" value="quote" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="字数偏好">
+          <el-select v-model="createBotForm.wordCountPreference" placeholder="选择字数偏好" class="bot-form-select">
+            <el-option label="短篇（约 500～1000 字）" value="short" />
+            <el-option label="中篇（约 1000～2000 字）" value="medium" />
+            <el-option label="长篇（2000 字以上）" value="long" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createBotVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createBotSubmitting" @click="submitCreateBot">确认</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -532,7 +618,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera } from '@element-plus/icons-vue'
+import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading } from '@element-plus/icons-vue'
 import { getContentMeStats, getContentsMe } from '@/api/content'
 import type { ContentMeStats, ContentListItem } from '@/api/content'
 import { getCommentedArticles, getContentComments, setCommentHot } from '@/api/comment'
@@ -540,6 +626,8 @@ import type { CommentedArticle, CommentItem } from '@/api/comment'
 import { getFollowMe } from '@/api/follow'
 import type { FollowStats } from '@/api/follow'
 import { getColumnsMe, createColumn, type ColumnItem } from '@/api/column'
+import { getMainTags, type TagItem } from '@/api/tag'
+import { getBlogBotsMe, createBlogBot, type BlogBotItem } from '@/api/blogBot'
 import { uploadImage } from '@/api/upload'
 import { ElMessage } from 'element-plus'
 
@@ -553,14 +641,10 @@ const managementPlaceholderTitle = computed(() => {
   if (route.path === '/creator/content') return '内容管理'
   if (route.path === '/creator/comments') return '评论管理'
   if (route.path === '/creator/columns') return '专栏管理'
-  if (route.path === '/creator/ai/blog') return 'AI 博客生成'
-  if (route.path === '/creator/ai/auto-comment') return 'AI 自动评论'
   return '管理'
 })
 const managementPlaceholderDesc = computed(() => {
   if (route.path === '/creator/comments') return '在此查看与管理读者评论，后续将支持回复、置顶、删除等操作。'
-  if (route.path === '/creator/ai/blog') return '使用 AI 辅助生成博客内容，输入主题或大纲即可快速成文，后续将开放。'
-  if (route.path === '/creator/ai/auto-comment') return '使用 AI 对文章下的评论进行智能回复或归纳，后续将开放。'
   return '请从左侧选择具体管理项。'
 })
 
@@ -653,6 +737,81 @@ function submitCreateColumn() {
       ElMessage.success('专栏已创建')
     })
     .finally(() => { createColumnSubmitting.value = false })
+}
+
+// 博客机器人：前端先做配置列表与新建弹窗，后续接后端
+const BOT_STYLE_LABELS: Record<string, string> = {
+  professional: '专业严谨',
+  casual: '轻松活泼',
+  technical: '技术向',
+  narrative: '故事向',
+}
+const botList = ref<BlogBotItem[]>([])
+const botLoading = ref(false)
+const createBotVisible = ref(false)
+const createBotSubmitting = ref(false)
+const botAvatarUploading = ref(false)
+const botAvatarInputRef = ref<HTMLInputElement | null>(null)
+const mainTagListForBot = ref<TagItem[]>([])
+const createBotForm = ref({
+  name: '',
+  avatar: '' as string,
+  style: 'professional',
+  mainTagId: undefined as number | undefined,
+  summaryStyle: 'concise',
+  wordCountPreference: 'medium',
+})
+async function onBotAvatarChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !file.type.startsWith('image/')) return
+  botAvatarUploading.value = true
+  try {
+    const meta = await uploadImage(file, 'bot-avatar')
+    if (meta?.url) createBotForm.value.avatar = meta.url
+  } finally {
+    botAvatarUploading.value = false
+  }
+}
+function openCreateBot() {
+  resetCreateBotForm()
+  createBotVisible.value = true
+  getMainTags().then((list) => { mainTagListForBot.value = list ?? [] })
+}
+function resetCreateBotForm() {
+  createBotForm.value = {
+    name: '',
+    avatar: '',
+    style: 'professional',
+    mainTagId: undefined,
+    summaryStyle: 'concise',
+    wordCountPreference: 'medium',
+  }
+}
+async function submitCreateBot() {
+  const name = createBotForm.value.name?.trim()
+  if (!name) {
+    ElMessage.warning('请输入机器人名称')
+    return
+  }
+  createBotSubmitting.value = true
+  try {
+    const created = await createBlogBot({
+      name,
+      avatar: createBotForm.value.avatar || undefined,
+      style: createBotForm.value.style,
+      mainTagId: createBotForm.value.mainTagId,
+      summaryStyle: createBotForm.value.summaryStyle,
+      wordCountPreference: createBotForm.value.wordCountPreference,
+    })
+    botList.value = [...botList.value, created]
+    createBotVisible.value = false
+    resetCreateBotForm()
+    ElMessage.success('机器人已添加')
+  } finally {
+    createBotSubmitting.value = false
+  }
 }
 
 // 专栏封面裁剪：比例与列表展示一致 120:84（约 10:7）
@@ -844,10 +1003,20 @@ async function fetchCmList() {
   }
 }
 watch(cmPage, () => { fetchCmList() })
+async function fetchBotList() {
+  if (!userStore.isLoggedIn) return
+  botLoading.value = true
+  try {
+    botList.value = await getBlogBotsMe()
+  } finally {
+    botLoading.value = false
+  }
+}
 watch(() => route.path, (path) => {
   if (path === '/creator/content') fetchCmList()
   if (path === '/creator/comments') fetchCommentedArticles()
   if (path === '/creator/columns') fetchColumnList()
+  if (path === '/creator/ai/blog') fetchBotList()
 })
 
 const rankingTab = ref<'influence' | 'growth'>('influence')
@@ -925,6 +1094,7 @@ onMounted(() => {
   getContentsMe({ page: 1, pageSize: 1 }).then((res) => { contentTotal.value = res.total }).catch(() => {})
   if (route.path === '/creator/columns') fetchColumnList()
   if (route.path === '/creator/comments') fetchCommentedArticles()
+  if (route.path === '/creator/ai/blog') fetchBotList()
   fetchBlogList()
   if (route.path === '/creator/content') fetchCmList()
 })
@@ -2094,6 +2264,161 @@ const avatarInitial = computed(() => {
 .btn-new-column .el-icon {
   font-size: 16px;
 }
+
+/* 博客机器人 */
+.blog-bot-card {
+  padding: 24px;
+}
+.blog-bot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.blog-bot-card .section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111;
+}
+.blog-bot-desc {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+}
+.blog-bot-empty {
+  padding: 32px 24px;
+  text-align: center;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 1px dashed #e0e0e0;
+}
+.blog-bot-empty-text {
+  margin: 0;
+  font-size: 14px;
+  color: #999;
+}
+.blog-bot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.blog-bot-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+.blog-bot-item-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.blog-bot-item-avatar-ph {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  color: #666;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.blog-bot-item-body {
+  min-width: 0;
+}
+.blog-bot-item-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111;
+  margin-bottom: 4px;
+}
+.blog-bot-item-meta {
+  font-size: 13px;
+  color: #666;
+}
+
+.bot-avatar-upload {
+  position: relative;
+}
+.bot-avatar-upload.uploading .bot-avatar-btn {
+  pointer-events: none;
+  opacity: 0.8;
+}
+.bot-avatar-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bot-avatar-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #eee;
+}
+.bot-avatar-remove {
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #666;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.bot-avatar-remove:hover {
+  background: #eee;
+  color: #333;
+}
+.bot-avatar-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.bot-avatar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #666;
+  background: #f5f5f5;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.bot-avatar-btn:hover:not(:disabled) {
+  background: #eee;
+  border-color: #999;
+}
+.bot-avatar-icon {
+  font-size: 18px;
+}
+.bot-avatar-icon.is-loading {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.creator-bot-dialog .bot-form-select {
+  width: 100%;
+}
+
 .cm-loading {
   padding: 24px 0;
   text-align: center;

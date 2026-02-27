@@ -285,6 +285,86 @@
 
 **错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`，报错信息如「正文不能为空」。
 
+**说明**：请求体可带 `id`（内容 ID）。若传 `id` 且该内容属于当前用户，则更新该条内容；不传则新建草稿。
+
+---
+
+### 5.2 获取编辑用内容详情
+
+**`GET /api/contents/{id}`**
+
+需要认证。获取指定内容的完整信息（含正文、标签等），仅允许内容作者本人调用，用于创作页「编辑」回填。
+
+**Path 参数**：`id` 内容 ID。
+
+**Response** `200 OK`：
+
+```json
+{
+  "id": 1,
+  "title": "string",
+  "body": "string",
+  "summary": "string",
+  "cover": "string",
+  "columnId": 0,
+  "articleType": "ORIGINAL",
+  "creationStatement": "none",
+  "visibility": "ALL",
+  "tagNames": ["主标签名", "其他标签1", "其他标签2"]
+}
+```
+
+| 字段              | 类型     | 说明 |
+|-------------------|----------|------|
+| id                | number   | 内容 ID |
+| title             | string   | 标题 |
+| body              | string   | 正文（Markdown） |
+| summary           | string   | 摘要 |
+| cover             | string   | 封面 URL |
+| columnId          | number   | 专栏 ID |
+| articleType       | string   | ORIGINAL / REPRINT / TRANSLATED |
+| creationStatement | string   | none / ai-assisted / network / personal |
+| visibility        | string   | ALL / SELF / FANS |
+| tagNames          | string[] | 标签名称列表，第一个为主标签，其余为其他标签 |
+
+**错误**：内容不存在或非本人，返回 `404 Not Found`。
+
+---
+
+### 5.3 发布博客
+
+**`POST /api/contents/{id}/publish`**
+
+需要认证。将指定内容从草稿状态发布为正式文章（状态改为 PUBLISHED）。仅允许内容作者本人操作，且该内容当前必须为草稿（DRAFT）。
+
+**Path 参数**：`id` 内容 ID。
+
+**Request Body**：无（或 `{}`）。
+
+**Response** `200 OK`：
+
+```json
+{
+  "id": 1,
+  "title": "文章标题",
+  "status": "PUBLISHED",
+  "publishedAt": "2026-02-21T14:00:00"
+}
+```
+
+| 字段         | 类型   | 说明 |
+|--------------|--------|------|
+| id           | number | 内容 ID |
+| title        | string | 标题 |
+| status       | string | 固定为 PUBLISHED |
+| publishedAt  | string | 发布时间（与 updatedAt 一致或由服务端生成） |
+
+**错误**：
+- 内容不存在或非本人：`404 Not Found`
+- 内容已是已发布状态：`400 Bad Request`（如「该内容已发布」）
+
+**说明**：前端流程建议：先调用「保存草稿」确保当前编辑内容入库（得到或刷新 `id`），再调用本接口发布该 `id`。
+
 ---
 
 ## 标签相关（content-service）
@@ -710,11 +790,91 @@
 
 ---
 
+## 博客机器人相关（content-service）
+
+创作者中心「博客机器人」：当前用户创建的机器人列表，支持新建（名称、头像、发文风格、主标签、默认摘要风格、字数偏好）。
+
+### 18. 获取当前用户的博客机器人列表
+
+**`GET /api/blog-bots/me`**
+
+需要认证。获取当前登录用户创建的所有博客机器人，用于创作者中心「博客机器人」列表展示。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Response** `200 OK`：
+
+```json
+[
+  {
+    "id": 1,
+    "name": "技术博客助手",
+    "avatar": "https://example.com/avatar.jpg",
+    "style": "professional",
+    "mainTagId": 3,
+    "mainTagName": "大模型与对齐（LLM/RLHF/DPO）",
+    "summaryStyle": "concise",
+    "wordCountPreference": "medium",
+    "createdAt": "2026-02-21",
+    "updatedAt": "2026-02-21"
+  }
+]
+```
+
+| 字段               | 类型   | 说明 |
+|--------------------|--------|------|
+| id                 | number | 机器人 ID |
+| name               | string | 机器人名称 |
+| avatar             | string | 头像 URL，可选 |
+| style              | string | 发文风格：professional / casual / technical / narrative |
+| mainTagId          | number | 主标签 ID，可选 |
+| mainTagName        | string | 主标签名称，可选 |
+| summaryStyle       | string | 默认摘要风格：concise / detailed / quote |
+| wordCountPreference| string | 字数偏好：short / medium / long |
+| createdAt          | string | 创建时间，格式 YYYY-MM-DD |
+| updatedAt          | string | 更新时间，格式 YYYY-MM-DD |
+
+---
+
+### 19. 创建博客机器人
+
+**`POST /api/blog-bots`**
+
+需要认证。创建新博客机器人，用于创作者中心「新建机器人」弹窗提交。
+
+**Request Body**：
+
+```json
+{
+  "name": "string",
+  "avatar": "string",
+  "style": "professional",
+  "mainTagId": 0,
+  "summaryStyle": "concise",
+  "wordCountPreference": "medium"
+}
+```
+
+| 字段                | 类型   | 必填 | 说明 |
+|---------------------|--------|------|------|
+| name                | string | 是   | 机器人名称，最长 32 字符 |
+| avatar              | string | 否   | 头像 URL |
+| style               | string | 是   | 发文风格：professional / casual / technical / narrative |
+| mainTagId           | number | 否   | 主标签 ID |
+| summaryStyle        | string | 是   | 默认摘要风格：concise / detailed / quote |
+| wordCountPreference | string | 是   | 字数偏好：short / medium / long |
+
+**Response** `201 Created`：
+
+返回新建的博客机器人对象，格式同「获取当前用户的博客机器人列表」单条（含 `id`、`mainTagName` 由服务端根据 `mainTagId` 回填、`createdAt` / `updatedAt` 由服务端生成）。
+
+---
+
 ## 关注相关（interaction-service）
 
 个人页右侧展示当前用户的「关注了」与「关注者」数量，由 interaction-service 基于 `follow` 表统计。
 
-### 18. 获取当前用户关注统计
+### 20. 获取当前用户关注统计
 
 **`GET /api/follow/me`**
 
@@ -742,7 +902,7 @@
 
 创作者中心首页需展示：总阅读量、总点赞量、粉丝数、收藏数，及每项对应的「昨日增长」。总阅读量/总点赞量/收藏数由当前用户发布的内容汇总得到，粉丝数由关注表统计；昨日增长为昨日 0 点至今日 0 点（服务器时区）的新增数。
 
-### 19. 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长）
+### 21. 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长）
 
 **`GET /api/contents/me/stats`**
 
@@ -901,6 +1061,108 @@
 | tagNames | string[] | 生成的标签名称列表，最多 5 个 |
 
 **错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 服务不可用，返回 `502 Bad Gateway` 或 `503 Service Unavailable`。
+
+---
+
+### 文生图（Z-Image，通用）
+
+**`POST /api/ai/image`**
+
+需要认证。根据前端传入的文本描述（prompt）调用阿里云 DashScope 文生图（Z-Image），生成图片后由 file-service 存入 MinIO，并返回可供前端使用的 MinIO 访问 URL。**通用生图接口**，创作页、头像/封面等场景均可复用。
+
+**Request Body**:
+
+```json
+{
+  "prompt": "string",
+  "size": "1120*1440"
+}
+```
+
+| 字段    | 类型   | 必填 | 说明 |
+|---------|--------|------|------|
+| prompt  | string | 是   | 图片描述文案，即发给文生图模型的提示词 |
+| size    | string | 否   | 图片尺寸，默认 `1120*1440`；需符合模型支持的尺寸 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "url": "/api/objects/ai/xxx.png?stream=1"
+}
+```
+
+| 字段 | 类型   | 说明 |
+|------|--------|------|
+| url  | string | 图片在 MinIO 上的访问路径（相对路径），前端拼接网关或站点 base URL 后即可展示或存储 |
+
+**说明**：服务端会调用阿里云 DashScope 文生图接口，将返回的图片拉取并上传至 file-service（MinIO），再将该 URL 返回给前端。
+
+**错误**：若 `prompt` 为空或仅空白，返回 `400 Bad Request`；若 DashScope 或 file-service 不可用，返回 `502 Bad Gateway` 或 `503 Service Unavailable`。
+
+---
+
+### 根据正文生成封面图
+
+**`POST /api/ai/cover`**
+
+需要认证。根据正文内容先由大模型生成封面图描述，再调用文生图（Z-Image）生成图片并存入 MinIO，返回封面访问 URL。用于创作页「AI 生成封面」。生成图片长宽比固定为 **10:7**（与前端列表/卡片中博客封面展示比例一致，如 120×84、200×140）。
+
+**Request Body**:
+
+```json
+{
+  "body": "string"
+}
+```
+
+| 字段  | 类型   | 必填 | 说明                                   |
+|-------|--------|------|----------------------------------------|
+| body  | string | 是   | 正文内容；建议前 2000 字参与生成封面描述 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "url": "/api/objects/ai/xxx.png?stream=1"
+}
+```
+
+| 字段 | 类型   | 说明 |
+|------|--------|------|
+| url  | string | 封面图在 MinIO 上的访问路径，前端可直接用作封面地址 |
+
+**错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 或 file-service 不可用，返回 `502`/`503`。
+
+---
+
+## 文件服务（file-service）内部接口
+
+以下接口主要供其他微服务（如 ai-service）调用，前端一般不直接使用。
+
+### 从 URL 拉取并存入 MinIO
+
+**`POST /api/objects/from-url`**
+
+将指定 URL 的图片下载并上传到 MinIO，返回对象元信息（含访问 URL）。用于 ai-service 文生图后将第三方（如 DashScope OSS）图片持久化到本站存储。
+
+**Request Body**:
+
+```json
+{
+  "url": "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/xxx.png?Expires=xxx",
+  "prefix": "ai"
+}
+```
+
+| 字段   | 类型   | 必填 | 说明 |
+|--------|--------|------|------|
+| url    | string | 是   | 图片完整 URL，当前仅允许阿里云 DashScope 结果域名 |
+| prefix | string | 否   | MinIO 对象前缀，如 `ai`，默认 `ai` |
+
+**Response** `201 Created`:
+
+与 `POST /api/objects` 一致，返回 `ObjectMetaVO`（`key`、`url`、`size`、`contentType`），其中 `url` 为本站访问路径（如 `/api/objects/ai/xxx.png?stream=1`）。
 
 ---
 

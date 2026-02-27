@@ -182,15 +182,20 @@
               </div>
             </div>
             <div class="setting-row">
-              <label class="setting-label">添加封面 <el-tooltip content="文章封面图，用于列表和详情展示，支持从本地上传图片" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
+              <label class="setting-label">添加封面 <el-tooltip content="文章封面图，用于列表和详情展示；可本地上传或根据正文 AI 生成" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
             </div>
             <div class="cover-row">
-              <div class="cover-upload" :class="{ uploading: coverUploading }" @click="!coverUploading && triggerCoverSelect()">
-                <el-icon v-if="coverUploading" class="cover-plus is-loading"><Loading /></el-icon>
-                <template v-else>
-                  <el-icon class="cover-plus"><Plus /></el-icon>
-                  <span>从本地上传</span>
-                </template>
+              <div class="cover-left">
+                <div class="cover-upload" :class="{ uploading: coverUploading }" @click="!coverUploading && triggerCoverSelect()">
+                  <el-icon v-if="coverUploading" class="cover-plus is-loading"><Loading /></el-icon>
+                  <template v-else>
+                    <el-icon class="cover-plus"><Plus /></el-icon>
+                    <span>从本地上传</span>
+                  </template>
+                </div>
+                <el-button type="primary" plain size="small" class="cover-ai-btn" :loading="coverAiLoading" :disabled="!getMarkdownValue().trim()" @click="onAiGenerateCover">
+                  <span class="ai-summary-icon">✨</span> AI生成封面
+                </el-button>
               </div>
               <div class="cover-placeholder">
                 <template v-if="cover">
@@ -273,7 +278,7 @@
       </div>
       <div class="footer-right">
         <el-button class="footer-btn" :loading="draftSaving" @click="onSaveDraft">保存草稿 <el-icon><ArrowDown /></el-icon></el-button>
-        <el-button type="primary" class="publish-btn">发布博客</el-button>
+        <el-button type="primary" class="publish-btn" :loading="publishLoading" @click="onPublish">发布博客</el-button>
       </div>
     </footer>
   </div>
@@ -281,18 +286,23 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom, QuestionFilled, Plus, Loading } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { uploadImage } from '@/api/upload'
-import { saveDraft } from '@/api/content'
+import { generateCover } from '@/api/ai'
+import { saveDraft, getContentForEdit, publishContent } from '@/api/content'
 import { generateTitle, generateSummary, generateTags } from '@/api/ai'
 import { getColumnsMe, type ColumnItem } from '@/api/column'
 import { getMainTags, getOtherTags, type TagItem } from '@/api/tag'
 
 const userStore = useUserStore()
+const route = useRoute()
+const router = useRouter()
+const contentId = ref<number | undefined>(undefined)
 const title = ref('')
 const vditorRef = ref<HTMLElement | null>(null)
 const wordCount = ref(0)
@@ -313,8 +323,10 @@ const aiSummaryLoading = ref(false)
 const coverInputRef = ref<HTMLInputElement | null>(null)
 const cover = ref('')
 const coverUploading = ref(false)
+const coverAiLoading = ref(false)
 const summary = ref('')
 const draftSaving = ref(false)
+const publishLoading = ref(false)
 const articleType = ref<'original' | 'reprint' | 'translated'>('original')
 const creationStatement = ref('none')
 const visibility = ref<'all' | 'self' | 'fans'>('all')
@@ -388,6 +400,29 @@ async function onCoverFileChange(e: Event) {
 
 function clearCover() {
   cover.value = ''
+}
+
+async function onAiGenerateCover() {
+  const bodyText = getMarkdownValue().trim().slice(0, 2000)
+  if (!bodyText) {
+    ElMessage.info('请先输入正文内容')
+    return
+  }
+  if (coverAiLoading.value) return
+  coverAiLoading.value = true
+  try {
+    const res = await generateCover(bodyText)
+    if (res?.url) {
+      cover.value = res.url
+      ElMessage.success('封面生成成功')
+    } else {
+      ElMessage.warning('生成失败，请重试')
+    }
+  } catch {
+    ElMessage.error('AI 生成封面失败，请重试')
+  } finally {
+    coverAiLoading.value = false
+  }
 }
 
 async function onAiExtractSummary() {
@@ -501,20 +536,52 @@ async function onAiGenerateTags() {
   }
 }
 
-onMounted(() => {
-  getColumnsMe().then((list) => { columnList.value = list ?? [] })
-  getMainTags().then((list) => { mainTagList.value = list ?? [] })
-  getOtherTags().then((list) => { otherTagList.value = list ?? [] })
+onMounted(async () => {
+  await Promise.all([
+    getColumnsMe().then((list) => { columnList.value = list ?? [] }),
+    getMainTags().then((list) => { mainTagList.value = list ?? [] }),
+    getOtherTags().then((list) => { otherTagList.value = list ?? [] }),
+  ])
+  let initialBody = ''
+  const idParam = route.query.id
+  if (idParam) {
+    const id = typeof idParam === 'string' ? parseInt(idParam, 10) : Number(idParam)
+    if (!Number.isNaN(id)) {
+      try {
+        const data = await getContentForEdit(id)
+        contentId.value = data.id
+        title.value = data.title ?? ''
+        summary.value = data.summary ?? ''
+        cover.value = data.cover ?? ''
+        columnId.value = data.columnId
+        articleType.value = (data.articleType === 'REPRINT' ? 'reprint' : data.articleType === 'TRANSLATED' ? 'translated' : 'original') as 'original' | 'reprint' | 'translated'
+        visibility.value = (data.visibility === 'SELF' ? 'self' : data.visibility === 'FANS' ? 'fans' : 'all') as 'all' | 'self' | 'fans'
+        creationStatement.value = (data.creationStatement ?? 'none') as 'none' | 'ai-assisted' | 'network' | 'personal'
+        initialBody = data.body ?? ''
+        const names = data.tagNames ?? []
+        if (names.length > 0 && mainTagList.value.length > 0) {
+          const mainTag = mainTagList.value.find((t) => t.name === names[0])
+          if (mainTag) mainTagId.value = mainTag.id
+        }
+        if (names.length > 1) {
+          selectedOtherIds.value = []
+          aiGeneratedTagNames.value = names.slice(1).slice(0, 5)
+        }
+      } catch {
+        ElMessage.warning('加载文章失败，将使用空白编辑')
+      }
+    }
+  }
   if (!vditorRef.value) return
   vditor = new Vditor(vditorRef.value, {
     height: 420,
+    value: initialBody,
     placeholder: '#创作灵感#\n记录工作实践、项目复盘\n写技术笔记巩固知识要点\n发表职场感悟心得',
     lang: 'zh_CN',
     mode: 'wysiwyg',
     theme: 'classic',
     cache: { enable: false },
     toolbarConfig: { hide: true },
-    // 3.11.x 在 WYSIWYG 下会调用此选项，未传会报 customWysiwygToolbar is not a function，传空函数即可
     customWysiwygToolbar: () => [],
     counter: {
       enable: true,
@@ -563,6 +630,7 @@ function onSaveDraft() {
   }
   draftSaving.value = true
   saveDraft({
+    id: contentId.value,
     title: title.value.trim() || undefined,
     body,
     summary: summary.value?.trim() || undefined,
@@ -573,11 +641,56 @@ function onSaveDraft() {
     visibility: visibilityMap[visibility.value],
     tagNames: buildTagNames(),
   })
-    .then(() => {
+    .then((res) => {
+      if (res?.id != null) contentId.value = res.id
       ElMessage.success('草稿已保存')
     })
     .finally(() => {
       draftSaving.value = false
+    })
+}
+
+function onPublish() {
+  const body = getMarkdownValue().trim()
+  if (!body) {
+    ElMessage.warning('请先输入内容')
+    return
+  }
+  if (mainTagId.value == null) {
+    ElMessage.warning('请选择主标签')
+    return
+  }
+  if (publishLoading.value) return
+  publishLoading.value = true
+  const draftBody = {
+    id: contentId.value,
+    title: title.value.trim() || undefined,
+    body,
+    summary: summary.value?.trim() || undefined,
+    cover: cover.value?.trim() || undefined,
+    columnId: columnId.value,
+    articleType: articleTypeMap[articleType.value],
+    creationStatement: creationStatement.value,
+    visibility: visibilityMap[visibility.value],
+    tagNames: buildTagNames(),
+  }
+  saveDraft(draftBody)
+    .then((res) => {
+      const id = res?.id
+      if (id == null) return
+      return publishContent(id)
+    })
+    .then((res) => {
+      if (res?.id != null) {
+        ElMessage.success('发布成功')
+        router.push('/creator')
+      }
+    })
+    .catch(() => {
+      ElMessage.error('发布失败，请重试')
+    })
+    .finally(() => {
+      publishLoading.value = false
     })
 }
 
@@ -1231,6 +1344,16 @@ const avatarInitial = computed(() => {
   margin-bottom: 20px;
 }
 
+.cover-left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cover-ai-btn {
+  align-self: flex-start;
+}
+
 .cover-upload {
   width: 160px;
   height: 100px;
@@ -1425,7 +1548,7 @@ const avatarInitial = computed(() => {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: linear-gradient(135deg, #7c3aed, #6366f1);
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -149,4 +149,30 @@ public class DeepSeekService {
         }
         return names;
     }
+
+    private static final int COVER_PROMPT_MAX_LENGTH = 500;
+
+    /**
+     * 根据正文生成适合文生图的封面描述（1～2 句话），用于 Z-Image 等模型。
+     */
+    public String generateCoverPromptFromBody(String body) {
+        if (body == null || body.isBlank()) {
+            throw new IllegalArgumentException("正文不能为空");
+        }
+        String input = body.length() > TITLE_BODY_MAX_LENGTH ? body.substring(0, TITLE_BODY_MAX_LENGTH) : body;
+        List<ChatMessage> messages = List.of(
+                new ChatMessage("system",
+                        "你是一个博客助手。根据用户给出的正文内容，生成一句适合作为「文生图」提示词的封面描述。要求：仅输出这一句描述，不要引号、不要解释、不要换行；描述应具象、适合生成一张博客封面图（如场景、风格、色调等），长度 20～200 字，使用中文。"),
+                new ChatMessage("user", "请根据以下正文生成封面图描述（一句）：\n\n" + input)
+        );
+        String raw = chat(messages);
+        if (raw == null || raw.isBlank()) {
+            return "简洁的博客封面，清新风格";
+        }
+        String prompt = raw.replace("\"", "").replace("\n", " ").trim();
+        if (prompt.length() > COVER_PROMPT_MAX_LENGTH) {
+            prompt = prompt.substring(0, COVER_PROMPT_MAX_LENGTH);
+        }
+        return prompt.isEmpty() ? "简洁的博客封面，清新风格" : prompt;
+    }
 }

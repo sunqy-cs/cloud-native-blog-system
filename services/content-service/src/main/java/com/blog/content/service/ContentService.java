@@ -2,9 +2,11 @@ package com.blog.content.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.entity.Content;
@@ -36,6 +38,7 @@ public class ContentService {
 
     private static final String TYPE_BLOG = "BLOG";
     private static final String STATUS_DRAFT = "DRAFT";
+    private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String TITLE_EMPTY = "[无标题]";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
@@ -95,6 +98,68 @@ public class ContentService {
             voList.stream().filter(vo -> id.equals(vo.getId())).findFirst().ifPresent(ordered::add);
         }
         return ordered;
+    }
+
+    /**
+     * 获取编辑用内容详情（仅当前用户本人的内容）
+     */
+    public ContentDetailVO getForEdit(Long userId, Long id) {
+        if (id == null) return null;
+        Content c = contentMapper.selectById(id);
+        if (c == null || !userId.equals(c.getUserId()) || !TYPE_BLOG.equals(c.getType())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
+        }
+        ContentDetailVO vo = new ContentDetailVO();
+        vo.setId(c.getId());
+        vo.setTitle(c.getTitle());
+        vo.setBody(c.getBody());
+        vo.setSummary(c.getSummary());
+        vo.setCover(c.getCover());
+        vo.setColumnId(c.getColumnId());
+        vo.setArticleType(c.getArticleType());
+        vo.setCreationStatement(c.getCreationStatement() != null ? c.getCreationStatement() : "none");
+        vo.setVisibility(c.getVisibility() != null ? c.getVisibility() : "ALL");
+        List<ContentTag> ctList = contentTagMapper.selectList(
+                new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, id));
+        List<String> tagNames = new ArrayList<>();
+        if (!ctList.isEmpty()) {
+            List<Long> tagIds = ctList.stream().map(ContentTag::getTagId).collect(Collectors.toList());
+            List<Tag> tags = tagMapper.selectBatchIds(tagIds);
+            tags.sort((a, b) -> {
+                int am = a.getIsMain() != null && a.getIsMain() == 1 ? 0 : 1;
+                int bm = b.getIsMain() != null && b.getIsMain() == 1 ? 0 : 1;
+                if (am != bm) return am - bm;
+                return Long.compare(tagIds.indexOf(a.getId()), tagIds.indexOf(b.getId()));
+            });
+            tagNames = tags.stream().map(Tag::getName).filter(n -> n != null).collect(Collectors.toList());
+        }
+        vo.setTagNames(tagNames);
+        return vo;
+    }
+
+    /**
+     * 发布博客：将草稿状态改为已发布。仅作者本人可操作，且当前必须为 DRAFT。
+     */
+    public PublishResponse publish(Long userId, Long id) {
+        if (id == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "内容 ID 不能为空");
+        }
+        Content c = contentMapper.selectById(id);
+        if (c == null || !userId.equals(c.getUserId()) || !TYPE_BLOG.equals(c.getType())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权操作");
+        }
+        if (STATUS_PUBLISHED.equals(c.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该内容已发布");
+        }
+        c.setStatus(STATUS_PUBLISHED);
+        c.setUpdatedAt(LocalDateTime.now());
+        contentMapper.updateById(c);
+        PublishResponse res = new PublishResponse();
+        res.setId(c.getId());
+        res.setTitle(c.getTitle());
+        res.setStatus(STATUS_PUBLISHED);
+        res.setPublishedAt(c.getUpdatedAt() != null ? c.getUpdatedAt().format(ISO_FORMAT) : null);
+        return res;
     }
 
     /**
@@ -161,31 +226,58 @@ public class ContentService {
         String title = request.getTitle() != null ? request.getTitle().trim() : "";
         if (title.isEmpty()) title = TITLE_EMPTY;
 
-        Content c = new Content();
-        c.setUserId(userId);
-        c.setType(TYPE_BLOG);
-        c.setTitle(title);
-        c.setBody(body);
-        c.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
-        c.setCover(request.getCover() != null ? request.getCover().trim() : null);
-        c.setColumnId(request.getColumnId());
-        c.setStatus(STATUS_DRAFT);
-        String articleType = request.getArticleType() != null && !request.getArticleType().isBlank()
-                ? request.getArticleType().trim().toUpperCase() : "ORIGINAL";
-        if (!"ORIGINAL".equals(articleType) && !"REPRINT".equals(articleType) && !"TRANSLATED".equals(articleType)) articleType = "ORIGINAL";
-        c.setArticleType(articleType);
-        String creationStatement = request.getCreationStatement() != null && !request.getCreationStatement().isBlank()
-                ? request.getCreationStatement().trim().toLowerCase() : "none";
-        c.setCreationStatement(creationStatement);
-        String visibility = request.getVisibility() != null && !request.getVisibility().isBlank()
-                ? request.getVisibility().trim().toUpperCase() : "ALL";
-        if (!"ALL".equals(visibility) && !"SELF".equals(visibility) && !"FANS".equals(visibility)) visibility = "ALL";
-        c.setVisibility(visibility);
-        c.setLikeCount(0);
-        c.setCollectionCount(0);
-        c.setViewCount(0);
-        c.setCommentCount(0);
-        contentMapper.insert(c);
+        Long requestId = request.getId();
+        Content c;
+        if (requestId != null) {
+            c = contentMapper.selectById(requestId);
+            if (c == null || !userId.equals(c.getUserId()) || !TYPE_BLOG.equals(c.getType())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
+            }
+            c.setTitle(title);
+            c.setBody(body);
+            c.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
+            c.setCover(request.getCover() != null ? request.getCover().trim() : null);
+            c.setColumnId(request.getColumnId());
+            c.setStatus(STATUS_DRAFT);
+            String at = request.getArticleType() != null && !request.getArticleType().isBlank()
+                    ? request.getArticleType().trim().toUpperCase() : "ORIGINAL";
+            if (!"ORIGINAL".equals(at) && !"REPRINT".equals(at) && !"TRANSLATED".equals(at)) at = "ORIGINAL";
+            c.setArticleType(at);
+            c.setCreationStatement(request.getCreationStatement() != null && !request.getCreationStatement().isBlank()
+                    ? request.getCreationStatement().trim().toLowerCase() : "none");
+            String vis = request.getVisibility() != null && !request.getVisibility().isBlank()
+                    ? request.getVisibility().trim().toUpperCase() : "ALL";
+            if (!"ALL".equals(vis) && !"SELF".equals(vis) && !"FANS".equals(vis)) vis = "ALL";
+            c.setVisibility(vis);
+            c.setUpdatedAt(LocalDateTime.now());
+            contentMapper.updateById(c);
+            contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, c.getId()));
+        } else {
+            c = new Content();
+            c.setUserId(userId);
+            c.setType(TYPE_BLOG);
+            c.setTitle(title);
+            c.setBody(body);
+            c.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
+            c.setCover(request.getCover() != null ? request.getCover().trim() : null);
+            c.setColumnId(request.getColumnId());
+            c.setStatus(STATUS_DRAFT);
+            String at = request.getArticleType() != null && !request.getArticleType().isBlank()
+                    ? request.getArticleType().trim().toUpperCase() : "ORIGINAL";
+            if (!"ORIGINAL".equals(at) && !"REPRINT".equals(at) && !"TRANSLATED".equals(at)) at = "ORIGINAL";
+            c.setArticleType(at);
+            c.setCreationStatement(request.getCreationStatement() != null && !request.getCreationStatement().isBlank()
+                    ? request.getCreationStatement().trim().toLowerCase() : "none");
+            String vis = request.getVisibility() != null && !request.getVisibility().isBlank()
+                    ? request.getVisibility().trim().toUpperCase() : "ALL";
+            if (!"ALL".equals(vis) && !"SELF".equals(vis) && !"FANS".equals(vis)) vis = "ALL";
+            c.setVisibility(vis);
+            c.setLikeCount(0);
+            c.setCollectionCount(0);
+            c.setViewCount(0);
+            c.setCommentCount(0);
+            contentMapper.insert(c);
+        }
 
         List<String> tagNames = request.getTagNames();
         if (tagNames != null && !tagNames.isEmpty()) {

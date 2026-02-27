@@ -1,8 +1,10 @@
 package com.blog.content.controller;
 
+import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.service.ContentService;
@@ -52,6 +54,22 @@ public class ContentController {
             @RequestBody SaveDraftRequest request) {
         SaveDraftResponse res = contentService.saveDraft(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ContentDetailVO> getForEdit(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id) {
+        ContentDetailVO vo = contentService.getForEdit(userId, id);
+        return ResponseEntity.ok(vo);
+    }
+
+    @PostMapping("/{id}/publish")
+    public ResponseEntity<PublishResponse> publish(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id) {
+        PublishResponse res = contentService.publish(userId, id);
+        return ResponseEntity.ok(res);
     }
 
     @GetMapping("/by-ids")

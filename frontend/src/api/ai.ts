@@ -20,3 +20,10 @@ export function generateSummary(body: string): Promise<{ summary: string }> {
 export function generateTags(body: string): Promise<{ tagNames: string[] }> {
   return request.post('ai/tags', { body }).then((data) => data as unknown as { tagNames: string[] })
 }
+
+/**
+ * 根据正文生成封面图（AI）：先生成封面描述再文生图，返回封面 URL
+ */
+export function generateCover(body: string): Promise<{ url: string }> {
+  return request.post('ai/cover', { body }).then((data) => data as unknown as { url: string })
+}

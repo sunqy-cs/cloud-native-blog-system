@@ -4,9 +4,9 @@ import lombok.Data;
 
 import java.util.List;
 
+/** 编辑用内容详情（含正文、标签名列表等） */
 @Data
-public class SaveDraftRequest {
-    /** 若传则更新该内容，否则新建 */
+public class ContentDetailVO {
     private Long id;
     private String title;
     private String body;
@@ -16,6 +16,5 @@ public class SaveDraftRequest {
     private String articleType;
     private String creationStatement;
     private String visibility;
-    /** 标签名称列表；保存时按名称查询，不存在则创建（is_main=0），再建立 content_tag 关联。最多 5 个。 */
     private List<String> tagNames;
 }

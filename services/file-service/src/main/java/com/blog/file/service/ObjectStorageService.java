@@ -8,7 +8,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
@@ -165,5 +168,75 @@ public class ObjectStorageService {
         }
         String base = endpoint.endsWith("/") ? endpoint.substring(0, endpoint.length() - 1) : endpoint;
         return base + "/" + bucket + "/" + key;
+    }
+
+    private static final String ALLOWED_FROM_URL_HOST = "dashscope-result-bj.oss-cn-beijing.aliyuncs.com";
+
+    /**
+     * 从允许的 URL（当前仅 DashScope 结果 OSS）下载图片并上传到 MinIO，返回本站访问 URL。
+     */
+    public ObjectMetaVO uploadFromUrl(String imageUrl, String prefix) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new IllegalArgumentException("url 不能为空");
+        }
+        try {
+            URI uri = URI.create(imageUrl.trim());
+            String host = uri.getHost();
+            if (host == null || !host.equals(ALLOWED_FROM_URL_HOST)) {
+                throw new IllegalArgumentException("仅支持从阿里云 DashScope 结果域名拉取，当前 host: " + host);
+            }
+        } catch (Exception e) {
+            if (e instanceof IllegalArgumentException) throw (IllegalArgumentException) e;
+            throw new IllegalArgumentException("无效的 url: " + e.getMessage());
+        }
+
+        String p = (prefix != null && !prefix.isBlank()) ? prefix : "ai";
+        String key = buildKey(p, "ai-gen.png");
+        String bucket = defaultBucket;
+        ensureBucket(bucket);
+
+        String contentType = "image/png";
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) URI.create(imageUrl.trim()).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15_000);
+            conn.setReadTimeout(60_000);
+            conn.connect();
+            int code = conn.getResponseCode();
+            if (code < 200 || code >= 300) {
+                throw new RuntimeException("下载图片失败: HTTP " + code);
+            }
+            String ct = conn.getContentType();
+            if (ct != null && ct.toLowerCase().startsWith("image/")) {
+                contentType = ct;
+            }
+            try (InputStream in = conn.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                byte[] bytes = out.toByteArray();
+                minioClient.putObject(
+                        PutObjectArgs.builder()
+                                .bucket(bucket)
+                                .object(key)
+                                .stream(new java.io.ByteArrayInputStream(bytes), bytes.length, -1)
+                                .contentType(contentType)
+                                .build()
+                );
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("从 URL 拉取并上传失败: " + e.getMessage(), e);
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+
+        String url = "/api/objects/" + key + "?stream=1";
+        try {
+            long size = minioClient.statObject(StatObjectArgs.builder().bucket(bucket).object(key).build()).size();
+            return new ObjectMetaVO(key, url, size, contentType);
+        } catch (Exception e) {
+            return new ObjectMetaVO(key, url, 0, contentType);
+        }
     }
 }

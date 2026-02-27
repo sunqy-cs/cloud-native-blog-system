@@ -10,6 +10,8 @@ spring:
         server-addr: 127.0.0.1:8848
         username: nacos
         password: nacos
+        ip: 127.0.0.1
+        port: ${server.port}
   datasource:
     url: jdbc:mysql://localhost:3306/blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
