@@ -118,8 +118,8 @@
       </button>
     </div>
 
-    <!-- 主体：目录 | 编辑区 | AI助手 -->
-    <div class="write-body">
+    <!-- 主体：目录 | 编辑区 | AI助手（展开时正文区预留右侧空间，不挡纸） -->
+    <div class="write-body" :class="{ 'ai-panel-expanded': !aiSidebarCollapsed }">
       <aside class="toc-sidebar" :class="{ 'toc-sidebar-collapsed': tocSidebarCollapsed }">
         <div class="toc-header">
           <span>目录</span>
@@ -262,10 +262,27 @@
             <span class="ai-title-text">AI助手</span>
             <span class="ai-title-arrow">{{ aiSidebarCollapsed ? '〈' : '〉' }}</span>
           </div>
-          <div v-show="!aiSidebarCollapsed" class="ai-list">
-            <div class="ai-item">大纲生成</div>
-            <div class="ai-item">代码生成</div>
-            <div class="ai-item">学术搜索</div>
+          <div v-show="!aiSidebarCollapsed" class="ai-body">
+            <div class="ai-oneclick">
+              <div class="ai-oneclick-title">一键生成</div>
+              <el-select v-model="oneClickBotId" placeholder="选择机器人" class="ai-oneclick-select" clearable>
+                <el-option v-for="b in botListForWrite" :key="b.id" :label="b.name" :value="b.id" />
+              </el-select>
+              <el-input v-model="oneClickPrompt" type="textarea" :rows="3" placeholder="输入主题或描述，如：写一篇关于机器学习入门的知识梳理" class="ai-oneclick-prompt" />
+              <el-button type="primary" class="ai-oneclick-btn" :loading="oneClickGenerating" :disabled="!oneClickBotId || !oneClickPrompt.trim()" @click="onOneClickGenerate">
+                一键生成
+              </el-button>
+              <div class="ai-oneclick-steps">
+                <div v-for="(step, idx) in oneClickSteps" :key="step.key" class="ai-step" :class="step.status">
+                  <span class="ai-step-icon">
+                    <el-icon v-if="step.status === 'loading'" class="is-loading"><Loading /></el-icon>
+                    <el-icon v-else-if="step.status === 'done'" class="ai-step-done"><CircleCheck /></el-icon>
+                    <span v-else class="ai-step-pending">○</span>
+                  </span>
+                  <span class="ai-step-label">{{ step.label }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </aside>
@@ -298,6 +315,7 @@ import { saveDraft, getContentForEdit, publishContent } from '@/api/content'
 import { generateTitle, generateSummary, generateTags } from '@/api/ai'
 import { getColumnsMe, type ColumnItem } from '@/api/column'
 import { getMainTags, getOtherTags, type TagItem } from '@/api/tag'
+import { getBlogBotsMe, type BlogBotItem } from '@/api/blogBot'
 
 const userStore = useUserStore()
 const route = useRoute()
@@ -338,6 +356,19 @@ const otherTagList = ref<TagItem[]>([])
 const selectedOtherIds = ref<number[]>([])
 const aiGeneratedTagNames = ref<string[]>([])
 const aiTagsLoading = ref(false)
+
+// 一键生成：选择 bot、输入 prompt，依次生成正文/标题/封面/主标签，步骤打勾
+const botListForWrite = ref<BlogBotItem[]>([])
+const oneClickBotId = ref<number | undefined>(undefined)
+const oneClickPrompt = ref('')
+const oneClickGenerating = ref(false)
+const ONE_CLICK_STEP_KEYS = ['body', 'title', 'cover', 'mainTag'] as const
+const oneClickSteps = ref<{ key: string; label: string; status: 'pending' | 'loading' | 'done' }[]>([
+  { key: 'body', label: '正文', status: 'pending' },
+  { key: 'title', label: '标题', status: 'pending' },
+  { key: 'cover', label: '封面', status: 'pending' },
+  { key: 'mainTag', label: '主标签', status: 'pending' },
+])
 
 const sectionOwners = computed(() => {
   const list = tocList.value
@@ -536,11 +567,82 @@ async function onAiGenerateTags() {
   }
 }
 
+function setOneClickStepStatus(key: string, status: 'pending' | 'loading' | 'done') {
+  const step = oneClickSteps.value.find((s) => s.key === key)
+  if (step) step.status = status
+}
+
+async function onOneClickGenerate() {
+  const botId = oneClickBotId.value
+  const prompt = oneClickPrompt.value.trim()
+  if (!botId || !prompt) return
+  const bot = botListForWrite.value.find((b) => b.id === botId)
+  if (!bot) return
+  oneClickGenerating.value = true
+  oneClickSteps.value = [
+    { key: 'body', label: '正文', status: 'pending' },
+    { key: 'title', label: '标题', status: 'pending' },
+    { key: 'cover', label: '封面', status: 'pending' },
+    { key: 'mainTag', label: '主标签', status: 'pending' },
+  ]
+  const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+  try {
+    // 1. 正文（前端模拟：根据 prompt 生成占位正文，后续可接 AI 接口）
+    setOneClickStepStatus('body', 'loading')
+    await delay(600)
+    const mockBody = `# ${prompt}\n\n> 根据「${prompt}」生成的内容（一键生成）。\n\n此处为正文占位，后续将接入 AI 生成接口，可按需继续编辑。\n\n## 要点\n\n- 第一点\n- 第二点\n- 第三点\n\n## 小结\n\n总结上述内容。`
+    if (vditor) {
+      vditor.updateValue(mockBody)
+      updateTocFromMarkdown(mockBody)
+    }
+    setOneClickStepStatus('body', 'done')
+
+    // 2. 标题（调用现有 AI 标题接口）
+    setOneClickStepStatus('title', 'loading')
+    const bodyForTitle = getMarkdownValue().trim().slice(0, 2000)
+    try {
+      const titleRes = await generateTitle(bodyForTitle)
+      const t = titleRes?.title?.trim()
+      if (t) title.value = t.length > 100 ? t.slice(0, 100) : t
+    } catch {
+      title.value = prompt.slice(0, 50) || '未命名'
+    }
+    setOneClickStepStatus('title', 'done')
+
+    // 3. 封面（调用现有 AI 封面接口）
+    setOneClickStepStatus('cover', 'loading')
+    const bodyForCover = getMarkdownValue().trim().slice(0, 2000)
+    if (bodyForCover) {
+      try {
+        const coverRes = await generateCover(bodyForCover)
+        if (coverRes?.url) cover.value = coverRes.url
+      } catch {
+        // 保留原封面或留空
+      }
+    }
+    setOneClickStepStatus('cover', 'done')
+
+    // 4. 主标签（使用 bot 的主标签）
+    setOneClickStepStatus('mainTag', 'loading')
+    await delay(150)
+    if (bot.mainTagId != null) mainTagId.value = bot.mainTagId
+    setOneClickStepStatus('mainTag', 'done')
+
+    ElMessage.success('一键生成完成')
+  } catch (e) {
+    ElMessage.error('生成过程中出错，请重试')
+    throw e
+  } finally {
+    oneClickGenerating.value = false
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     getColumnsMe().then((list) => { columnList.value = list ?? [] }),
     getMainTags().then((list) => { mainTagList.value = list ?? [] }),
     getOtherTags().then((list) => { otherTagList.value = list ?? [] }),
+    getBlogBotsMe().then((list) => { botListForWrite.value = list ?? [] }),
   ])
   let initialBody = ''
   const idParam = route.query.id
@@ -1190,8 +1292,13 @@ const avatarInitial = computed(() => {
 .editor-main {
   min-width: 0;
   padding: 24px 32px;
-  /* 预留左右浮窗位置，避免内容被遮挡 */
-  margin: 0 220px 0 260px;
+  /* 左侧预留目录；右侧预留 AI 助手（折叠 48px / 展开 300px，由 .ai-panel-expanded 控制） */
+  margin: 0 48px 0 260px;
+  transition: margin-right 0.2s ease;
+}
+
+.write-body.ai-panel-expanded .editor-main {
+  margin-right: 300px;
 }
 
 .editor-paper {
@@ -1512,76 +1619,181 @@ const avatarInitial = computed(() => {
   flex-wrap: wrap;
 }
 
+/* AI 助手卡片：BBC 风格，折叠时不挡页面（仅留窄条） */
 .ai-sidebar {
   position: fixed;
   top: 112px;
-  right: 24px;
-  width: 220px;
+  right: 0;
+  width: 300px;
+  max-width: calc(100vw - 24px);
   padding: 0;
-  border-left: none;
   background: transparent;
-  transition: width 0.2s ease;
+  transition: width 0.2s ease, right 0.2s ease;
   z-index: 30;
 }
 
 .ai-sidebar-collapsed {
-  width: 150px;
+  width: 48px;
+}
+
+.ai-sidebar-collapsed .ai-card {
+  border-radius: 8px 0 0 8px;
+  padding: 10px 8px;
+}
+
+.ai-sidebar-collapsed .ai-header {
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.ai-sidebar-collapsed .ai-title-text,
+.ai-sidebar-collapsed .ai-body {
+  display: none;
+}
+
+.ai-sidebar-collapsed .ai-title-arrow {
+  margin-left: 0;
+  transform: rotate(180deg);
 }
 
 .ai-card {
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow:
-    0 10px 30px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(15, 23, 42, 0.04);
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  padding: 14px 16px;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.04);
+  min-height: 120px;
 }
 
 .ai-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
+  padding: 2px 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+  padding-bottom: 10px;
 }
 
 .ai-logo {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
   background: linear-gradient(135deg, #dc2626, #b91c1c);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.02em;
   color: #fff;
+  flex-shrink: 0;
 }
 
 .ai-title-text {
   font-size: 14px;
-  font-weight: 600;
-  color: #111827;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.01em;
 }
 
 .ai-title-arrow {
   margin-left: auto;
-  font-size: 14px;
-  color: #9ca3af;
-}
-
-.ai-list {
-  margin-top: 10px;
-}
-
-.ai-item {
-  font-size: 13px;
+  font-size: 12px;
   color: #666;
-  padding: 6px 0;
-  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.ai-item:hover {
-  color: #111;
+.ai-body {
+  margin-top: 0;
+}
+
+.ai-oneclick {
+  margin-top: 0;
+  padding-top: 0;
+}
+.ai-oneclick-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.ai-oneclick-select {
+  width: 100%;
+  margin-bottom: 8px;
+}
+.ai-oneclick-select :deep(.el-input__wrapper) {
+  border-radius: 4px;
+  border: 1px solid #b3b3b3;
+  background: #fff;
+  box-shadow: none;
+}
+.ai-oneclick-prompt {
+  margin-bottom: 10px;
+}
+.ai-oneclick-prompt :deep(.el-textarea__inner) {
+  border-radius: 4px;
+  border: 1px solid #b3b3b3;
+  font-size: 12px;
+  min-height: 64px;
+  background: #fff;
+}
+.ai-oneclick-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+}
+.ai-oneclick-btn:hover {
+  background: #333;
+  border-color: #333;
+}
+.ai-oneclick-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ai-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #4d4d4d;
+}
+.ai-step.loading .ai-step-label {
+  color: #1a1a1a;
+}
+.ai-step.done .ai-step-label {
+  color: #1a1a1a;
+  font-weight: 500;
+}
+.ai-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.ai-step-icon .el-icon.is-loading {
+  font-size: 14px;
+  color: #1a1a1a;
+}
+.ai-step-done {
+  font-size: 14px;
+  color: #1a1a1a;
+}
+.ai-step-pending {
+  font-size: 12px;
+  color: #b3b3b3;
 }
 
 .write-footer {

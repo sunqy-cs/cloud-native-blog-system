@@ -423,6 +423,9 @@
                 <div class="blog-bot-item-name">{{ bot.name }}</div>
                 <div class="blog-bot-item-meta">风格：{{ BOT_STYLE_LABELS[bot.style] || bot.style }} · 主标签：{{ bot.mainTagName || '未设置' }}</div>
               </div>
+              <button type="button" class="blog-bot-item-delete" title="删除" @click="onDeleteBot(bot)">
+                <el-icon><Delete /></el-icon>
+              </button>
             </article>
           </div>
         </div>
@@ -618,7 +621,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading } from '@element-plus/icons-vue'
+import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete } from '@element-plus/icons-vue'
 import { getContentMeStats, getContentsMe } from '@/api/content'
 import type { ContentMeStats, ContentListItem } from '@/api/content'
 import { getCommentedArticles, getContentComments, setCommentHot } from '@/api/comment'
@@ -627,9 +630,9 @@ import { getFollowMe } from '@/api/follow'
 import type { FollowStats } from '@/api/follow'
 import { getColumnsMe, createColumn, type ColumnItem } from '@/api/column'
 import { getMainTags, type TagItem } from '@/api/tag'
-import { getBlogBotsMe, createBlogBot, type BlogBotItem } from '@/api/blogBot'
+import { getBlogBotsMe, createBlogBot, deleteBlogBot, type BlogBotItem } from '@/api/blogBot'
 import { uploadImage } from '@/api/upload'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
 const contentManageOpen = ref(true)
@@ -812,6 +815,21 @@ async function submitCreateBot() {
   } finally {
     createBotSubmitting.value = false
   }
+}
+function onDeleteBot(bot: BlogBotItem) {
+  ElMessageBox.confirm(`确定要删除「${bot.name}」吗？删除后不可恢复。`, '删除机器人', {
+    type: 'warning',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+  })
+    .then(() => deleteBlogBot(bot.id))
+    .then(() => {
+      botList.value = botList.value.filter((b) => b.id !== bot.id)
+      ElMessage.success('已删除')
+    })
+    .catch((err) => {
+      if (err !== 'cancel') throw err
+    })
 }
 
 // 专栏封面裁剪：比例与列表展示一致 120:84（约 10:7）
@@ -2336,7 +2354,22 @@ const avatarInitial = computed(() => {
   flex-shrink: 0;
 }
 .blog-bot-item-body {
+  flex: 1;
   min-width: 0;
+}
+.blog-bot-item-delete {
+  flex-shrink: 0;
+  padding: 6px;
+  color: #999;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+.blog-bot-item-delete:hover {
+  color: #b31b1b;
+  background: #fef0f0;
 }
 .blog-bot-item-name {
   font-size: 15px;

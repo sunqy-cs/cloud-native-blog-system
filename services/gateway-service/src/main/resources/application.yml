@@ -52,9 +52,9 @@ spring:
           predicates:
             - Path=/api/columns/**
           order: 3
-        # 内容服务：博客机器人
-        - id: content-service-blog-bots
-          uri: lb://content-service
+        # AI 服务：博客机器人
+        - id: ai-service-blog-bots
+          uri: lb://ai-service
           predicates:
             - Path=/api/blog-bots/**
           order: 3

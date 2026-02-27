@@ -35,3 +35,10 @@ export function getBlogBotsMe(): Promise<BlogBotItem[]> {
 export function createBlogBot(body: CreateBlogBotBody): Promise<BlogBotItem> {
   return request.post('blog-bots', body).then((data) => (data as unknown) as BlogBotItem)
 }
+
+/**
+ * 删除博客机器人
+ */
+export function deleteBlogBot(id: number): Promise<void> {
+  return request.delete(`blog-bots/${id}`).then(() => undefined)
+}

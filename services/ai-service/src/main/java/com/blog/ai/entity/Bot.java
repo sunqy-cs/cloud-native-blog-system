@@ -1,4 +1,4 @@
-package com.blog.content.entity;
+package com.blog.ai.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -8,8 +8,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("blog_bot")
-public class BlogBot {
+@TableName("bot")
+public class Bot {
 
     @TableId(type = IdType.AUTO)
     private Long id;

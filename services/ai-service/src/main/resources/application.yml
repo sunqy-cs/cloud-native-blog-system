@@ -10,6 +10,18 @@ spring:
         server-addr: ${NACOS_SERVER:127.0.0.1:8848}
         username: nacos
         password: nacos
+  datasource:
+    url: jdbc:mysql://localhost:3306/blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
 
 # DeepSeek API（与 OpenAI 兼容），API Key 请通过环境变量 DEEPSEEK_API_KEY 配置，勿写入仓库
 app:

@@ -2,7 +2,7 @@
 SET NAMES utf8mb4;
 USE blog;
 
-CREATE TABLE IF NOT EXISTS `blog_bot` (
+CREATE TABLE IF NOT EXISTS `bot` (
     `id`                   BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
     `user_id`              BIGINT       NOT NULL COMMENT '所属用户',
     `name`                 VARCHAR(128) NOT NULL COMMENT '机器人名称',
@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS `blog_bot` (
     `created_at`           DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at`           DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    KEY `idx_blog_bot_user_id` (`user_id`),
-    KEY `idx_blog_bot_main_tag_id` (`main_tag_id`),
-    CONSTRAINT `fk_blog_bot_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
-    CONSTRAINT `fk_blog_bot_main_tag` FOREIGN KEY (`main_tag_id`) REFERENCES `tag` (`id`) ON DELETE SET NULL
+    KEY `idx_bot_user_id` (`user_id`),
+    KEY `idx_bot_main_tag_id` (`main_tag_id`),
+    CONSTRAINT `fk_bot_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_bot_main_tag` FOREIGN KEY (`main_tag_id`) REFERENCES `tag` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='博客机器人表';

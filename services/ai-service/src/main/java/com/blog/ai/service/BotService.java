@@ -1,12 +1,12 @@
-package com.blog.content.service;
+package com.blog.ai.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.blog.content.dto.BlogBotVO;
-import com.blog.content.dto.CreateBlogBotRequest;
-import com.blog.content.entity.BlogBot;
-import com.blog.content.entity.Tag;
-import com.blog.content.mapper.BlogBotMapper;
-import com.blog.content.mapper.TagMapper;
+import com.blog.ai.dto.BotVO;
+import com.blog.ai.dto.CreateBotRequest;
+import com.blog.ai.entity.Bot;
+import com.blog.ai.entity.Tag;
+import com.blog.ai.mapper.BotMapper;
+import com.blog.ai.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,25 +18,25 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-public class BlogBotService {
+public class BotService {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private final BlogBotMapper blogBotMapper;
+    private final BotMapper botMapper;
     private final TagMapper tagMapper;
 
-    public List<BlogBotVO> listMyBots(Long userId) {
-        LambdaQueryWrapper<BlogBot> q = new LambdaQueryWrapper<>();
-        q.eq(BlogBot::getUserId, userId)
-                .orderByDesc(BlogBot::getUpdatedAt)
-                .orderByDesc(BlogBot::getCreatedAt);
-        List<BlogBot> list = blogBotMapper.selectList(q);
+    public List<BotVO> listMyBots(Long userId) {
+        LambdaQueryWrapper<Bot> q = new LambdaQueryWrapper<>();
+        q.eq(Bot::getUserId, userId)
+                .orderByDesc(Bot::getUpdatedAt)
+                .orderByDesc(Bot::getCreatedAt);
+        List<Bot> list = botMapper.selectList(q);
         return list.stream()
                 .map(this::toVO)
                 .collect(Collectors.toList());
     }
 
-    public BlogBotVO createBot(Long userId, CreateBlogBotRequest request) {
+    public BotVO createBot(Long userId, CreateBotRequest request) {
         String name = request.getName() != null ? request.getName().trim() : "";
         if (name.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "机器人名称不能为空");
@@ -50,7 +50,7 @@ public class BlogBotService {
         String wordCountPreference = request.getWordCountPreference() != null && !request.getWordCountPreference().trim().isEmpty()
                 ? request.getWordCountPreference().trim() : "medium";
 
-        BlogBot bot = new BlogBot();
+        Bot bot = new Bot();
         bot.setUserId(userId);
         bot.setName(name);
         bot.setAvatar(request.getAvatar() != null && !request.getAvatar().trim().isEmpty() ? request.getAvatar().trim() : null);
@@ -58,13 +58,24 @@ public class BlogBotService {
         bot.setMainTagId(request.getMainTagId());
         bot.setSummaryStyle(summaryStyle);
         bot.setWordCountPreference(wordCountPreference);
-        blogBotMapper.insert(bot);
-        BlogBot saved = blogBotMapper.selectById(bot.getId());
+        botMapper.insert(bot);
+        Bot saved = botMapper.selectById(bot.getId());
         return toVO(saved != null ? saved : bot);
     }
 
-    private BlogBotVO toVO(BlogBot b) {
-        BlogBotVO vo = new BlogBotVO();
+    public void deleteBot(Long userId, Long botId) {
+        if (botId == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "机器人不存在");
+        }
+        Bot bot = botMapper.selectById(botId);
+        if (bot == null || !userId.equals(bot.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "机器人不存在或无权删除");
+        }
+        botMapper.deleteById(botId);
+    }
+
+    private BotVO toVO(Bot b) {
+        BotVO vo = new BotVO();
         vo.setId(b.getId());
         vo.setName(b.getName());
         vo.setAvatar(b.getAvatar());
