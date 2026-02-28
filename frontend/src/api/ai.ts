@@ -27,3 +27,21 @@ export function generateTags(body: string): Promise<{ tagNames: string[] }> {
 export function generateCover(body: string): Promise<{ url: string }> {
   return request.post('ai/cover', { body }).then((data) => data as unknown as { url: string })
 }
+
+/**
+ * 一键生成：根据 bot 与 prompt 生成正文、标题、摘要、小标签、封面、主标签
+ */
+export interface OneClickGenerateResult {
+  body: string
+  title: string
+  summary: string
+  tagNames: string[]
+  coverUrl: string | null
+  mainTagId: number | null
+}
+
+export function oneClickGenerate(botId: number, prompt: string): Promise<OneClickGenerateResult> {
+  return request
+    .post('ai/one-click-generate', { botId, prompt }, { timeout: 200000 })
+    .then((data) => (data as unknown) as OneClickGenerateResult)
+}

@@ -261,7 +261,7 @@
 | cover             | string   | 否   | 封面图 URL |
 | columnId          | number   | 否   | 所属专栏 ID |
 | articleType       | string   | 否   | 文章类型：ORIGINAL-原创 / REPRINT-转载 / TRANSLATED-翻译，默认 ORIGINAL |
-| creationStatement | string   | 否   | 创作声明：none-无声明 / ai-assisted-AI辅助 / network-网络 / personal-个人，默认 none |
+| creationStatement | string   | 否   | 创作声明（可选，不强制）：none-无声明 / ai-assisted-部分内容由AI辅助生成 / network-内容来源网络 / personal-个人观点仅供参考，默认 none |
 | visibility        | string   | 否   | 可见范围：ALL-全部可见 / SELF-仅我可见 / FANS-粉丝可见，默认 ALL |
 | tagNames          | string[] | 否   | 文章标签名称列表，最多 5 个。保存时后端按名称查询标签，不存在则创建（is_main=0）再建立 content_tag 关联 |
 
@@ -1147,6 +1147,48 @@
 | url  | string | 封面图在 MinIO 上的访问路径，前端可直接用作封面地址 |
 
 **错误**：若 `body` 为空或仅空白，返回 `400 Bad Request`；若 AI 或 file-service 不可用，返回 `502`/`503`。
+
+---
+
+### 一键生成（正文、标题、封面、主标签）
+
+**`POST /api/ai/one-click-generate`**
+
+需要认证。根据所选博客机器人（bot）与用户输入的 prompt，依次生成：正文（Markdown）、标题、封面图 URL、主标签 ID。用于创作页「一键生成」：选择机器人、输入主题后一次性拉取并回填到编辑区。请求头需携带 `X-User-Id`（网关下发）；仅能使用当前用户自己创建的 bot。
+
+**Request Body**:
+
+```json
+{
+  "botId": 1,
+  "prompt": "写一篇关于机器学习入门的知识梳理"
+}
+```
+
+| 字段   | 类型   | 必填 | 说明 |
+|--------|--------|------|------|
+| botId  | number | 是   | 博客机器人 ID，须属于当前用户 |
+| prompt | string | 是   | 主题或描述，如「写一篇关于…」 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "body": "# 机器学习入门\n\n...",
+  "title": "机器学习入门：从零开始的知识梳理",
+  "coverUrl": "/api/objects/ai/xxx.png?stream=1",
+  "mainTagId": 1
+}
+```
+
+| 字段      | 类型   | 说明 |
+|-----------|--------|------|
+| body      | string | 生成的正文（Markdown），可直接写入编辑器 |
+| title     | string | 生成的标题 |
+| coverUrl  | string | 封面图 URL，可为 null（生成失败时） |
+| mainTagId  | number | 机器人配置的主标签 ID，可为 null |
+
+**错误**：`400` 参数缺失或无效；`404` bot 不存在或不属于当前用户；`502`/`503` AI 或下游服务不可用。
 
 ---
 

@@ -235,8 +235,8 @@
             </div>
 
             <div class="setting-row">
-              <label class="setting-label">创作声明</label>
-              <el-select v-model="creationStatement" placeholder="无声明" class="setting-select">
+              <label class="setting-label">创作声明 <el-tooltip content="可选，不强制选择" placement="top"><el-icon class="setting-help"><QuestionFilled /></el-icon></el-tooltip></label>
+              <el-select v-model="creationStatement" placeholder="部分内容由AI辅助生成（可选）" class="setting-select" clearable>
                 <el-option label="无声明" value="none" />
                 <el-option label="部分内容由AI辅助生成" value="ai-assisted" />
                 <el-option label="内容来源网络，进行整合/再创作" value="network" />
@@ -312,7 +312,7 @@ import 'vditor/dist/index.css'
 import { uploadImage } from '@/api/upload'
 import { generateCover } from '@/api/ai'
 import { saveDraft, getContentForEdit, publishContent } from '@/api/content'
-import { generateTitle, generateSummary, generateTags } from '@/api/ai'
+import { generateTitle, generateSummary, generateTags, oneClickGenerate } from '@/api/ai'
 import { getColumnsMe, type ColumnItem } from '@/api/column'
 import { getMainTags, getOtherTags, type TagItem } from '@/api/tag'
 import { getBlogBotsMe, type BlogBotItem } from '@/api/blogBot'
@@ -362,10 +362,12 @@ const botListForWrite = ref<BlogBotItem[]>([])
 const oneClickBotId = ref<number | undefined>(undefined)
 const oneClickPrompt = ref('')
 const oneClickGenerating = ref(false)
-const ONE_CLICK_STEP_KEYS = ['body', 'title', 'cover', 'mainTag'] as const
+const ONE_CLICK_STEP_KEYS = ['body', 'title', 'summary', 'tagNames', 'cover', 'mainTag'] as const
 const oneClickSteps = ref<{ key: string; label: string; status: 'pending' | 'loading' | 'done' }[]>([
   { key: 'body', label: '正文', status: 'pending' },
   { key: 'title', label: '标题', status: 'pending' },
+  { key: 'summary', label: '摘要', status: 'pending' },
+  { key: 'tagNames', label: '小标签', status: 'pending' },
   { key: 'cover', label: '封面', status: 'pending' },
   { key: 'mainTag', label: '主标签', status: 'pending' },
 ])
@@ -576,56 +578,56 @@ async function onOneClickGenerate() {
   const botId = oneClickBotId.value
   const prompt = oneClickPrompt.value.trim()
   if (!botId || !prompt) return
-  const bot = botListForWrite.value.find((b) => b.id === botId)
-  if (!bot) return
   oneClickGenerating.value = true
   oneClickSteps.value = [
     { key: 'body', label: '正文', status: 'pending' },
     { key: 'title', label: '标题', status: 'pending' },
+    { key: 'summary', label: '摘要', status: 'pending' },
+    { key: 'tagNames', label: '小标签', status: 'pending' },
     { key: 'cover', label: '封面', status: 'pending' },
     { key: 'mainTag', label: '主标签', status: 'pending' },
   ]
   const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
   try {
-    // 1. 正文（前端模拟：根据 prompt 生成占位正文，后续可接 AI 接口）
     setOneClickStepStatus('body', 'loading')
-    await delay(600)
-    const mockBody = `# ${prompt}\n\n> 根据「${prompt}」生成的内容（一键生成）。\n\n此处为正文占位，后续将接入 AI 生成接口，可按需继续编辑。\n\n## 要点\n\n- 第一点\n- 第二点\n- 第三点\n\n## 小结\n\n总结上述内容。`
-    if (vditor) {
-      vditor.updateValue(mockBody)
-      updateTocFromMarkdown(mockBody)
+    const res = await oneClickGenerate(botId, prompt)
+    if (res.body && vditor) {
+      vditor.setValue(res.body, true)
+      updateTocFromMarkdown(res.body)
     }
     setOneClickStepStatus('body', 'done')
+    await delay(120)
 
-    // 2. 标题（调用现有 AI 标题接口）
     setOneClickStepStatus('title', 'loading')
-    const bodyForTitle = getMarkdownValue().trim().slice(0, 2000)
-    try {
-      const titleRes = await generateTitle(bodyForTitle)
-      const t = titleRes?.title?.trim()
-      if (t) title.value = t.length > 100 ? t.slice(0, 100) : t
-    } catch {
-      title.value = prompt.slice(0, 50) || '未命名'
-    }
+    await delay(80)
+    if (res.title) title.value = res.title.length > 100 ? res.title.slice(0, 100) : res.title
     setOneClickStepStatus('title', 'done')
+    await delay(120)
 
-    // 3. 封面（调用现有 AI 封面接口）
-    setOneClickStepStatus('cover', 'loading')
-    const bodyForCover = getMarkdownValue().trim().slice(0, 2000)
-    if (bodyForCover) {
-      try {
-        const coverRes = await generateCover(bodyForCover)
-        if (coverRes?.url) cover.value = coverRes.url
-      } catch {
-        // 保留原封面或留空
-      }
+    setOneClickStepStatus('summary', 'loading')
+    await delay(80)
+    if (res.summary) summary.value = res.summary.length > 256 ? res.summary.slice(0, 256) : res.summary
+    setOneClickStepStatus('summary', 'done')
+    await delay(120)
+
+    setOneClickStepStatus('tagNames', 'loading')
+    await delay(80)
+    if (Array.isArray(res.tagNames) && res.tagNames.length > 0) {
+      selectedOtherIds.value = []
+      aiGeneratedTagNames.value = res.tagNames.slice(0, 5)
     }
-    setOneClickStepStatus('cover', 'done')
+    setOneClickStepStatus('tagNames', 'done')
+    await delay(120)
 
-    // 4. 主标签（使用 bot 的主标签）
+    setOneClickStepStatus('cover', 'loading')
+    await delay(80)
+    if (res.coverUrl) cover.value = res.coverUrl
+    setOneClickStepStatus('cover', 'done')
+    await delay(120)
+
     setOneClickStepStatus('mainTag', 'loading')
-    await delay(150)
-    if (bot.mainTagId != null) mainTagId.value = bot.mainTagId
+    await delay(80)
+    if (res.mainTagId != null) mainTagId.value = res.mainTagId
     setOneClickStepStatus('mainTag', 'done')
 
     ElMessage.success('一键生成完成')
@@ -739,7 +741,7 @@ function onSaveDraft() {
     cover: cover.value?.trim() || undefined,
     columnId: columnId.value,
     articleType: articleTypeMap[articleType.value],
-    creationStatement: creationStatement.value,
+    creationStatement: creationStatement.value || undefined,
     visibility: visibilityMap[visibility.value],
     tagNames: buildTagNames(),
   })
@@ -772,7 +774,7 @@ function onPublish() {
     cover: cover.value?.trim() || undefined,
     columnId: columnId.value,
     articleType: articleTypeMap[articleType.value],
-    creationStatement: creationStatement.value,
+    creationStatement: creationStatement.value || undefined,
     visibility: visibilityMap[visibility.value],
     tagNames: buildTagNames(),
   }
