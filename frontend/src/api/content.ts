@@ -30,6 +30,8 @@ export interface ContentsMeParams {
   order?: 'asc' | 'desc'
   /** 搜索关键词：模糊匹配标题、摘要、标签 */
   q?: string
+  /** 按专栏 ID 筛选（博客页 HOME=不传，点专栏=传该专栏 id，便于扩展按用户后也可用） */
+  columnId?: number
 }
 
 /** 创作者中心：当前用户内容汇总统计及昨日增长 */

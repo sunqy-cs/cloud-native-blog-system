@@ -1,32 +1,18 @@
 <template>
   <div class="blog-page">
-    <!-- 顶部栏下方：Home + 标签行（最多 5 个 + ... 折叠） -->
+    <!-- 顶部导航：HOME（默认左侧且默认选中）+ 该用户的专栏名；支持 userId 便于以后查看他人博客 -->
     <nav class="blog-sub-nav">
       <div class="blog-sub-nav-inner" ref="subNavWrapperRef">
-        <router-link to="/blog" class="sub-nav-item sub-nav-home" :class="{ active: !currentTagId }">Home</router-link>
-        <template v-for="(tag, index) in visibleTags" :key="tag.id">
-          <router-link
-            :to="tagRoute(tag)"
-            class="sub-nav-item"
-            :class="{ active: currentTagId === tag.id }"
-          >
-            {{ tag.name }}
-          </router-link>
-        </template>
-        <el-dropdown v-if="moreTags.length > 0" trigger="click" @command="onTagCommand">
-          <span class="sub-nav-item sub-nav-more">...</span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item
-                v-for="tag in moreTags"
-                :key="tag.id"
-                :command="tag"
-              >
-                {{ tag.name }}
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <router-link :to="blogNavQuery({ columnId: undefined })" class="sub-nav-item sub-nav-home" :class="{ active: !currentColumnId }">HOME</router-link>
+        <router-link
+          v-for="col in navColumns"
+          :key="col.id"
+          :to="blogNavQuery({ columnId: col.id })"
+          class="sub-nav-item"
+          :class="{ active: currentColumnId === col.id }"
+        >
+          {{ col.name }}
+        </router-link>
         <div class="sub-nav-indicator" :style="subNavIndicatorStyle"></div>
       </div>
     </nav>
@@ -108,7 +94,7 @@
                   <h4 class="article-item-title">{{ item.title }}</h4>
                   <p v-if="item.summary" class="article-item-summary">{{ item.summary }}</p>
                   <div class="article-item-meta">
-                    {{ item.author.nickname }} · {{ formatDate(item.createdAt) }}
+                    {{ formatDate(item.createdAt) }}
                   </div>
                 </div>
                 <div class="article-item-cover">
@@ -121,31 +107,54 @@
         </main>
         <aside class="blog-sidebar-wrap">
           <div class="blog-sidebar-inner">
-        <div class="sidebar-block subscribe-block">
-          <div class="subscribe-header">
-            <div class="subscribe-avatar">
-              <span class="avatar-initial">博</span>
+        <div class="sidebar-block author-card-block">
+          <div class="author-card-header">
+            <div class="author-card-avatar">
+              <img v-if="blogAuthor?.avatar" :src="blogAuthor.avatar" :alt="blogAuthor.nickname || blogAuthor.username" class="author-avatar-img" />
+              <span v-else class="avatar-initial">{{ authorInitial }}</span>
             </div>
-            <div class="subscribe-info">
-              <span class="subscribe-name">云原生博客</span>
-              <span class="subscribe-desc">stay relevant</span>
+            <div class="author-card-info">
+              <span class="author-card-name">{{ blogAuthor?.nickname || blogAuthor?.username || '—' }}</span>
+              <template v-if="authorDetailCollapsed">
+                <span v-if="blogAuthor?.intro" class="author-card-desc">{{ blogAuthor.intro }}</span>
+                <span v-else-if="blogAuthor?.bio" class="author-card-desc">{{ blogAuthor.bio }}</span>
+                <span v-else class="author-card-desc">欢迎来到我的博客</span>
+              </template>
+              <template v-else>
+                <p v-if="blogAuthor?.residence" class="author-detail-line">
+                  <el-icon class="author-detail-icon"><Location /></el-icon>
+                  <span class="author-detail-label">居住地</span>{{ blogAuthor.residence }}
+                </p>
+                <p v-if="blogAuthor?.industry" class="author-detail-line">
+                  <el-icon class="author-detail-icon"><Briefcase /></el-icon>
+                  <span class="author-detail-label">所在行业</span>{{ blogAuthor.industry }}
+                </p>
+                <p v-if="blogAuthor?.gender" class="author-detail-line">
+                  <el-icon class="author-detail-icon"><User /></el-icon>
+                  <span class="author-detail-label">性别</span>{{ blogAuthor.gender }}
+                </p>
+                <p v-if="blogAuthor?.bio" class="author-detail-line author-detail-bio">
+                  <el-icon class="author-detail-icon"><Document /></el-icon>
+                  <span class="author-detail-label">简介</span>{{ blogAuthor.bio }}
+                </p>
+              </template>
+              <button v-if="blogAuthor" type="button" class="author-toggle-detail" @click="authorDetailCollapsed = !authorDetailCollapsed">
+                <el-icon><component :is="authorDetailCollapsed ? ArrowDown : ArrowUp" /></el-icon>
+                {{ authorDetailCollapsed ? '查看' : '收起' }}详细资料
+              </button>
             </div>
           </div>
-          <div class="subscribe-form">
-            <el-input v-model="subscribeEmail" placeholder="输入邮箱" size="default" />
-            <el-button type="primary" class="subscribe-btn" @click="onSubscribe">Subscribe</el-button>
-          </div>
-          <el-button text class="unsubscribe-btn">Unsubscribe</el-button>
+          <router-link :to="profileLink" class="btn-goto-profile">进入个人主页</router-link>
         </div>
 
         <div class="sidebar-block recommendations-block">
           <div class="section-head">
             <h3 class="section-title">专栏</h3>
-            <router-link to="/knowledge" class="section-link">VIEW ALL {{ columns.length }}</router-link>
+            <router-link :to="blogNavQuery({ columnId: undefined })" class="section-link">全部</router-link>
           </div>
           <ul class="column-list">
-            <li v-for="col in columns" :key="col.id" class="column-item">
-              <router-link :to="`/knowledge?column=${col.id}`">
+            <li v-for="col in navColumns" :key="col.id" class="column-item">
+              <router-link :to="blogNavQuery({ columnId: col.id })">
                 <span class="column-name">{{ col.name }}</span>
                 <span v-if="col.articleCount != null" class="column-count">{{ col.articleCount }} 篇</span>
               </router-link>
@@ -162,41 +171,61 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowRight, Search } from '@element-plus/icons-vue'
-import {
-  getBlogTags,
-  getCarouselArticles,
-  getPopularArticles,
-  getArticleList,
-  getColumns,
-  type ArticleItem,
-  type TagItem,
-  type ColumnItem,
-} from '@/api/blog'
+import { useUserStore } from '@/stores/user'
+import { ArrowRight, Search, ArrowDown, ArrowUp, Location, Briefcase, User, Document } from '@element-plus/icons-vue'
+import { getCarouselArticles, getPopularArticles, type ArticleItem } from '@/api/blog'
+import { getColumnsMe, type ColumnItem } from '@/api/column'
+import { getContentsMe, type ContentListItem } from '@/api/content'
+import { getMe, type UserMe } from '@/api/user'
 
 const route = useRoute()
 const router = useRouter()
-const MAX_VISIBLE_TAGS = 5
+const userStore = useUserStore()
 
-const tags = ref<TagItem[]>([])
+/** 当前博客所属用户 id（今后查看他人博客时用 query.userId，未传则为自己） */
+const blogUserId = computed(() => {
+  const q = route.query.userId as string | undefined
+  if (q) return Number(q)
+  return userStore.userInfo?.id ?? null
+})
+
 const carouselList = ref<ArticleItem[]>([])
 const popularList = ref<ArticleItem[]>([])
-const articleList = ref<ArticleItem[]>([])
-const columns = ref<ColumnItem[]>([])
-const subscribeEmail = ref('')
+const articleList = ref<ContentListItem[]>([])
+const navColumns = ref<ColumnItem[]>([])
+const blogAuthor = ref<UserMe | null>(null)
+const authorDetailCollapsed = ref(true)
 const listTab = ref('latest')
 
-const currentTagId = computed(() => (route.query.tag as string) || '')
+/** 博客作者名称首字（无头像时展示） */
+const authorInitial = computed(() => {
+  const a = blogAuthor.value
+  if (!a) return '—'
+  const name = a.nickname || a.username || ''
+  return name.charAt(0) || '—'
+})
 
-const visibleTags = computed(() => tags.value.slice(0, MAX_VISIBLE_TAGS))
-const moreTags = computed(() => tags.value.slice(MAX_VISIBLE_TAGS))
+/** 个人主页链接（当前为自己；今后可扩展为他人 /profile?userId=） */
+const profileLink = computed(() => {
+  const uid = blogUserId.value
+  if (uid != null && route.query.userId != null) return { path: '/profile', query: { userId: String(uid) } }
+  return { path: '/profile' }
+})
 
-function tagRoute(tag: TagItem) {
-  return { path: '/blog', query: { tag: tag.id } }
-}
+/** 当前选中的专栏 id（来自 query.columnId），空表示 HOME */
+const currentColumnId = computed(() => {
+  const q = route.query.columnId as string | undefined
+  if (!q) return undefined
+  const n = Number(q)
+  return Number.isNaN(n) ? undefined : n
+})
 
-function onTagCommand(tag: TagItem) {
-  router.push(tagRoute(tag))
+/** 生成博客顶栏/侧栏链接的 query，便于扩展 userId */
+function blogNavQuery(opts: { columnId?: number }) {
+  const query: Record<string, string> = {}
+  if (blogUserId.value != null && route.query.userId != null) query.userId = String(blogUserId.value)
+  if (opts.columnId != null) query.columnId = String(opts.columnId)
+  return { path: '/blog', query: Object.keys(query).length ? query : {} }
 }
 
 function formatDate(str: string) {
@@ -205,26 +234,32 @@ function formatDate(str: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-function onSubscribe() {
-  if (!subscribeEmail.value) return
-  // 后续对接订阅接口
-  subscribeEmail.value = ''
-}
-
 function onListSearch() {
-  // 后续可打开搜索弹窗或跳转搜索页
   router.push({ path: '/blog', query: { ...route.query, search: '1' } })
 }
 
 function loadData() {
-  getBlogTags().then((list) => { tags.value = list })
   getCarouselArticles().then((list) => { carouselList.value = list })
   getPopularArticles(4).then((list) => { popularList.value = list })
-  getColumns(6).then((list) => { columns.value = list })
+  if (userStore.isLoggedIn) {
+    getColumnsMe().then((list) => { navColumns.value = list })
+  }
 }
 
 function loadArticleList() {
-  getArticleList({ tagId: currentTagId.value || undefined, tab: listTab.value }).then((res) => {
+  if (!userStore.isLoggedIn) {
+    articleList.value = []
+    return
+  }
+  const sortBy = listTab.value === 'top' ? 'likes' : 'time'
+  getContentsMe({
+    status: 'PUBLISHED',
+    columnId: currentColumnId.value,
+    sortBy,
+    order: 'desc',
+    page: 1,
+    pageSize: 30,
+  }).then((res) => {
     articleList.value = res.list
   })
 }
@@ -235,25 +270,41 @@ const subNavIndicatorStyle = ref({ left: '0px', width: '0px' })
 function updateSubNavIndicator() {
   nextTick(() => {
     const wrapper = subNavWrapperRef.value
-    const activeEl = wrapper?.querySelector('.sub-nav-item.active')
+    const activeEl = wrapper?.querySelector('.sub-nav-item.active') as HTMLElement | null
     if (!wrapper || !activeEl) {
       subNavIndicatorStyle.value = { left: '0px', width: '0px' }
       return
     }
-    const rect = activeEl.getBoundingClientRect()
-    const wrapperRect = wrapper.getBoundingClientRect()
+    // 使用 offsetLeft/offsetWidth 相对父容器定位，避免居中/滚动后错位
+    const left = activeEl.offsetLeft
+    const width = activeEl.offsetWidth
     subNavIndicatorStyle.value = {
-      left: `${rect.left - wrapperRect.left}px`,
-      width: `${rect.width}px`,
+      left: `${left}px`,
+      width: `${width}px`,
     }
   })
 }
 
-watch([listTab, currentTagId], loadArticleList)
-watch(currentTagId, updateSubNavIndicator)
+watch([listTab, currentColumnId], loadArticleList)
+watch(currentColumnId, updateSubNavIndicator)
+watch(navColumns, () => updateSubNavIndicator(), { flush: 'post' })
+async function loadBlogAuthor() {
+  if (!userStore.isLoggedIn || blogUserId.value == null) return
+  if (blogUserId.value !== userStore.userInfo?.id) {
+    // 今后查看他人博客时可在此根据 blogUserId 拉取对应用户信息
+    return
+  }
+  try {
+    blogAuthor.value = await getMe()
+  } catch {
+    blogAuthor.value = null
+  }
+}
+
 onMounted(() => {
   loadData()
   loadArticleList()
+  loadBlogAuthor()
   updateSubNavIndicator()
   window.addEventListener('resize', updateSubNavIndicator)
 })
@@ -735,14 +786,19 @@ onBeforeUnmount(() => {
   margin-bottom: 24px;
 }
 
-.subscribe-header {
+.author-card-block {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.subscribe-avatar {
+.author-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.author-card-avatar {
   width: 48px;
   height: 48px;
   border-radius: 50%;
@@ -750,6 +806,14 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.author-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .avatar-initial {
@@ -758,40 +822,91 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.subscribe-info {
+.author-card-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
-.subscribe-name {
+.author-card-name {
   font-weight: 700;
   font-size: 15px;
   color: #111;
 }
 
-.subscribe-desc {
+.author-card-desc {
   font-size: 13px;
   color: #666;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.subscribe-form {
+.author-detail-line {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  color: #555;
+  margin: 4px 0;
 }
 
-.subscribe-btn {
-  width: 100%;
-  background: #111 !important;
-  border-color: #111 !important;
-}
-
-.unsubscribe-btn {
-  font-size: 12px;
+.author-detail-icon {
+  flex-shrink: 0;
+  font-size: 14px;
   color: #888;
+  margin-top: 1px;
+}
+
+.author-detail-label {
+  color: #888;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.author-detail-bio {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.author-toggle-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
   padding: 0;
+  font-size: 13px;
+  color: #666;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.author-toggle-detail:hover {
+  color: #b31b1b;
+}
+
+.btn-goto-profile {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  background: #b31b1b;
+  border: none;
+  border-radius: 6px;
+  text-align: center;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.btn-goto-profile:hover {
+  background: #8b0000;
+  color: #fff;
 }
 
 .recommendations-block .section-head {

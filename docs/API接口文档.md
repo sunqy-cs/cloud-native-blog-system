@@ -190,6 +190,7 @@
 | sortBy     | string | 否   | 排序字段：time-按发布时间 / likes-按点赞量 / views-按浏览量，默认 time |
 | order      | string | 否   | 排序方向：asc-升序 / desc-降序，默认 desc |
 | q          | string | 否   | 搜索关键词；传则只返回标题、摘要或标签中**模糊匹配**该词的内容（用于个人主页「搜索 TA 的创作」）。此时列表中每项可能带 `tagNames` 供前端高亮。 |
+| columnId   | number | 否   | 按专栏 ID 筛选；不传则返回全部。用于博客页「HOME / 专栏」导航筛选。 |
 
 **Response** `200 OK`:
 

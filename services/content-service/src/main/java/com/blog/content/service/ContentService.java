@@ -56,7 +56,7 @@ public class ContentService {
     private String interactionServiceUrl;
 
     public ContentsMeResponse listMyContents(Long userId, int page, int pageSize,
-                                            String visibility, String status, String sortBy, String order, String keyword) {
+                                            String visibility, String status, String sortBy, String order, String keyword, Long columnId) {
         LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
         q.eq(Content::getUserId, userId)
                 .eq(Content::getType, TYPE_BLOG);
@@ -65,6 +65,9 @@ public class ContentService {
         }
         if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
             q.eq(Content::getStatus, status.toUpperCase());
+        }
+        if (columnId != null) {
+            q.eq(Content::getColumnId, columnId);
         }
         if (keyword != null && !keyword.isBlank()) {
             List<Long> rawIds = contentIdsMatchingTagKeyword(keyword);
