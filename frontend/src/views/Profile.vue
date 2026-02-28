@@ -131,9 +131,12 @@
           <template v-else>
             <div class="activity-list">
               <article v-for="item in dynamicFeedList" :key="item.id" class="activity-item">
-                <p class="activity-action">{{ item.actionText }}</p>
-                <p class="activity-time">{{ item.time }}</p>
+                <div class="activity-head">
+                  <span class="activity-action">{{ item.actionText }}</span>
+                  <span class="activity-time">{{ formatPreciseTime(item.time) }}</span>
+                </div>
                 <router-link :to="`/article/${item.contentId}`" class="activity-title">{{ item.title }}</router-link>
+                <p v-if="item.summary" class="activity-summary">{{ item.summary }}</p>
                 <div v-if="item.authorName" class="activity-author">
                   <span class="activity-author-avatar">{{ item.authorName.charAt(0) }}</span>
                   <span class="activity-author-name">{{ item.authorName }}</span>
@@ -961,7 +964,8 @@ onMounted(() => {
   }).catch(() => {})
   if (currentTab.value === 'blog') fetchBlogList()
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
-  // 预拉取收藏夹、专栏列表、关注统计，使 Tab 数量与右侧关注数正确显示
+  // 预拉取博客数量、收藏夹、专栏列表、关注统计，使 Tab 数量与右侧关注数正确显示
+  fetchBlogCount()
   fetchFolderList()
   fetchColumnList()
   fetchFollowStats()
@@ -985,7 +989,7 @@ const sectionTitle = computed(() => {
 })
 
 // 动态：赞同了文章（来自 interaction-service content-likes/me + contents/by-ids）
-const likedActivities = ref<{ id: string; actionText: string; time: string; title: string; contentId: string; authorName?: string; authorDesc?: string }[]>([])
+const likedActivities = ref<{ id: string; actionText: string; time: string; title: string; contentId: string; summary?: string; authorName?: string; authorDesc?: string }[]>([])
 // 动态：混合时间线，滚动到底时按页拉取博客并追加（不一次全加载）
 const dynamicBlogList = ref<ContentListItem[]>([])
 const dynamicBlogTotal = ref(0)
@@ -1019,6 +1023,7 @@ async function fetchDynamicBlogs() {
         pageSize: dynamicPageSize,
         sortBy: 'time',
         order: 'desc',
+        status: 'PUBLISHED',
       }),
       getContentLikesMe({ page: 1, pageSize: 20 }),
     ])
@@ -1035,6 +1040,7 @@ async function fetchDynamicBlogs() {
         time: l.likedAt,
         title: contentMap[l.contentId]?.title ?? '',
         contentId: String(l.contentId),
+        summary: contentMap[l.contentId]?.summary ?? '',
         authorName: undefined as string | undefined,
         authorDesc: undefined as string | undefined,
       }))
@@ -1054,6 +1060,7 @@ async function loadMoreDynamic() {
       pageSize: dynamicPageSize,
       sortBy: 'time',
       order: 'desc',
+      status: 'PUBLISHED',
     })
     dynamicBlogList.value = [...dynamicBlogList.value, ...res.list]
     dynamicBlogTotal.value = res.total
@@ -1071,6 +1078,7 @@ const dynamicFeedList = computed(() => {
     time: a.time,
     title: a.title,
     contentId: a.contentId,
+    summary: truncateSummary(a.summary),
     authorName: a.authorName,
     authorDesc: a.authorDesc,
     _sort: parseTimeForSort(a.time),
@@ -1078,9 +1086,10 @@ const dynamicFeedList = computed(() => {
   const blogItems = dynamicBlogList.value.map((b) => ({
     id: 'blog-' + b.id,
     actionText: '发表了博客',
-    time: formatCreatedAt(b.createdAt) || b.createdAt || '',
+    time: b.createdAt || '',
     title: b.title,
     contentId: String(b.id),
+    summary: truncateSummary(b.summary),
     authorName: undefined as string | undefined,
     authorDesc: undefined as string | undefined,
     _sort: parseTimeForSort(b.createdAt || ''),
@@ -1150,6 +1159,24 @@ function setSort(field: 'time' | 'likes' | 'views') {
   blogPage.value = 1
   fetchBlogList()
 }
+/** 仅拉取博客总数，用于 Tab 显示（进入页面时即请求，刷新后数字正确） */
+async function fetchBlogCount() {
+  if (!userStore.isLoggedIn) return
+  try {
+    const res = await getContentsMe({
+      page: 1,
+      pageSize: 1,
+      visibility: blogVisibility.value,
+      sortBy: blogSortBy.value,
+      order: blogOrder.value,
+      status: 'PUBLISHED',
+    })
+    blogTotal.value = res?.total ?? 0
+  } catch {
+    blogTotal.value = 0
+  }
+}
+
 async function fetchBlogList() {
   if (!userStore.isLoggedIn) return
   blogLoading.value = true
@@ -1160,6 +1187,7 @@ async function fetchBlogList() {
       visibility: blogVisibility.value,
       sortBy: blogSortBy.value,
       order: blogOrder.value,
+      status: 'PUBLISHED',
     })
     blogList.value = res.list
     blogTotal.value = res.total
@@ -1174,6 +1202,22 @@ function formatCount(n: number) {
 function formatCreatedAt(s: string) {
   if (!s) return ''
   return s.slice(0, 10)
+}
+
+/** 动态列表显示精确时间：YYYY-MM-DD HH:mm */
+function formatPreciseTime(s: string) {
+  if (!s) return ''
+  if (s.includes('T')) return s.slice(0, 16).replace('T', ' ')
+  if (s.length >= 10) return s.slice(0, 10) + ' 00:00'
+  return s
+}
+
+const SUMMARY_MAX_LEN = 120
+function truncateSummary(summary: string | undefined): string {
+  if (!summary || !summary.trim()) return ''
+  const t = summary.trim()
+  if (t.length <= SUMMARY_MAX_LEN) return t
+  return t.slice(0, SUMMARY_MAX_LEN) + '...'
 }
 watch([currentTab, blogPage], () => {
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
@@ -2176,16 +2220,25 @@ async function fetchFollowStats() {
   padding-bottom: 0;
 }
 
+.activity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 12px;
+}
+
 .activity-action {
   font-size: 14px;
   color: #666;
-  margin: 0 0 4px;
+  margin: 0;
 }
 
 .activity-time {
   font-size: 13px;
   color: #999;
-  margin: 0 0 8px;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .activity-title {
@@ -2193,8 +2246,21 @@ async function fetchFollowStats() {
   font-size: 16px;
   font-weight: 600;
   color: #111;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   text-decoration: none;
+}
+
+.activity-summary {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0 0 8px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .activity-title:hover {

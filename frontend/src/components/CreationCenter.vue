@@ -17,14 +17,39 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { EditPen } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { requestLogin } from '@/stores/loginModal'
+import { getContentsMe } from '@/api/content'
 
 const router = useRouter()
 const userStore = useUserStore()
-const draftCount = 0
+const draftCount = ref(0)
+
+async function fetchDraftCount() {
+  if (!userStore.isLoggedIn) {
+    draftCount.value = 0
+    return
+  }
+  try {
+    const res = await getContentsMe({ page: 1, pageSize: 1, status: 'DRAFT' })
+    draftCount.value = res?.total ?? 0
+  } catch {
+    draftCount.value = 0
+  }
+}
+
+onMounted(() => {
+  fetchDraftCount()
+})
+watch(
+  () => userStore.isLoggedIn,
+  () => {
+    fetchDraftCount()
+  }
+)
 
 function goWrite() {
   if (!userStore.isLoggedIn) {

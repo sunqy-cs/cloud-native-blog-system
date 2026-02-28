@@ -57,7 +57,7 @@
         >
           登录 / 注册
         </el-button>
-        <el-dropdown v-else @command="onDropdownCommand">
+        <el-dropdown v-else popper-class="app-header-user-dropdown" @command="onDropdownCommand">
           <span class="user-dropdown">
             <span class="user-avatar">
               <img v-if="avatarUrl" :src="avatarUrl" alt="头像" class="avatar-img" />
@@ -393,14 +393,21 @@ function goWrite() {
   font-weight: 500;
   font-size: 16px;
   border-bottom: 2px solid transparent !important; /* 覆盖 Element 默认，避免切换时闪黑线 */
-  transition: font-weight 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+  background-color: transparent !important;
+  transition: font-weight 0.15s ease, color 0.15s ease;
 }
 
 .app-header :deep(.el-menu--horizontal > .el-menu-item.is-active) {
   color: #000 !important;
   font-weight: 900;
   border-bottom-color: transparent !important;
+  background-color: transparent !important;
   -webkit-text-stroke: 0.25px #000;
+}
+
+.app-header :deep(.el-menu--horizontal > .el-menu-item:focus),
+.app-header :deep(.el-menu--horizontal > .el-menu-item:focus-visible) {
+  background-color: transparent !important;
 }
 
 .app-header :deep(.el-menu--horizontal > .el-menu-item .nav-text) {
@@ -408,7 +415,7 @@ function goWrite() {
 }
 
 .app-header :deep(.el-menu--horizontal > .el-menu-item:hover) {
-  background-color: rgba(0, 0, 0, 0.03);
+  background-color: rgba(0, 0, 0, 0.03) !important;
   font-weight: 900; /* 悬停时与选中态同粗 */
   color: #000 !important;
 }
@@ -422,6 +429,24 @@ function goWrite() {
 .action-area :deep(.el-button--primary:hover) {
   background-color: #333;
   border-color: #333;
+}
+</style>
+
+<!-- 用户下拉框样式（popper 挂载到 body，需全局样式，与顶栏白/灰/红风格一致） -->
+<style>
+.app-header-user-dropdown.el-dropdown__popper .el-dropdown-menu__item {
+  color: #333;
+}
+.app-header-user-dropdown.el-dropdown__popper .el-dropdown-menu__item:hover,
+.app-header-user-dropdown.el-dropdown__popper .el-dropdown-menu__item:focus {
+  background-color: #f5f5f5;
+  color: #111;
+}
+.app-header-user-dropdown.el-dropdown__popper .el-dropdown-menu__item:not(.is-divided) {
+  border-left: 3px solid transparent;
+}
+.app-header-user-dropdown.el-dropdown__popper .el-dropdown-menu__item:hover:not(.is-divided) {
+  border-left-color: #BB1919;
 }
 </style>
 

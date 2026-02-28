@@ -327,7 +327,7 @@ public class ContentService {
         vo.setLikeCount(c.getLikeCount() != null ? c.getLikeCount() : 0);
         vo.setCollectionCount(c.getCollectionCount() != null ? c.getCollectionCount() : 0);
         vo.setCommentCount(c.getCommentCount() != null ? c.getCommentCount() : 0);
-        vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(DATE_FORMAT) : null);
+        vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
         return vo;
     }
 }
