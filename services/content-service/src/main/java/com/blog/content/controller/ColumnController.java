@@ -2,6 +2,7 @@ package com.blog.content.controller;
 
 import com.blog.content.dto.ColumnVO;
 import com.blog.content.dto.CreateColumnRequest;
+import com.blog.content.dto.UpdateColumnRequest;
 import com.blog.content.service.ColumnService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -31,5 +32,22 @@ public class ColumnController {
             @RequestBody CreateColumnRequest request) {
         ColumnVO vo = columnService.createColumn(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(vo);
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<ColumnVO> update(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody UpdateColumnRequest request) {
+        ColumnVO vo = columnService.updateColumn(userId, id, request);
+        return ResponseEntity.ok(vo);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id) {
+        columnService.deleteColumn(userId, id);
+        return ResponseEntity.noContent().build();
     }
 }

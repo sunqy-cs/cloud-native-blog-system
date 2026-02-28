@@ -16,6 +16,12 @@ export interface CreateColumnBody {
   cover?: string
 }
 
+export interface UpdateColumnBody {
+  name?: string
+  description?: string
+  cover?: string
+}
+
 /**
  * 获取当前用户的专栏列表（我的专栏）
  */
@@ -28,4 +34,18 @@ export function getColumnsMe(): Promise<ColumnItem[]> {
  */
 export function createColumn(body: CreateColumnBody): Promise<ColumnItem> {
   return request.post<ColumnItem>('columns', body).then((data) => data as ColumnItem)
+}
+
+/**
+ * 更新专栏（名称、描述、封面）
+ */
+export function updateColumn(id: number, body: UpdateColumnBody): Promise<ColumnItem> {
+  return request.patch<ColumnItem>(`columns/${id}`, body).then((data) => data as ColumnItem)
+}
+
+/**
+ * 删除专栏
+ */
+export function deleteColumn(id: number): Promise<void> {
+  return request.delete(`columns/${id}`)
 }

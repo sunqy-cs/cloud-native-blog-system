@@ -389,7 +389,13 @@
           <div v-else class="column-list">
             <article v-for="item in columnList" :key="item.id" class="column-list-item">
               <div class="column-list-body">
-                <router-link :to="`/column/${item.id}`" class="column-list-title">{{ item.name }}</router-link>
+                <div class="column-main">
+                  <router-link :to="`/column/${item.id}`" class="column-list-title column-title-link">{{ item.name }}</router-link>
+                  <div class="column-actions">
+                    <button type="button" class="folder-action-btn" @click.stop="openEditColumn(item)">编辑</button>
+                    <button type="button" class="folder-action-btn folder-action-btn--danger" @click.stop="confirmDeleteColumn(item)">删除</button>
+                  </div>
+                </div>
                 <p v-if="item.description" class="column-list-meta">{{ item.description }}</p>
                 <p class="column-list-time">{{ item.articleCount }} 篇内容 · 更新于 {{ item.updatedAt ? item.updatedAt.slice(0, 10) : '—' }}</p>
               </div>
@@ -498,22 +504,24 @@
         </el-form-item>
         <el-form-item label="封面图（可选）">
           <div class="column-cover-upload" :class="{ 'has-cover': !!createColumnForm.cover }">
-            <div class="column-cover-preview" :style="createColumnForm.cover ? { backgroundImage: `url(${createColumnForm.cover})` } : {}">
-              <input
-                ref="columnCoverFileInputRef"
-                type="file"
-                accept="image/*"
-                class="cover-file-input"
-                @change="onColumnCoverFileChange"
-              />
-              <button v-if="!createColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">
-                <el-icon><Camera /></el-icon>
-                上传封面图片
-              </button>
-              <template v-else>
-                <button type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">更换</button>
-                <button type="button" class="column-cover-remove" @click.stop="createColumnForm.cover = ''">移除</button>
-              </template>
+            <div v-if="createColumnForm.cover" class="column-cover-actions">
+              <span class="column-cover-action-link" @click="triggerColumnCoverUpload" @keydown.enter.prevent="triggerColumnCoverUpload" role="button" tabindex="0">更换</span>
+              <span class="column-cover-action-link column-cover-action-remove" @click.stop="createColumnForm.cover = ''" @keydown.enter.prevent="createColumnForm.cover = ''" role="button" tabindex="0">移除</span>
+            </div>
+            <div class="column-cover-preview-wrap">
+              <div class="column-cover-preview" :style="createColumnForm.cover ? { backgroundImage: `url(${createColumnForm.cover})` } : {}">
+                <input
+                  ref="columnCoverFileInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="cover-file-input"
+                  @change="onColumnCoverFileChange"
+                />
+                <button v-if="!createColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">
+                  <el-icon><Camera /></el-icon>
+                  上传封面图片
+                </button>
+              </div>
             </div>
           </div>
         </el-form-item>
@@ -521,6 +529,52 @@
       <template #footer>
         <el-button @click="createColumnVisible = false">取消</el-button>
         <el-button class="btn-confirm-column" type="primary" :loading="createColumnSubmitting" @click="submitCreateColumn">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑专栏弹窗 -->
+    <el-dialog
+      v-model="editColumnVisible"
+      title="编辑专栏"
+      width="480px"
+      top="12vh"
+      class="creator-column-dialog edit-column-dialog"
+      @closed="resetEditColumnForm"
+    >
+      <el-form :model="editColumnForm" label-position="top">
+        <el-form-item label="专栏名称">
+          <el-input v-model="editColumnForm.name" placeholder="专栏名称" maxlength="128" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="专栏描述（可选）">
+          <el-input v-model="editColumnForm.description" type="textarea" :rows="3" placeholder="专栏描述 (可选)" maxlength="512" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="封面图（可选）">
+          <div class="column-cover-upload" :class="{ 'has-cover': !!editColumnForm.cover }">
+            <div v-if="editColumnForm.cover" class="column-cover-actions">
+              <span class="column-cover-action-link" @click="triggerEditColumnCoverUpload" @keydown.enter.prevent="triggerEditColumnCoverUpload" role="button" tabindex="0">更换</span>
+              <span class="column-cover-action-link column-cover-action-remove" @click.stop="editColumnForm.cover = ''" @keydown.enter.prevent="editColumnForm.cover = ''" role="button" tabindex="0">移除</span>
+            </div>
+            <div class="column-cover-preview-wrap">
+              <div class="column-cover-preview" :style="editColumnForm.cover ? { backgroundImage: `url(${editColumnForm.cover})` } : {}">
+                <input
+                  ref="editColumnCoverFileInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="cover-file-input"
+                  @change="onEditColumnCoverFileChange"
+                />
+                <button v-if="!editColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerEditColumnCoverUpload">
+                  <el-icon><Camera /></el-icon>
+                  上传封面图片
+                </button>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editColumnVisible = false">取消</el-button>
+        <el-button class="btn-confirm-column" type="primary" :loading="editColumnSubmitting" @click="submitEditColumn">保存</el-button>
       </template>
     </el-dialog>
 
@@ -533,17 +587,20 @@
       class="creator-column-crop-dialog"
       @closed="resetColumnCropState"
     >
-      <div class="crop-viewport column-crop-viewport" ref="columnCropViewportRef">
-        <img
-          v-if="columnCropImageUrl"
-          ref="columnCropImageRef"
-          :src="columnCropImageUrl"
-          class="crop-image"
-          :style="columnCropImageStyle"
-          draggable="false"
-          @mousedown.prevent="onColumnCropMouseDown"
-          @load="onColumnCropImageLoad"
-        />
+      <div class="column-crop-viewport-wrap">
+        <div class="crop-viewport column-crop-viewport" ref="columnCropViewportRef">
+          <img
+            v-if="columnCropImageUrl"
+            ref="columnCropImageRef"
+            :src="columnCropImageUrl"
+            class="crop-image"
+            :style="columnCropImageStyle"
+            draggable="false"
+            @mousedown.prevent="onColumnCropMouseDown"
+            @load="onColumnCropImageLoad"
+          />
+        </div>
+        <div class="column-crop-frame" aria-hidden="true"></div>
       </div>
       <p class="crop-tip">拖动图片调整位置，将截取与封面相同比例的区域</p>
       <template #footer>
@@ -628,7 +685,7 @@ import { getCommentedArticles, getContentComments, setCommentHot } from '@/api/c
 import type { CommentedArticle, CommentItem } from '@/api/comment'
 import { getFollowMe } from '@/api/follow'
 import type { FollowStats } from '@/api/follow'
-import { getColumnsMe, createColumn, type ColumnItem } from '@/api/column'
+import { getColumnsMe, createColumn, updateColumn, deleteColumn, type ColumnItem } from '@/api/column'
 import { getMainTags, type TagItem } from '@/api/tag'
 import { getBlogBotsMe, createBlogBot, deleteBlogBot, type BlogBotItem } from '@/api/blogBot'
 import { uploadImage } from '@/api/upload'
@@ -740,6 +797,59 @@ function submitCreateColumn() {
       ElMessage.success('专栏已创建')
     })
     .finally(() => { createColumnSubmitting.value = false })
+}
+
+// 编辑专栏
+const editColumnVisible = ref(false)
+const editColumnId = ref<number | null>(null)
+const editColumnSubmitting = ref(false)
+const editColumnForm = ref({ name: '', description: '', cover: '' })
+function openEditColumn(item: ColumnItem) {
+  editColumnId.value = item.id
+  editColumnForm.value = {
+    name: item.name,
+    description: item.description ?? '',
+    cover: item.cover ?? '',
+  }
+  editColumnVisible.value = true
+}
+function resetEditColumnForm() {
+  editColumnId.value = null
+  editColumnForm.value = { name: '', description: '', cover: '' }
+}
+function submitEditColumn() {
+  const id = editColumnId.value
+  if (id == null) return
+  const name = editColumnForm.value.name?.trim()
+  if (!name) {
+    ElMessage.warning('请输入专栏名称')
+    return
+  }
+  editColumnSubmitting.value = true
+  updateColumn(id, {
+    name,
+    description: editColumnForm.value.description?.trim() || undefined,
+    cover: editColumnForm.value.cover?.trim() || undefined,
+  })
+    .then((updated) => {
+      columnList.value = columnList.value.map((c) => (c.id === id ? updated : c))
+      editColumnVisible.value = false
+      resetEditColumnForm()
+      ElMessage.success('专栏已更新')
+    })
+    .finally(() => { editColumnSubmitting.value = false })
+}
+function confirmDeleteColumn(item: ColumnItem) {
+  ElMessageBox.confirm(`确定要删除专栏「${item.name}」吗？该专栏下的文章将变为未归类。`, '删除专栏', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => deleteColumn(item.id))
+    .then(() => {
+      columnList.value = columnList.value.filter((c) => c.id !== item.id)
+      ElMessage.success('专栏已删除')
+    })
 }
 
 // 博客机器人：前端先做配置列表与新建弹窗，后续接后端
@@ -866,15 +976,32 @@ const columnCropImageStyle = computed(() => {
     cursor: s.isDragging ? 'grabbing' : 'grab',
   }
 })
+const columnCropTarget = ref<'create' | 'edit'>('create')
 function triggerColumnCoverUpload() {
+  columnCropTarget.value = 'create'
   columnCoverFileInputRef.value?.click()
+}
+const editColumnCoverFileInputRef = ref<HTMLInputElement | null>(null)
+function triggerEditColumnCoverUpload() {
+  columnCropTarget.value = 'edit'
+  editColumnCoverFileInputRef.value?.click()
+}
+function openColumnCropWithFile(file: File) {
+  columnCropImageUrl.value = URL.createObjectURL(file)
+  columnCropDialogVisible.value = true
 }
 function onColumnCoverFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file || !file.type.startsWith('image/')) return
-  columnCropImageUrl.value = URL.createObjectURL(file)
-  columnCropDialogVisible.value = true
+  openColumnCropWithFile(file)
+  input.value = ''
+}
+function onEditColumnCoverFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  openColumnCropWithFile(file)
   input.value = ''
 }
 function onColumnCropImageLoad() {
@@ -945,7 +1072,11 @@ function confirmColumnCrop() {
       const file = new File([blob], 'column-cover.jpg', { type: 'image/jpeg' })
       uploadImage(file, 'cover')
         .then((meta) => {
-          createColumnForm.value.cover = meta.url
+          if (columnCropTarget.value === 'edit') {
+            editColumnForm.value.cover = meta.url
+          } else {
+            createColumnForm.value.cover = meta.url
+          }
           columnCropDialogVisible.value = false
         })
         .finally(() => { columnCoverUploading.value = false })
@@ -2511,6 +2642,41 @@ const avatarInitial = computed(() => {
   flex: 1;
   min-width: 0;
 }
+.column-list .column-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.column-list .column-main .column-title-link {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.column-list .column-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.column-list .folder-action-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  color: #666;
+  background: transparent;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.column-list .folder-action-btn:hover {
+  color: #333;
+  background: #f5f5f5;
+}
+.column-list .folder-action-btn--danger:hover {
+  color: #b31b1b;
+  border-color: #b31b1b;
+}
 .column-list-title {
   display: block;
   font-size: 16px;
@@ -2562,19 +2728,36 @@ const avatarInitial = computed(() => {
   border-color: #8b0000;
 }
 
-/* 新建专栏：封面上传与裁剪（与个人主页一致） */
+/* 新建专栏：封面上传与裁剪，预览尺寸与裁剪框一致 400:280；操作放在图片上方为文字链接 */
 .creator-column-dialog .column-cover-upload {
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.creator-column-dialog .column-cover-upload.has-cover .column-cover-actions {
+  order: -1;
+}
+.creator-column-dialog .column-cover-preview-wrap {
+  width: 320px;
+  height: 224px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e8e8e8;
 }
 .creator-column-dialog .column-cover-preview {
   width: 100%;
-  height: 140px;
+  height: 100%;
   border-radius: 8px;
   background: #e8e8e8;
   background-size: cover;
   background-position: center;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .creator-column-dialog .column-cover-preview .cover-file-input {
   position: absolute;
@@ -2584,10 +2767,8 @@ const avatarInitial = computed(() => {
   overflow: hidden;
 }
 .creator-column-dialog .cover-upload-btn.column-cover-upload-btn {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2599,35 +2780,46 @@ const avatarInitial = computed(() => {
   border-radius: 6px;
   cursor: pointer;
 }
-.creator-column-dialog .column-cover-upload .has-cover .column-cover-preview .column-cover-upload-btn {
-  bottom: 8px;
-  left: 8px;
-  top: auto;
-  transform: none;
+.creator-column-dialog .column-cover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  line-height: 22px;
 }
-.creator-column-dialog .column-cover-remove {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
-  padding: 4px 10px;
-  font-size: 13px;
+.creator-column-dialog .column-cover-action-link {
   color: #666;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #e0e0e0;
-  border-radius: 4px;
   cursor: pointer;
+  user-select: none;
 }
-.creator-column-dialog .column-cover-remove:hover {
+.creator-column-dialog .column-cover-action-link:hover {
+  color: #333;
+  text-decoration: underline;
+}
+.creator-column-dialog .column-cover-action-remove:hover {
   color: #b31b1b;
 }
-.creator-column-crop-dialog .column-crop-viewport {
+.creator-column-crop-dialog .column-crop-viewport-wrap {
+  position: relative;
   width: 400px;
   height: 280px;
   margin: 0 auto;
+}
+.creator-column-crop-dialog .column-crop-viewport {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   position: relative;
   background: #e8e8e8;
   border-radius: 8px;
+}
+.creator-column-crop-dialog .column-crop-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 3px solid #b31b1b;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
 }
 .creator-column-crop-dialog .crop-image {
   position: absolute;

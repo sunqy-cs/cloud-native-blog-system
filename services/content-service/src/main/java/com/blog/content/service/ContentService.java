@@ -29,7 +29,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,7 +56,7 @@ public class ContentService {
     private String interactionServiceUrl;
 
     public ContentsMeResponse listMyContents(Long userId, int page, int pageSize,
-                                            String visibility, String status, String sortBy, String order) {
+                                            String visibility, String status, String sortBy, String order, String keyword) {
         LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
         q.eq(Content::getUserId, userId)
                 .eq(Content::getType, TYPE_BLOG);
@@ -63,6 +65,17 @@ public class ContentService {
         }
         if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status)) {
             q.eq(Content::getStatus, status.toUpperCase());
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            List<Long> rawIds = contentIdsMatchingTagKeyword(keyword);
+            final List<Long> contentIdsByTag = rawIds.isEmpty() ? Collections.emptyList()
+                    : contentMapper.selectList(new LambdaQueryWrapper<Content>().in(Content::getId, rawIds).eq(Content::getUserId, userId).eq(Content::getType, TYPE_BLOG))
+                            .stream().map(Content::getId).collect(Collectors.toList());
+            if (contentIdsByTag.isEmpty()) {
+                q.and(w -> w.like(Content::getTitle, keyword).or().like(Content::getSummary, keyword));
+            } else {
+                q.and(w -> w.like(Content::getTitle, keyword).or().like(Content::getSummary, keyword).or().in(Content::getId, contentIdsByTag));
+            }
         }
         boolean asc = "asc".equalsIgnoreCase(order);
         if ("likes".equalsIgnoreCase(sortBy)) {
@@ -78,10 +91,44 @@ public class ContentService {
         List<ContentListItemVO> list = p.getRecords().stream()
                 .map(this::toListItemVO)
                 .collect(Collectors.toList());
+        if (keyword != null && !keyword.isBlank() && !list.isEmpty()) {
+            List<Long> ids = list.stream().map(ContentListItemVO::getId).collect(Collectors.toList());
+            Map<Long, List<String>> tagNamesMap = getTagNamesByContentIds(ids);
+            list.forEach(vo -> vo.setTagNames(tagNamesMap.get(vo.getId())));
+        }
         ContentsMeResponse res = new ContentsMeResponse();
         res.setList(list);
         res.setTotal(p.getTotal());
         return res;
+    }
+
+    /** 按标签名模糊匹配得到的内容 ID 列表（当前用户博客） */
+    private List<Long> contentIdsMatchingTagKeyword(String keyword) {
+        List<Tag> tags = tagMapper.selectList(new LambdaQueryWrapper<Tag>().like(Tag::getName, keyword));
+        if (tags.isEmpty()) return Collections.emptyList();
+        List<Long> tagIds = tags.stream().map(Tag::getId).collect(Collectors.toList());
+        List<ContentTag> ctList = contentTagMapper.selectList(new LambdaQueryWrapper<ContentTag>().in(ContentTag::getTagId, tagIds));
+        return ctList.stream().map(ContentTag::getContentId).distinct().collect(Collectors.toList());
+    }
+
+    /** 批量获取内容 ID 对应的标签名称列表（顺序按 content_tag 关联顺序） */
+    private Map<Long, List<String>> getTagNamesByContentIds(List<Long> contentIds) {
+        if (contentIds == null || contentIds.isEmpty()) return Collections.emptyMap();
+        List<ContentTag> ctList = contentTagMapper.selectList(new LambdaQueryWrapper<ContentTag>().in(ContentTag::getContentId, contentIds));
+        if (ctList.isEmpty()) return Collections.emptyMap();
+        List<Long> tagIds = ctList.stream().map(ContentTag::getTagId).distinct().collect(Collectors.toList());
+        List<Tag> tags = tagMapper.selectBatchIds(tagIds);
+        Map<Long, String> tagIdToName = tags.stream().collect(Collectors.toMap(Tag::getId, t -> t.getName() != null ? t.getName() : "", (a, b) -> a));
+        Map<Long, List<String>> result = new LinkedHashMap<>();
+        for (Long cid : contentIds) {
+            List<String> names = ctList.stream()
+                    .filter(ct -> cid.equals(ct.getContentId()))
+                    .map(ct -> tagIdToName.get(ct.getTagId()))
+                    .filter(n -> n != null)
+                    .collect(Collectors.toList());
+            if (!names.isEmpty()) result.put(cid, names);
+        }
+        return result;
     }
 
     /**

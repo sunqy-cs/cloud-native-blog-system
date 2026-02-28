@@ -35,10 +35,11 @@ public class ContentController {
             @RequestParam(required = false) String visibility,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String q) {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
-        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, status, sortBy, order);
+        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, status, sortBy, order, q);
         return ResponseEntity.ok(res);
     }
 

@@ -70,9 +70,29 @@
         {{ tab.label }}
         <span v-if="tab.count !== undefined" class="tab-count">{{ tab.count }}</span>
       </button>
-      <button type="button" class="profile-tab profile-tab-search" title="搜索">
-        <el-icon><Search /></el-icon>
-      </button>
+      <div class="profile-search-wrap" :class="{ expanded: profileSearchExpanded }">
+        <button
+          type="button"
+          class="profile-tab profile-tab-search"
+          title="搜索"
+          aria-label="搜索"
+          @click="expandSearch"
+        >
+          <el-icon><Search /></el-icon>
+        </button>
+        <div class="profile-search-expand">
+          <input
+            ref="profileSearchInputRef"
+            v-model="profileSearchKeyword"
+            type="text"
+            class="profile-search-input"
+            placeholder="搜索 TA 的创作"
+            @keyup.enter="onProfileSearch"
+          />
+          <el-icon class="profile-search-input-icon"><Search /></el-icon>
+          <button type="button" class="profile-search-cancel" @click="collapseSearch">取消</button>
+        </div>
+      </div>
     </nav>
 
     <div class="profile-body">
@@ -158,16 +178,38 @@
         </div>
         <!-- 我的博客 -->
         <div v-else-if="currentTab === 'blog'" class="blog-tab-wrap">
+          <p v-if="blogSearchKeyword" class="blog-search-hint">
+            搜索「{{ blogSearchKeyword }}」
+            <button type="button" class="blog-search-clear" @click="blogSearchKeyword = ''; blogPage = 1; fetchBlogList()">清除</button>
+          </p>
           <div v-if="blogLoading" class="blog-loading">加载中…</div>
           <div v-else-if="blogList.length === 0" class="blog-empty">
             <el-icon class="blog-empty-icon"><Document /></el-icon>
-            <p class="blog-empty-text">还没有博客</p>
+            <p class="blog-empty-text">{{ blogSearchKeyword ? '未找到匹配的博客' : '还没有博客' }}</p>
           </div>
           <div v-else class="profile-card-list">
             <article v-for="item in blogList" :key="item.id" class="profile-card-item profile-card-item--blog">
               <div class="profile-card-body">
-                <router-link :to="`/article/${item.id}`" class="profile-card-title">{{ item.title }}</router-link>
-                <p class="profile-card-meta">{{ item.summary }}</p>
+                <router-link :to="`/article/${item.id}`" class="profile-card-title">
+                  <span v-for="(frag, i) in highlightFragments(item.title, blogSearchKeyword)" :key="i">
+                    <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                    <template v-else>{{ frag.value }}</template>
+                  </span>
+                </router-link>
+                <p class="profile-card-meta">
+                  <span v-for="(frag, i) in highlightFragments(item.summary, blogSearchKeyword)" :key="i">
+                    <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                    <template v-else>{{ frag.value }}</template>
+                  </span>
+                </p>
+                <div v-if="blogSearchKeyword && item.tagNames?.length" class="profile-card-tags">
+                  <span v-for="(tagName, ti) in item.tagNames" :key="ti" class="profile-card-tag">
+                    <span v-for="(frag, fi) in highlightFragments(tagName, blogSearchKeyword)" :key="fi">
+                      <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                      <template v-else>{{ frag.value }}</template>
+                    </span>
+                  </span>
+                </div>
                 <div class="profile-card-stats">
                   <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatCount(item.viewCount) }}</span>
                   <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatCount(item.likeCount) }}</span>
@@ -228,7 +270,13 @@
           <div v-else class="profile-card-list column-list">
             <article v-for="item in columnList" :key="item.id" class="profile-card-item profile-card-item--column">
               <div class="profile-card-body">
-                <router-link :to="`/column/${item.id}`" class="profile-card-title">{{ item.name }}</router-link>
+                <div class="column-main">
+                  <router-link :to="`/column/${item.id}`" class="profile-card-title column-title-link">{{ item.name }}</router-link>
+                  <div class="column-actions">
+                    <button type="button" class="folder-action-btn" @click.stop="openEditColumn(item)">编辑</button>
+                    <button type="button" class="folder-action-btn folder-action-btn--danger" @click.stop="confirmDeleteColumn(item)">删除</button>
+                  </div>
+                </div>
                 <p class="profile-card-meta">{{ item.description }}</p>
                 <p class="profile-card-time">{{ item.articleCount }} 篇内容 · 更新于 {{ item.updatedAt ? item.updatedAt.slice(0, 10) : '—' }}</p>
               </div>
@@ -423,22 +471,24 @@
         </el-form-item>
         <el-form-item label="封面图（可选）">
           <div class="column-cover-upload" :class="{ 'has-cover': !!createColumnForm.cover }">
-            <div class="column-cover-preview" :style="createColumnForm.cover ? { backgroundImage: `url(${createColumnForm.cover})` } : {}">
-              <input
-                ref="columnCoverFileInputRef"
-                type="file"
-                accept="image/*"
-                class="cover-file-input"
-                @change="onColumnCoverFileChange"
-              />
-              <button v-if="!createColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">
-                <el-icon><Camera /></el-icon>
-                上传封面图片
-              </button>
-              <template v-else>
-                <button type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">更换</button>
-                <button type="button" class="column-cover-remove" @click.stop="createColumnForm.cover = ''">移除</button>
-              </template>
+            <div v-if="createColumnForm.cover" class="column-cover-actions">
+              <span class="column-cover-action-link" @click="triggerColumnCoverUpload" @keydown.enter.prevent="triggerColumnCoverUpload" role="button" tabindex="0">更换</span>
+              <span class="column-cover-action-link column-cover-action-remove" @click.stop="createColumnForm.cover = ''" @keydown.enter.prevent="createColumnForm.cover = ''" role="button" tabindex="0">移除</span>
+            </div>
+            <div class="column-cover-preview-wrap">
+              <div class="column-cover-preview" :style="createColumnForm.cover ? { backgroundImage: `url(${createColumnForm.cover})` } : {}">
+                <input
+                  ref="columnCoverFileInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="cover-file-input"
+                  @change="onColumnCoverFileChange"
+                />
+                <button v-if="!createColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerColumnCoverUpload">
+                  <el-icon><Camera /></el-icon>
+                  上传封面图片
+                </button>
+              </div>
             </div>
           </div>
         </el-form-item>
@@ -446,6 +496,52 @@
       <template #footer>
         <el-button @click="createColumnVisible = false">取消</el-button>
         <el-button class="btn-confirm-folder" type="primary" :loading="createColumnSubmitting" @click="submitCreateColumn">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑专栏弹窗 -->
+    <el-dialog
+      v-model="editColumnVisible"
+      title="编辑专栏"
+      width="480px"
+      top="12vh"
+      class="create-folder-dialog create-column-dialog edit-column-dialog"
+      @closed="resetEditColumnForm"
+    >
+      <el-form :model="editColumnForm" label-position="top">
+        <el-form-item label="专栏名称">
+          <el-input v-model="editColumnForm.name" placeholder="专栏名称" maxlength="128" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="专栏描述（可选）">
+          <el-input v-model="editColumnForm.description" type="textarea" :rows="3" placeholder="专栏描述 (可选)" maxlength="512" show-word-limit clearable />
+        </el-form-item>
+        <el-form-item label="封面图（可选）">
+          <div class="column-cover-upload" :class="{ 'has-cover': !!editColumnForm.cover }">
+            <div v-if="editColumnForm.cover" class="column-cover-actions">
+              <span class="column-cover-action-link" @click="triggerEditColumnCoverUpload" @keydown.enter.prevent="triggerEditColumnCoverUpload" role="button" tabindex="0">更换</span>
+              <span class="column-cover-action-link column-cover-action-remove" @click.stop="editColumnForm.cover = ''" @keydown.enter.prevent="editColumnForm.cover = ''" role="button" tabindex="0">移除</span>
+            </div>
+            <div class="column-cover-preview-wrap">
+              <div class="column-cover-preview" :style="editColumnForm.cover ? { backgroundImage: `url(${editColumnForm.cover})` } : {}">
+                <input
+                  ref="editColumnCoverFileInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="cover-file-input"
+                  @change="onEditColumnCoverFileChange"
+                />
+                <button v-if="!editColumnForm.cover" type="button" class="cover-upload-btn column-cover-upload-btn" @click="triggerEditColumnCoverUpload">
+                  <el-icon><Camera /></el-icon>
+                  上传封面图片
+                </button>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editColumnVisible = false">取消</el-button>
+        <el-button class="btn-confirm-folder" type="primary" :loading="editColumnSubmitting" @click="submitEditColumn">保存</el-button>
       </template>
     </el-dialog>
 
@@ -458,17 +554,20 @@
       class="cover-crop-dialog column-cover-crop-dialog"
       @closed="resetColumnCropState"
     >
-      <div class="crop-viewport column-crop-viewport" ref="columnCropViewportRef">
-        <img
-          v-if="columnCropImageUrl"
-          ref="columnCropImageRef"
-          :src="columnCropImageUrl"
-          class="crop-image"
-          :style="columnCropImageStyle"
-          draggable="false"
-          @mousedown.prevent="onColumnCropMouseDown"
-          @load="onColumnCropImageLoad"
-        />
+      <div class="column-crop-viewport-wrap">
+        <div class="crop-viewport column-crop-viewport" ref="columnCropViewportRef">
+          <img
+            v-if="columnCropImageUrl"
+            ref="columnCropImageRef"
+            :src="columnCropImageUrl"
+            class="crop-image"
+            :style="columnCropImageStyle"
+            draggable="false"
+            @mousedown.prevent="onColumnCropMouseDown"
+            @load="onColumnCropImageLoad"
+          />
+        </div>
+        <div class="column-crop-frame" aria-hidden="true"></div>
       </div>
       <p class="crop-tip">拖动图片调整位置，将截取与封面相同比例的区域</p>
       <template #footer>
@@ -489,7 +588,7 @@ import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
 import { getContentsMe, getContentsByIds, type ContentListItem } from '@/api/content'
 import { getContentLikesMe } from '@/api/contentLike'
 import { getCollectionFoldersMe, createCollectionFolder, updateCollectionFolder, deleteCollectionFolder, type CollectionFolderItem } from '@/api/collectionFolder'
-import { getColumnsMe, createColumn, type ColumnItem } from '@/api/column'
+import { getColumnsMe, createColumn, updateColumn, deleteColumn, type ColumnItem } from '@/api/column'
 import { getFollowMe } from '@/api/follow'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
@@ -528,6 +627,28 @@ function cascaderToResidence(arr: string[]): string {
 }
 const detailCollapsed = ref(true)
 const currentTab = ref('dynamic')
+
+// 个人主页 Tab 旁搜索：点击图标展开为搜索框，点击取消收起
+const profileSearchExpanded = ref(false)
+const profileSearchKeyword = ref('')
+const profileSearchInputRef = ref<HTMLInputElement | null>(null)
+function expandSearch() {
+  profileSearchExpanded.value = true
+  nextTick(() => profileSearchInputRef.value?.focus())
+}
+function collapseSearch() {
+  profileSearchExpanded.value = false
+  profileSearchKeyword.value = ''
+}
+function onProfileSearch() {
+  const q = profileSearchKeyword.value.trim()
+  if (!q) return
+  blogSearchKeyword.value = q
+  blogPage.value = 1
+  currentTab.value = 'blog'
+  collapseSearch()
+  fetchBlogList()
+}
 
 const displayName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '用户')
 const avatarUrl = computed(() => (userStore.userInfo as { avatar?: string })?.avatar || '')
@@ -839,16 +960,37 @@ const columnCropImageStyle = computed(() => {
   }
 })
 
+const columnCropTarget = ref<'create' | 'edit'>('create')
+
 function triggerColumnCoverUpload() {
+  columnCropTarget.value = 'create'
   columnCoverFileInputRef.value?.click()
+}
+
+const editColumnCoverFileInputRef = ref<HTMLInputElement | null>(null)
+function triggerEditColumnCoverUpload() {
+  columnCropTarget.value = 'edit'
+  editColumnCoverFileInputRef.value?.click()
+}
+
+function openColumnCropWithFile(file: File) {
+  columnCropImageUrl.value = URL.createObjectURL(file)
+  columnCropDialogVisible.value = true
 }
 
 function onColumnCoverFileChange(e: Event) {
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file || !file.type.startsWith('image/')) return
-  columnCropImageUrl.value = URL.createObjectURL(file)
-  columnCropDialogVisible.value = true
+  openColumnCropWithFile(file)
+  input.value = ''
+}
+
+function onEditColumnCoverFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file || !file.type.startsWith('image/')) return
+  openColumnCropWithFile(file)
   input.value = ''
 }
 
@@ -922,7 +1064,11 @@ function confirmColumnCrop() {
       const file = new File([blob], 'column-cover.jpg', { type: 'image/jpeg' })
       uploadImage(file, 'cover')
         .then((meta) => {
-          createColumnForm.value.cover = meta.url
+          if (columnCropTarget.value === 'edit') {
+            editColumnForm.value.cover = meta.url
+          } else {
+            createColumnForm.value.cover = meta.url
+          }
           columnCropDialogVisible.value = false
         })
         .finally(() => { columnCoverUploading.value = false })
@@ -1140,6 +1286,8 @@ const blogLoading = ref(false)
 const blogVisibility = ref<'ALL' | 'SELF' | 'FANS'>('ALL')
 const blogSortBy = ref<'time' | 'likes' | 'views'>('time')
 const blogOrder = ref<'asc' | 'desc'>('desc')
+/** 博客列表搜索关键词（个人主页「搜索 TA 的创作」传入），用于高亮 */
+const blogSearchKeyword = ref('')
 const blogVisibilityLabel = computed(() => {
   const map = { ALL: '全部可见', SELF: '仅我可见', FANS: '粉丝可见' }
   return map[blogVisibility.value]
@@ -1159,7 +1307,7 @@ function setSort(field: 'time' | 'likes' | 'views') {
   blogPage.value = 1
   fetchBlogList()
 }
-/** 仅拉取博客总数，用于 Tab 显示（进入页面时即请求，刷新后数字正确） */
+/** 仅拉取博客总数，用于 Tab 显示（进入页面时即请求，刷新后数字正确；有搜索词时不调用，用搜索结果 total） */
 async function fetchBlogCount() {
   if (!userStore.isLoggedIn) return
   try {
@@ -1170,6 +1318,7 @@ async function fetchBlogCount() {
       sortBy: blogSortBy.value,
       order: blogOrder.value,
       status: 'PUBLISHED',
+      q: undefined,
     })
     blogTotal.value = res?.total ?? 0
   } catch {
@@ -1188,6 +1337,7 @@ async function fetchBlogList() {
       sortBy: blogSortBy.value,
       order: blogOrder.value,
       status: 'PUBLISHED',
+      q: blogSearchKeyword.value.trim() || undefined,
     })
     blogList.value = res.list
     blogTotal.value = res.total
@@ -1218,6 +1368,23 @@ function truncateSummary(summary: string | undefined): string {
   const t = summary.trim()
   if (t.length <= SUMMARY_MAX_LEN) return t
   return t.slice(0, SUMMARY_MAX_LEN) + '...'
+}
+
+/** 将文本按关键词拆成片段，用于高亮；keyword 为空则返回整段为 text */
+function highlightFragments(
+  text: string | undefined,
+  keyword: string
+): { type: 'text' | 'match'; value: string }[] {
+  if (!text) return []
+  const k = keyword.trim()
+  if (!k) return [{ type: 'text', value: text }]
+  const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(${escaped})`, 'gi')
+  const parts = text.split(re)
+  return parts.map((value, i) => ({
+    type: i % 2 === 1 ? 'match' : 'text',
+    value,
+  }))
 }
 watch([currentTab, blogPage], () => {
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
@@ -1361,6 +1528,63 @@ function submitCreateColumn() {
     .finally(() => { createColumnSubmitting.value = false })
 }
 
+// 编辑专栏
+const editColumnVisible = ref(false)
+const editColumnId = ref<number | null>(null)
+const editColumnSubmitting = ref(false)
+const editColumnForm = ref({ name: '', description: '', cover: '' })
+
+function openEditColumn(item: ColumnItem) {
+  editColumnId.value = item.id
+  editColumnForm.value = {
+    name: item.name,
+    description: item.description ?? '',
+    cover: item.cover ?? '',
+  }
+  editColumnVisible.value = true
+}
+
+function resetEditColumnForm() {
+  editColumnId.value = null
+  editColumnForm.value = { name: '', description: '', cover: '' }
+}
+
+function submitEditColumn() {
+  const id = editColumnId.value
+  if (id == null) return
+  const name = editColumnForm.value.name?.trim()
+  if (!name) {
+    ElMessage.warning('请输入专栏名称')
+    return
+  }
+  editColumnSubmitting.value = true
+  updateColumn(id, {
+    name,
+    description: editColumnForm.value.description?.trim() || undefined,
+    cover: editColumnForm.value.cover?.trim() || undefined,
+  })
+    .then((updated) => {
+      columnList.value = columnList.value.map((c) => (c.id === id ? updated : c))
+      editColumnVisible.value = false
+      resetEditColumnForm()
+      ElMessage.success('专栏已更新')
+    })
+    .finally(() => { editColumnSubmitting.value = false })
+}
+
+function confirmDeleteColumn(item: ColumnItem) {
+  ElMessageBox.confirm(`确定要删除专栏「${item.name}」吗？该专栏下的文章将变为未归类。`, '删除专栏', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(() => deleteColumn(item.id))
+    .then(() => {
+      columnList.value = columnList.value.filter((c) => c.id !== item.id)
+      ElMessage.success('专栏已删除')
+    })
+}
+
 const followingCount = ref(0)
 const followerCount = ref(0)
 
@@ -1463,14 +1687,28 @@ async function fetchFollowStats() {
   color: #666;
 }
 
-/* 新建专栏：封面上传区（点击上传 + 裁剪） */
+/* 新建专栏：封面上传区，预览尺寸与裁剪框一致 400:280，操作放在图片上方为文字链接 */
 .column-cover-upload {
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.column-cover-upload.has-cover .column-cover-actions {
+  order: -1;
+}
+.column-cover-preview-wrap {
+  width: 320px;
+  height: 224px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #e8e8e8;
 }
 .column-cover-preview {
   position: relative;
   width: 100%;
-  height: 140px;
+  height: 100%;
   background-color: #e8e8e8;
   background-size: cover;
   background-position: center;
@@ -1505,28 +1743,46 @@ async function fetchFollowStats() {
   color: #333;
   background: #f5f5f5;
 }
-.column-cover-upload .has-cover .column-cover-preview .column-cover-upload-btn {
-  margin-right: 8px;
-}
-.column-cover-remove {
+.column-cover-crop-dialog .column-crop-viewport-wrap {
   position: relative;
-  z-index: 1;
-  padding: 8px 16px;
-  font-size: 14px;
-  color: #666;
-  background: rgba(255, 255, 255, 0.9);
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.column-cover-remove:hover {
-  color: #BB1919;
-  background: #fff;
-}
-.column-cover-crop-dialog .column-crop-viewport {
   width: 400px;
   height: 280px;
   margin: 0 auto;
+}
+.column-cover-crop-dialog .column-crop-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  background: #e8e8e8;
+  border-radius: 8px;
+}
+.column-cover-crop-dialog .column-crop-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 3px solid #BB1919;
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+}
+.column-cover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.column-cover-action-link {
+  color: #666;
+  cursor: pointer;
+  user-select: none;
+}
+.column-cover-action-link:hover {
+  color: #333;
+  text-decoration: underline;
+}
+.column-cover-action-remove:hover {
+  color: #BB1919;
 }
 
 /* 编辑个人资料弹窗：头像置顶居中、圆形、低透明白遮罩、居中加号 icon；保存按钮配色与全站一致；禁止蓝色 */
@@ -1809,9 +2065,97 @@ async function fetchFollowStats() {
   color: #BB1919;
 }
 
-.profile-tab-search {
+/* 个人主页 Tab 旁搜索：点击图标展开为搜索框，丝滑动画 */
+.profile-search-wrap {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.profile-search-wrap.expanded {
+  width: 260px;
+}
+.profile-search-wrap .profile-tab-search {
+  flex: 0 0 40px;
+  min-width: 40px;
   padding: 10px;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  transition: flex 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+.profile-search-wrap.expanded .profile-tab-search {
+  flex: 0 0 0;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.profile-search-expand {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 4px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.25s ease 0.06s, transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) 0.06s;
+}
+.profile-search-wrap.expanded .profile-search-expand {
+  opacity: 1;
+  transform: translateX(0);
+}
+.profile-search-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  color: #999;
+  pointer-events: none;
+}
+.profile-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px 0 36px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #111;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.profile-search-input::placeholder {
+  color: #999;
+}
+.profile-search-input:focus {
+  border-color: #333;
+  box-shadow: 0 0 0 1px #333;
+}
+.profile-search-cancel {
+  flex-shrink: 0;
+  padding: 0 10px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+}
+.profile-search-cancel:hover {
+  color: #111;
+  background: rgba(0, 0, 0, 0.05);
 }
 
 /* 主体 */
@@ -1903,6 +2247,46 @@ async function fetchFollowStats() {
   color: #BB1919;
 }
 
+.search-highlight {
+  background: rgba(187, 25, 25, 0.14);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.blog-search-hint {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.blog-search-clear {
+  padding: 2px 8px;
+  font-size: 13px;
+  color: #666;
+  background: transparent;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.blog-search-clear:hover {
+  color: #BB1919;
+  border-color: #BB1919;
+}
+.profile-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.profile-card-tag {
+  font-size: 12px;
+  color: #666;
+  padding: 2px 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+}
 .profile-card-stats {
   display: flex;
   align-items: center;
@@ -2130,6 +2514,24 @@ async function fetchFollowStats() {
 }
 .column-list .profile-card-item--column .profile-card-title {
   margin-top: 0;
+}
+.column-list .column-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.column-list .column-main .column-title-link {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+.column-list .column-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .column-list .column-cover {
   flex-shrink: 0;

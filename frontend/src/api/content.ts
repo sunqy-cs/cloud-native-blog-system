@@ -12,6 +12,8 @@ export interface ContentListItem {
   collectionCount: number
   commentCount?: number
   createdAt: string
+  /** 标签名称列表；搜索（带 q）时可能返回，用于高亮 */
+  tagNames?: string[]
 }
 
 export interface ContentsMeResponse {
@@ -26,6 +28,8 @@ export interface ContentsMeParams {
   status?: 'ALL' | 'PUBLISHED' | 'REJECTED' | 'DRAFT'
   sortBy?: 'time' | 'likes' | 'views'
   order?: 'asc' | 'desc'
+  /** 搜索关键词：模糊匹配标题、摘要、标签 */
+  q?: string
 }
 
 /** 创作者中心：当前用户内容汇总统计及昨日增长 */
