@@ -97,6 +97,32 @@ export interface ContentDetail {
   tagNames?: string[]
 }
 
+/** 公开阅读用文章详情（已发布），含阅读数、点赞数、作者 id */
+export interface ContentView {
+  id: number
+  title: string
+  body: string
+  summary?: string
+  cover?: string
+  columnId?: number
+  articleType?: string
+  creationStatement?: string
+  visibility?: string
+  tagNames?: string[]
+  viewCount: number
+  likeCount: number
+  commentCount: number
+  createdAt: string
+  userId: number
+}
+
+/**
+ * 获取文章公开阅读详情（已发布博客，无需登录；会增加阅读数）
+ */
+export function getContentView(id: number): Promise<ContentView> {
+  return request.get(`contents/view/${id}`).then((data) => data as unknown as ContentView)
+}
+
 /**
  * 获取单篇内容详情（仅当前用户可编辑时使用）
  */

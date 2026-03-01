@@ -4,6 +4,7 @@ import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.ContentViewVO;
 import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
@@ -56,6 +57,13 @@ public class ContentController {
             @RequestBody SaveDraftRequest request) {
         SaveDraftResponse res = contentService.saveDraft(userId, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    }
+
+    /** 公开阅读：已发布博客，无需登录；路径 /api/contents/view/{id} 便于网关放行 */
+    @GetMapping("/view/{id}")
+    public ResponseEntity<ContentViewVO> getForView(@PathVariable Long id) {
+        ContentViewVO vo = contentService.getForView(id);
+        return ResponseEntity.ok(vo);
     }
 
     @GetMapping("/{id}")

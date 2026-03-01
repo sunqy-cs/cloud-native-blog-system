@@ -16,6 +16,7 @@ public class Content {
     private Long id;
     private Long userId;
     private String type;
+    private String status;
     private String title;
     private Integer commentCount;
     private LocalDateTime updatedAt;

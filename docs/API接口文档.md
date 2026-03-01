@@ -703,6 +703,54 @@
 
 ---
 
+### 14.1 发表评论
+
+**`POST /api/comments`**（interaction-service）
+
+需要认证。在指定文章下发表评论或回复某条评论。仅允许对**已发布**的博客（content）评论；可选 `parentId` 表示回复某条评论。
+
+**Request Body**：
+
+```json
+{
+  "contentId": 1,
+  "body": "评论内容",
+  "parentId": null
+}
+```
+
+| 字段      | 类型   | 必填 | 说明 |
+|-----------|--------|------|------|
+| contentId | number | 是   | 文章（内容）ID |
+| body      | string | 是   | 评论正文，建议 1～500 字 |
+| parentId  | number | 否   | 父评论 ID；不传或 null 表示顶级评论，传则表示回复该条评论 |
+
+**Response** `201 Created`：
+
+```json
+{
+  "id": 10,
+  "userId": 2,
+  "userNickname": "用户2",
+  "contentId": 1,
+  "body": "评论内容",
+  "parentId": null,
+  "isHot": false,
+  "createdAt": "2026-02-26 14:00",
+  "isAuthor": false
+}
+```
+
+返回体字段说明同「14. 获取某篇文章的评论列表」单条。
+
+**错误**：
+
+- `400 Bad Request`：`body` 为空或仅空白；或 `parentId` 对应的评论不存在、不属于本 `contentId`；或该内容未发布（非 PUBLISHED）、非博客（非 BLOG）。
+- `401 Unauthorized`：未登录。
+- `404 Not Found`：`contentId` 对应内容不存在。
+
+---
+
 ### 15. 设置/取消热评
 
 **`PATCH /api/comments/{id}/hot`**（interaction-service）

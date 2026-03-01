@@ -8,11 +8,12 @@ export interface CommentedArticle {
   lastCommentAt: string
 }
 
-/** 单条评论（评论管理右侧） */
+/** 单条评论（评论管理右侧 / 文章页评论区） */
 export interface CommentItem {
   id: number
   userId: number
   userNickname: string
+  userAvatar?: string
   contentId: number
   body: string
   parentId: number | null
@@ -31,12 +32,28 @@ export function getCommentedArticles(): Promise<CommentedArticle[]> {
 }
 
 /**
- * 获取某篇文章的评论列表（评论管理右侧）
+ * 获取某篇文章的评论列表（评论管理右侧 / 文章页评论区）
  */
 export function getContentComments(contentId: number): Promise<CommentItem[]> {
   return request
     .get<CommentItem[]>('comments/list', { params: { contentId } })
     .then((data) => (Array.isArray(data) ? data : []))
+}
+
+/** 发表评论请求参数 */
+export interface CreateCommentPayload {
+  contentId: number
+  body: string
+  parentId?: number | null
+}
+
+/**
+ * 发表评论（或回复）：对已发布文章发评论，可选 parentId 表示回复某条评论
+ */
+export function createComment(payload: CreateCommentPayload): Promise<CommentItem> {
+  return request
+    .post<CommentItem>('comments', payload)
+    .then((data) => data as CommentItem)
 }
 
 /**

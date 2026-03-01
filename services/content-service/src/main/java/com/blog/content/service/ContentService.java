@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
+import com.blog.content.dto.ContentViewVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
 import com.blog.content.dto.PublishResponse;
@@ -182,6 +183,43 @@ public class ContentService {
             voList.stream().filter(vo -> id.equals(vo.getId())).findFirst().ifPresent(ordered::add);
         }
         return ordered;
+    }
+
+    /**
+     * 公开阅读：已发布博客，返回正文、阅读数、点赞数、作者 id 等；不存在或未发布则 404
+     */
+    public ContentViewVO getForView(Long id) {
+        if (id == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
+        Content c = contentMapper.selectById(id);
+        if (c == null || !TYPE_BLOG.equals(c.getType()) || !STATUS_PUBLISHED.equals(c.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
+        }
+        c.setViewCount(c.getViewCount() != null ? c.getViewCount() + 1 : 1);
+        contentMapper.updateById(c);
+        ContentViewVO vo = new ContentViewVO();
+        vo.setId(c.getId());
+        vo.setTitle(c.getTitle());
+        vo.setBody(c.getBody());
+        vo.setSummary(c.getSummary());
+        vo.setCover(c.getCover());
+        vo.setColumnId(c.getColumnId());
+        vo.setArticleType(c.getArticleType());
+        vo.setCreationStatement(c.getCreationStatement());
+        vo.setVisibility(c.getVisibility());
+        vo.setViewCount(c.getViewCount());
+        vo.setLikeCount(c.getLikeCount() != null ? c.getLikeCount() : 0);
+        vo.setCommentCount(c.getCommentCount() != null ? c.getCommentCount() : 0);
+        vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
+        vo.setUserId(c.getUserId());
+        List<ContentTag> ctList = contentTagMapper.selectList(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, id));
+        if (!ctList.isEmpty()) {
+            List<Long> tagIds = ctList.stream().map(ContentTag::getTagId).collect(Collectors.toList());
+            List<Tag> tags = tagMapper.selectBatchIds(tagIds);
+            Map<Long, String> tagIdToName = tags.stream().collect(Collectors.toMap(Tag::getId, t -> t.getName() != null ? t.getName() : "", (a, b) -> a));
+            List<String> tagNames = ctList.stream().map(ct -> tagIdToName.get(ct.getTagId())).filter(n -> n != null).collect(Collectors.toList());
+            vo.setTagNames(tagNames);
+        }
+        return vo;
     }
 
     /**

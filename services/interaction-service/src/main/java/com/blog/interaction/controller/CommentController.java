@@ -2,11 +2,13 @@ package com.blog.interaction.controller;
 
 import com.blog.interaction.dto.CommentVO;
 import com.blog.interaction.dto.CommentedArticleVO;
+import com.blog.interaction.dto.CreateCommentRequest;
 import com.blog.interaction.service.CommentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 
@@ -29,9 +31,17 @@ public class CommentController {
     @GetMapping("/list")
     public ResponseEntity<List<CommentVO>> listByContentId(
             @RequestParam Long contentId,
-            @RequestHeader(HEADER_USER_ID) Long userId) {
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long userId) {
         List<CommentVO> list = commentService.listByContentId(contentId, userId);
         return ResponseEntity.ok(list);
+    }
+
+    @PostMapping
+    public ResponseEntity<CommentVO> create(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @RequestBody @Valid CreateCommentRequest request) {
+        CommentVO vo = commentService.create(userId, request);
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED).body(vo);
     }
 
     @PatchMapping("/{id}/hot")

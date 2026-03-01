@@ -34,6 +34,16 @@ public class UserController {
         return ResponseEntity.ok(vo);
     }
 
+    /** 按 ID 获取公开资料（昵称、头像），用于评论等展示；无需认证 */
+    @GetMapping("/{id}")
+    public ResponseEntity<UserVO> getProfile(@PathVariable Long id) {
+        UserVO vo = userService.getById(id);
+        if (vo == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(vo);
+    }
+
     @PatchMapping("/me")
     public ResponseEntity<UserVO> updateMe(
             @RequestHeader(HEADER_USER_ID) Long userId,

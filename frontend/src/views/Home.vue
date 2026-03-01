@@ -131,8 +131,11 @@
                       </span>
                     </span>
                   </div>
-                  <div class="article-item-meta">
-                    {{ formatDate(item.createdAt) }}
+                  <div class="article-item-stats">
+                    <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatBlogCount(item.viewCount) }}</span>
+                    <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatBlogCount(item.likeCount) }}</span>
+                    <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatBlogCount(item.collectionCount) }}</span>
+                    <span class="stat article-item-time">发布时间 {{ formatListDate(item.createdAt) }}</span>
                   </div>
                 </div>
                 <div class="article-item-cover">
@@ -210,7 +213,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { ArrowRight, Search, ArrowDown, ArrowUp, Location, Briefcase, User, Document } from '@element-plus/icons-vue'
+import { ArrowRight, Search, ArrowDown, ArrowUp, Location, Briefcase, User, Document, View, Star, Collection } from '@element-plus/icons-vue'
 import { getColumnsMe, type ColumnItem } from '@/api/column'
 import { getContentsMe, type ContentListItem } from '@/api/content'
 import { getMe, type UserMe } from '@/api/user'
@@ -274,6 +277,17 @@ function formatDate(str: string) {
   const m = d.getMonth() + 1
   const day = d.getDate()
   return `${y}年${m}月${day}日`
+}
+/** 列表项阅读/赞/收藏数量展示（与个人主页一致：≥1000 显示 1.2k） */
+function formatBlogCount(n: number) {
+  if (n == null || Number.isNaN(n)) return '0'
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k'
+  return String(n)
+}
+/** 列表项发布时间：YYYY-MM-DD */
+function formatListDate(str: string) {
+  if (!str) return ''
+  return str.slice(0, 10)
 }
 
 // 列表区搜索：与个人主页一致，点击图标展开输入框，回车提交，取消只收起（不清已应用关键词）
@@ -1047,9 +1061,30 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.article-item-meta {
+.article-item-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
   font-size: 14px;
+  color: #555;
+}
+.article-item-stats .stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.article-item-stats .stat :deep(.el-icon) {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+  color: #999;
+  flex-shrink: 0;
+}
+.article-item-stats .article-item-time {
   color: #888;
+  margin-left: auto;
 }
 
 .article-item-cover {

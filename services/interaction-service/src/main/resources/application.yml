@@ -1,6 +1,10 @@
 server:
   port: 8085
 
+# 评论展示需拉取用户昵称/头像；有 Nacos 时用 http://user-service，本地直连可配 http://localhost:8081
+app:
+  user-service-url: http://localhost:8081
+
 spring:
   application:
     name: interaction-service

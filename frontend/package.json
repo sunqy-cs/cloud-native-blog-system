@@ -15,7 +15,8 @@
     "pinia": "^2.1.0",
     "vditor": "^3.11.2",
     "vue": "^3.4.0",
-    "vue-router": "^4.2.0"
+    "vue-router": "^4.2.0",
+    "vue3-emoji-picker": "^1.1.8"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

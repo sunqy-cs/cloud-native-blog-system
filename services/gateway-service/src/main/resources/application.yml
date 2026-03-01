@@ -109,3 +109,5 @@ gateway:
       - "GET:/api/objects/**"
       # 推荐页公开列表（已发布博客，按主标签/最新）
       - "GET:/api/contents/list"
+      # 文章公开阅读（已发布博客）
+      - "GET:/api/contents/view/**"
