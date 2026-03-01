@@ -94,8 +94,18 @@
                     <span v-else class="search-result-cover-ph">{{ col.name.charAt(0) }}</span>
                   </span>
                   <span class="search-result-column-body">
-                    <span class="search-result-title">{{ col.name }}</span>
-                    <span v-if="col.description" class="search-result-desc">{{ col.description }}</span>
+                    <span class="search-result-title">
+                      <span v-for="(frag, i) in highlightFragments(col.name, keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
+                    <span v-if="col.description" class="search-result-desc">
+                      <span v-for="(frag, i) in highlightFragments(col.description, keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
                     <span class="search-result-meta">
                       {{ col.articleCount }} 篇
                       <template v-if="col.updatedAt"> · 更新于 {{ col.updatedAt }}</template>
@@ -120,8 +130,18 @@
                     <span v-else class="search-result-avatar-ph">{{ (u.nickname || u.username || '?').charAt(0) }}</span>
                   </span>
                   <span class="search-result-user-info">
-                    <span class="search-result-title">{{ u.nickname || u.username }}</span>
-                    <span v-if="u.intro" class="search-result-desc">{{ u.intro }}</span>
+                    <span class="search-result-title">
+                      <span v-for="(frag, i) in highlightFragments(u.nickname || u.username || '', keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
+                    <span v-if="u.intro" class="search-result-desc">
+                      <span v-for="(frag, i) in highlightFragments(u.intro, keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
                   </span>
                 </router-link>
               </li>
@@ -140,8 +160,18 @@
                     <img :src="art.cover" :alt="art.title" />
                   </span>
                   <span class="search-result-article-body">
-                    <span class="search-result-title">{{ art.title }}</span>
-                    <span v-if="art.summary" class="search-result-desc">{{ art.summary }}</span>
+                    <span class="search-result-title">
+                      <span v-for="(frag, i) in highlightFragments(art.title, keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
+                    <span v-if="art.summary" class="search-result-desc">
+                      <span v-for="(frag, i) in highlightFragments(art.summary, keyword.trim())" :key="i">
+                        <span v-if="frag.type === 'match'" class="search-highlight">{{ frag.value }}</span>
+                        <template v-else>{{ frag.value }}</template>
+                      </span>
+                    </span>
                     <span class="search-result-meta">
                       阅读 {{ art.viewCount ?? 0 }} · 点赞 {{ art.likeCount ?? 0 }} · 收藏 {{ art.collectionCount ?? 0 }} · 评论 {{ art.commentCount ?? 0 }}
                       <template v-if="art.publishedAt || art.createdAt"> · {{ formatDateTime(art.publishedAt ?? art.createdAt) }}</template>
@@ -214,6 +244,23 @@ const filterExpanded = ref(false)
 function formatDateTime(iso: string) {
   if (!iso) return ''
   return iso.replace('T', ' ')
+}
+
+/** 将文本按关键词拆成片段用于淡红色高亮（不区分大小写） */
+function highlightFragments(
+  text: string | undefined,
+  keyword: string
+): { type: 'text' | 'match'; value: string }[] {
+  if (!text) return []
+  const k = keyword.trim()
+  if (!k) return [{ type: 'text', value: text }]
+  const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(${escaped})`, 'gi')
+  const parts = text.split(re)
+  return parts.map((value, i) => ({
+    type: i % 2 === 1 ? 'match' : 'text',
+    value,
+  }))
 }
 
 function setSearchType(type: SearchType) {
@@ -445,6 +492,13 @@ watch(
   margin: 0 0 16px;
   font-size: 14px;
   color: #666;
+}
+
+/* 搜索词高亮：淡淡红色 */
+.search-highlight {
+  background: rgba(187, 25, 25, 0.14);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .search-placeholder-icon-wrap {

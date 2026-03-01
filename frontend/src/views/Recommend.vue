@@ -20,6 +20,9 @@
       </div>
     </nav>
 
+    <div class="rec-content-wrap">
+      <div v-if="!recFirstLoadDone" class="rec-skeleton" aria-hidden="true"></div>
+      <div v-else class="rec-content" :class="{ 'rec-content--ready': recContentReady }">
     <div id="rec-section-all" class="page-layout">
       <main class="rec-main">
         <!-- BBC 三栏：左 2 条带图 | 中 1 条大头条+相关链接 | 右 4 条纯文 -->
@@ -127,6 +130,8 @@
           :title="lastMainTag?.name ?? '编辑精选'"
           :items="editorPicksSecondStripItems"
         />
+      </div>
+    </div>
       </div>
     </div>
   </div>
@@ -300,6 +305,10 @@ const tagSectionItems = ref<RecommendBlockItem[][]>([])
 const mainTagsForSections = ref<RecTag[]>([])
 const recTopLoading = ref(false)
 const recSectionsLoading = ref(false)
+/** 首次加载完成后为 true，用于避免空白→内容切换时的闪一下 */
+const recFirstLoadDone = ref(false)
+/** 内容区淡入用，在首帧渲染后再设为 true */
+const recContentReady = ref(false)
 
 /** 第一条黑色栏：第四个主标签「多模态与生成模型」 */
 const editorPicksFirstStripItems = ref<EditorPicksItem[]>([])
@@ -316,6 +325,8 @@ async function loadRecData() {
   const tags = mainTagsForSections.value
   if (tags.length === 0) return
 
+  recFirstLoadDone.value = false
+  recContentReady.value = false
   recSectionsLoading.value = true
   try {
     const sectionPromises = tags.map((tag, i) => {
@@ -372,6 +383,14 @@ async function loadRecData() {
     relatedLinks.value = topFiltered.slice(7, 9).map((c) => ({ title: c.title, to: `/article/${c.id}` }))
   } finally {
     recTopLoading.value = false
+    if (!recFirstLoadDone.value) {
+      recFirstLoadDone.value = true
+      nextTick(() => {
+        requestAnimationFrame(() => {
+          recContentReady.value = true
+        })
+      })
+    }
   }
 }
 
@@ -468,6 +487,27 @@ watch(
 .recommend-page {
   min-height: calc(100vh - 64px);
   background: #f5f5f5;
+}
+
+/* 推荐主内容区：首次加载前显示骨架，加载完成后淡入，避免闪一下 */
+.rec-content-wrap {
+  position: relative;
+}
+.rec-skeleton {
+  min-height: 70vh;
+  background: linear-gradient(90deg, #eee 25%, #f5f5f5 50%, #eee 75%);
+  background-size: 200% 100%;
+  animation: rec-skeleton-shine 1.2s ease-in-out infinite;
+}
+@keyframes rec-skeleton-shine {
+  to { background-position: 200% 0; }
+}
+.rec-content {
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+.rec-content.rec-content--ready {
+  opacity: 1;
 }
 
 /* 导航栏点击滚动到对应栏时，留出顶栏+导航高度，避免被遮挡 */
