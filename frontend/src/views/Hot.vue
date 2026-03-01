@@ -45,10 +45,6 @@
                 <span class="hot-stats">
                   阅读 {{ item.viewDisplay }} · 点赞 {{ item.likeDisplay }} · 收藏 {{ item.collectionDisplay }} · 评论 {{ item.commentDisplay }}
                 </span>
-                <span class="hot-share" @click.prevent="onShare(item)">
-                  <el-icon><Share /></el-icon>
-                  分享
-                </span>
               </div>
             </div>
             <div class="hot-item-cover">
@@ -74,7 +70,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Share } from '@element-plus/icons-vue'
 import { getHotList } from '@/api/content'
 import CreationCenter from '@/components/CreationCenter.vue'
 import HotSearch from '@/components/HotSearch.vue'
@@ -163,10 +158,6 @@ async function loadHot() {
   } finally {
     hotLoading.value = false
   }
-}
-
-function onShare(item: HotListItem) {
-  console.log('share', item.id)
 }
 
 const TOP_BAR_INTERVAL = 4000
@@ -376,22 +367,6 @@ onUnmounted(() => {
   height: 12px;
   background: #BB1919;
   border-radius: 50%;
-}
-
-.hot-share {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  color: #888;
-}
-
-.hot-share:hover {
-  color: #111;
-}
-
-.hot-share .el-icon {
-  font-size: 14px;
 }
 
 .hot-item-cover {

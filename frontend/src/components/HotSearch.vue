@@ -3,14 +3,15 @@
     <div class="hot-search-header">
       <div class="hot-search-title-wrap">
         <el-icon class="hot-search-icon"><TrendCharts /></el-icon>
-        <span class="hot-search-title">大家都在搜</span>
+        <span class="hot-search-title">猜你想看</span>
       </div>
       <button type="button" class="hot-search-refresh" @click="refresh">
         <el-icon class="refresh-icon"><Refresh /></el-icon>
         <span>换一换</span>
       </button>
     </div>
-    <ul class="hot-search-list">
+    <div v-if="loading" class="hot-search-loading">加载中…</div>
+    <ul v-else class="hot-search-list">
       <li
         v-for="(item, index) in displayList"
         :key="item.id"
@@ -23,14 +24,7 @@
         <router-link :to="item.link" class="hot-search-link">
           {{ item.title }}
         </router-link>
-        <span class="hot-search-count">{{ item.count }}</span>
-        <span
-          v-if="item.tag"
-          class="hot-search-tag"
-          :class="item.tag === '热' ? 'tag-hot' : 'tag-new'"
-        >
-          {{ item.tag }}
-        </span>
+        <span v-if="item.showNew" class="hot-search-tag tag-new">新</span>
       </li>
     </ul>
   </aside>
@@ -39,32 +33,84 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { TrendCharts, Refresh } from '@element-plus/icons-vue'
+import { getHotList } from '@/api/content'
+import { getMainTags, getOtherTags } from '@/api/tag'
 
 export interface HotSearchItem {
   id: string
   title: string
-  count: string
-  tag?: '热' | '新'
-  link?: string
+  showNew: boolean
+  link: string
 }
 
 const displayList = ref<HotSearchItem[]>([])
+const loading = ref(false)
 
-const mockList: HotSearchItem[] = [
-  { id: '1', title: '接财神', count: '312万', tag: '热', link: '/hot' },
-  { id: '2', title: '飞驰人生3', count: '305万', tag: '热', link: '/hot' },
-  { id: '3', title: '中国队短道速滑男子接力', count: '298万', tag: '热', link: '/hot' },
-  { id: '4', title: '春节档票房', count: '256万', tag: '新', link: '/hot' },
-  { id: '5', title: '云原生技术实践', count: '188万', tag: '热', link: '/blog' },
-  { id: '6', title: 'Kubernetes 入门', count: '165万', tag: '新', link: '/blog' },
-  { id: '7', title: '写作与表达', count: '142万', tag: '热', link: '/blog' },
-  { id: '8', title: 'AI 与创作', count: '128万', tag: '新', link: '/blog' },
-  { id: '9', title: '开源项目推荐', count: '98万', link: '/recommend' },
-  { id: '10', title: '开发者工具', count: '86万', tag: '热', link: '/knowledge' },
-]
+/** 去掉标签名中括号及括号内内容 */
+function stripParentheses(name: string): string {
+  if (!name || typeof name !== 'string') return name
+  return name
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*（[^）]*）/g, '')
+    .trim() || name
+}
+
+/** 文章是否在 7 天内发布（对应热榜「新」） */
+function isNewArticle(createdAt: string | undefined): boolean {
+  if (!createdAt) return false
+  const d = new Date(createdAt)
+  const days = (Date.now() - d.getTime()) / (24 * 60 * 60 * 1000)
+  return days <= 7
+}
+
+async function loadList() {
+  loading.value = true
+  try {
+    const [mainTagsRes, otherTagsRes, hotRes] = await Promise.all([
+      getMainTags(),
+      getOtherTags(),
+      getHotList({ page: 1, pageSize: 50 }),
+    ])
+    const mainNames = new Set((mainTagsRes || []).map((t) => t.name))
+    const otherIdByName = new Map((otherTagsRes || []).map((t) => [t.name, t.id]))
+    const list = hotRes.list || []
+
+    const tagMeta = new Map<string, { showNew: boolean; count: number }>()
+    for (const c of list) {
+      const tagNames = (c.tagNames || []).filter((n) => n && !mainNames.has(n))
+      const articleNew = isNewArticle(c.createdAt)
+      for (const name of tagNames) {
+        const key = name.trim()
+        if (!key) continue
+        const cur = tagMeta.get(key)
+        tagMeta.set(key, {
+          showNew: (cur?.showNew ?? false) || articleNew,
+          count: (cur?.count ?? 0) + 1,
+        })
+      }
+    }
+
+    const ordered = Array.from(tagMeta.entries())
+      .map(([name, meta]) => ({ name, showNew: meta.showNew, count: meta.count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+
+    displayList.value = ordered.map((entry, i) => ({
+      id: `tag-${i}-${entry.name}`,
+      title: stripParentheses(entry.name),
+      showNew: entry.showNew,
+      link: otherIdByName.has(entry.name)
+        ? `/recommend?tag=${otherIdByName.get(entry.name)!}`
+        : '/recommend',
+    }))
+  } catch {
+    displayList.value = []
+  } finally {
+    loading.value = false
+  }
+}
 
 function refresh() {
-  // 简单轮换：把列表循环移位
   const next = [...displayList.value]
   const first = next.shift()
   if (first) next.push(first)
@@ -72,7 +118,7 @@ function refresh() {
 }
 
 onMounted(() => {
-  displayList.value = [...mockList]
+  loadList()
 })
 </script>
 
@@ -206,9 +252,11 @@ onMounted(() => {
   line-height: 1.2;
 }
 
-.hot-search-tag.tag-hot {
-  background: #BB1919;
-  color: #fff;
+.hot-search-loading {
+  padding: 24px 20px;
+  text-align: center;
+  font-size: 14px;
+  color: #888;
 }
 
 .hot-search-tag.tag-new {
