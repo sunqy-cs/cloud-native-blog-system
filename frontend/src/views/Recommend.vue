@@ -155,7 +155,7 @@ function toRecItem(c: ContentListItem): RecommendBlockItem {
     id: String(c.id),
     title: c.title || '无标题',
     summary: c.summary ?? '',
-    meta: formatRecMeta(c.createdAt),
+    meta: formatRecMeta(c.publishedAt ?? c.createdAt),
     cover: c.cover ?? undefined,
   }
 }
@@ -166,7 +166,7 @@ function toEditorPickItem(c: ContentListItem): EditorPicksItem {
     title: c.title || '无标题',
     subtitle: c.summary ?? '',
     cover: c.cover ?? undefined,
-    meta: formatRecMeta(c.createdAt),
+    meta: formatRecMeta(c.publishedAt ?? c.createdAt),
   }
 }
 

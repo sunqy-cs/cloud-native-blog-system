@@ -9,16 +9,15 @@
         </router-link>
       </div>
 
-      <!-- 主链接行 -->
+      <!-- 主链接行：与顶栏导航一致 + 创作中心 + 个人主页 -->
       <nav class="app-footer-nav">
-        <router-link to="/">首页</router-link>
+        <router-link to="/blog">博客</router-link>
         <router-link to="/recommend">推荐</router-link>
         <router-link to="/follow">关注</router-link>
         <router-link to="/hot">热榜</router-link>
-        <router-link to="/creator/write">写文章</router-link>
+        <router-link to="/knowledge">知识库</router-link>
         <router-link to="/creator">创作中心</router-link>
-        <a href="#">知识库</a>
-        <a href="#">设置</a>
+        <router-link to="/profile">个人主页</router-link>
       </nav>
 
       <!-- 页脚说明（纯文案，无跳转） -->

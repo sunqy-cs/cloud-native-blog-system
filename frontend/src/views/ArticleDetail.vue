@@ -47,7 +47,7 @@
         <span>阅读 {{ article.viewCount }}</span>
         <span>点赞 {{ article.likeCount }}</span>
         <span>评论 {{ article.commentCount }}</span>
-        <span class="article-date">{{ formatDate(article.createdAt) }}</span>
+        <span class="article-date">{{ formatDate(article.publishedAt ?? article.createdAt) }}</span>
       </div>
 
       <!-- 正文 Markdown -->

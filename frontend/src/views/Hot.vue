@@ -151,7 +151,7 @@ async function loadHot() {
       collectionDisplay: formatCount(c.collectionCount),
       commentDisplay: formatCount(c.commentCount ?? 0),
       cover: c.cover ?? undefined,
-      isNew: isNewArticle(c.createdAt),
+      isNew: isNewArticle(c.publishedAt ?? c.createdAt),
     }))
   } catch {
     hotList.value = []

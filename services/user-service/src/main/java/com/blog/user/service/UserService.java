@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 
@@ -64,6 +65,17 @@ public class UserService {
         User user = userMapper.selectById(id);
         if (user == null) return null;
         return toVO(user);
+    }
+
+    /** 按昵称或用户名模糊搜索（公开），用于搜索页「用户」；限制 20 条，不返回敏感字段 */
+    public List<UserVO> searchByKeyword(String q) {
+        if (q == null || q.trim().isEmpty()) return List.of();
+        String keyword = q.trim();
+        LambdaQueryWrapper<User> qw = new LambdaQueryWrapper<>();
+        qw.and(w -> w.like(User::getNickname, keyword).or().like(User::getUsername, keyword))
+                .last("LIMIT 20");
+        List<User> list = userMapper.selectList(qw);
+        return list.stream().map(UserService::toVO).collect(Collectors.toList());
     }
 
     /** 批量获取用户（仅返回非 null），用于关注列表等 */

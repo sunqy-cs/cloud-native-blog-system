@@ -273,7 +273,7 @@ async function loadFeed(append: boolean) {
         id: String(c.id),
         actorName: authorName,
         actionText: '发表了文章',
-        timeAgo: formatTimeAgo(c.createdAt || ''),
+        timeAgo: formatTimeAgo(c.publishedAt ?? c.createdAt ?? ''),
         authorName,
         authorDesc,
         authorAvatar: authorAvatar || undefined,

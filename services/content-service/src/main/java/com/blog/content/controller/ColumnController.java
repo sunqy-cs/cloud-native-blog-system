@@ -26,6 +26,13 @@ public class ColumnController {
         return ResponseEntity.ok(list);
     }
 
+    /** 按专栏名称或描述模糊搜索（公开），用于搜索页「专栏」；无需认证 */
+    @GetMapping("/search")
+    public ResponseEntity<List<ColumnVO>> search(@RequestParam(required = false) String q) {
+        List<ColumnVO> list = columnService.searchByName(q);
+        return ResponseEntity.ok(list);
+    }
+
     /** 按用户 ID 获取专栏列表（公开），用于他人博客页顶栏「全部 / 专栏」导航；无需认证 */
     @GetMapping("/list")
     public ResponseEntity<List<ColumnVO>> list(@RequestParam(required = false) Long userId) {

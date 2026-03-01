@@ -36,6 +36,12 @@ public class UserController {
         return ResponseEntity.ok(vo);
     }
 
+    /** 按昵称或用户名模糊搜索（公开），用于搜索页「用户」；无需认证 */
+    @GetMapping("/search")
+    public ResponseEntity<List<UserVO>> search(@RequestParam(required = false) String q) {
+        return ResponseEntity.ok(userService.searchByKeyword(q));
+    }
+
     /** 批量获取用户公开资料（昵称、头像等），用于关注列表等；无需认证 */
     @GetMapping("/batch")
     public ResponseEntity<List<UserVO>> batch(@RequestParam List<Long> ids) {

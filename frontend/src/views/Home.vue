@@ -56,7 +56,7 @@
                 <div class="popular-card-body">
                   <h4 class="popular-card-title">{{ item.title }}</h4>
                   <div class="popular-card-meta">
-                    {{ formatDate(item.createdAt) }}
+                    {{ formatDate(item.publishedAt ?? item.createdAt) }}
                   </div>
                 </div>
                 <div class="popular-card-cover">
@@ -135,7 +135,7 @@
                     <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatBlogCount(item.viewCount) }}</span>
                     <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatBlogCount(item.likeCount) }}</span>
                     <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatBlogCount(item.collectionCount) }}</span>
-                    <span class="stat article-item-time">发布时间 {{ formatListDate(item.createdAt) }}</span>
+                    <span class="stat article-item-time">发布时间 {{ formatListDate(item.publishedAt ?? item.createdAt) }}</span>
                   </div>
                 </div>
                 <div class="article-item-cover">

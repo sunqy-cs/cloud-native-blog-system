@@ -2,6 +2,8 @@ import request from './request'
 
 export interface ColumnItem {
   id: number
+  /** 专栏所属用户 ID，仅搜索接口返回 */
+  userId?: number
   name: string
   description?: string | null
   cover?: string | null
@@ -27,6 +29,16 @@ export interface UpdateColumnBody {
  */
 export function getColumnsMe(): Promise<ColumnItem[]> {
   return request.get<ColumnItem[]>('columns/me').then((data) => data as ColumnItem[])
+}
+
+/**
+ * 按专栏名称或描述模糊搜索（公开），用于搜索页「专栏」
+ */
+export function searchColumns(q: string): Promise<ColumnItem[]> {
+  if (!q?.trim()) return Promise.resolve([])
+  return request
+    .get<ColumnItem[]>('columns/search', { params: { q: q.trim() } })
+    .then((data) => (Array.isArray(data) ? data : []))
 }
 
 /**

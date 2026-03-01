@@ -13,6 +13,8 @@ export interface ContentListItem {
   collectionCount: number
   commentCount?: number
   createdAt: string
+  /** 发布时间（与搜索/筛选一致），列表展示建议用此字段 */
+  publishedAt?: string
   /** 标签名称列表；搜索（带 q）时可能返回，用于高亮 */
   tagNames?: string[]
   /** 热榜热度分（仅热榜接口返回） */
@@ -89,6 +91,27 @@ export function getHotList(params?: { page?: number; pageSize?: number }): Promi
 }
 
 /**
+ * 综合搜索：标题、摘要、正文、标签（search-service + ES），支持排序与时间筛选。
+ */
+export function searchContents(params: {
+  q: string
+  page?: number
+  pageSize?: number
+  sort?: string
+  time?: string
+}): Promise<ContentListItem[]> {
+  if (!params?.q?.trim()) return Promise.resolve([])
+  const page = params.page ?? 1
+  const pageSize = params.pageSize ?? 20
+  const reqParams: Record<string, string | number> = { q: params.q.trim(), page, pageSize }
+  if (params.sort) reqParams.sort = params.sort
+  if (params.time) reqParams.time = params.time
+  return request
+    .get<{ ids: number[] }>('search', { params: reqParams })
+    .then((data) => (data?.ids && data.ids.length ? getContentsByIds(data.ids) : Promise.resolve([])))
+}
+
+/**
  * 按 ID 批量获取内容摘要（用于动态里展示赞同内容的标题等）
  */
 export function getContentsByIds(ids: number[]): Promise<ContentListItem[]> {
@@ -127,6 +150,8 @@ export interface ContentView {
   likeCount: number
   commentCount: number
   createdAt: string
+  /** 发布时间（与搜索/筛选一致） */
+  publishedAt?: string
   userId: number
 }
 

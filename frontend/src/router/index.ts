@@ -37,6 +37,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '热榜' },
   },
   {
+    path: '/search',
+    name: 'search',
+    component: () => import('@/views/Search.vue'),
+    meta: { title: '搜索' },
+  },
+  {
     path: '/knowledge',
     name: 'knowledge',
     component: () => import('@/views/Knowledge.vue'),

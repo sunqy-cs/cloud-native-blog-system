@@ -32,6 +32,14 @@ export function getMe(): Promise<UserMe> {
   return request.get<any>('users/me').then((data) => data as UserMe)
 }
 
+/** 按昵称或用户名模糊搜索（公开），用于搜索页「用户」 */
+export function searchUsers(q: string): Promise<UserMe[]> {
+  if (!q?.trim()) return Promise.resolve([])
+  return request
+    .get<UserMe[]>('users/search', { params: { q: q.trim() } })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
 /** 按 ID 获取用户公开资料（昵称、头像等），用于文章页作者展示等；无需登录 */
 export function getUserById(id: number): Promise<UserMe> {
   return request.get<any>(`users/${id}`).then((data) => data as UserMe)

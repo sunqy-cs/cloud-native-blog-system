@@ -59,6 +59,13 @@ public class ContentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
+    /** 全量重建综合搜索索引（把已发布文章同步到 search-service），调用一次即可。 */
+    @PostMapping("/reindex-search")
+    public ResponseEntity<java.util.Map<String, Integer>> reindexSearch() {
+        int indexed = contentService.reindexAllPublishedForSearch();
+        return ResponseEntity.ok(java.util.Map.of("indexed", indexed));
+    }
+
     /** 热榜：按 engagement * time_decay 排序，engagement = 1*log(阅读+1)+3*点赞+5*收藏+8*评论，time_decay = 1/(1+小时/12) */
     @GetMapping("/hot")
     public ResponseEntity<ContentsMeResponse> hot(

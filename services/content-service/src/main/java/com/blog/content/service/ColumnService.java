@@ -32,6 +32,20 @@ public class ColumnService {
         return listColumnsByUserId(userId);
     }
 
+    /** 按专栏名称或描述模糊搜索（公开），用于搜索页「专栏」；返回带 userId 的 VO，限制 20 条 */
+    public List<ColumnVO> searchByName(String q) {
+        if (q == null || q.trim().isEmpty()) return List.of();
+        String keyword = "%" + q.trim() + "%";
+        LambdaQueryWrapper<Column> qw = new LambdaQueryWrapper<>();
+        qw.and(w -> w.like(Column::getName, keyword).or().like(Column::getDescription, keyword))
+                .orderByDesc(Column::getUpdatedAt)
+                .last("LIMIT 20");
+        List<Column> list = columnMapper.selectList(qw);
+        return list.stream()
+                .map(this::toVOWithUserId)
+                .collect(Collectors.toList());
+    }
+
     /** 按用户 ID 获取专栏列表（公开），用于他人博客页「全部 / 专栏」导航，无需认证 */
     public List<ColumnVO> listColumnsByUserId(Long userId) {
         if (userId == null) return List.of();
@@ -94,6 +108,12 @@ public class ColumnService {
                 .eq(Content::getColumnId, columnId)
                 .set(Content::getColumnId, null));
         columnMapper.deleteById(columnId);
+    }
+
+    private ColumnVO toVOWithUserId(Column c) {
+        ColumnVO vo = toVO(c);
+        vo.setUserId(c.getUserId());
+        return vo;
     }
 
     private ColumnVO toVO(Column c) {

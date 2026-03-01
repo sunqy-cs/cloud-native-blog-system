@@ -95,9 +95,21 @@ const keyword = ref('')
 const searchBoxHover = ref(false)
 const menuWrapperRef = ref<HTMLElement | null>(null)
 
+// 在搜索页时，顶栏搜索框显示当前关键词，便于修改后再次搜索
+watch(
+  () => [route.path, route.query.q],
+  () => {
+    if (route.path === '/search') {
+      const q = route.query.q
+      keyword.value = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] ?? '' : '')
+    }
+  },
+  { immediate: true }
+)
+
 function onSearch() {
-  if (!keyword.value.trim()) return
-  router.push({ path: '/recommend', query: { q: keyword.value.trim() } })
+  const q = keyword.value.trim()
+  router.push({ path: '/search', query: q ? { q } : {} })
 }
 const indicatorStyle = ref({ left: '0px', width: '0px' })
 

@@ -164,7 +164,7 @@
                   <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatBlogCount(item.viewCount) }}</span>
                   <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatBlogCount(item.likeCount) }}</span>
                   <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatBlogCount(item.collectionCount) }}</span>
-                  <span class="stat profile-card-time">发布时间 {{ formatBlogCreatedAt(item.createdAt) }}</span>
+                  <span class="stat profile-card-time">发布时间 {{ formatBlogCreatedAt(item.publishedAt ?? item.createdAt) }}</span>
                 </div>
               </div>
               <router-link :to="`/article/${item.id}`" class="profile-card-thumb">
@@ -277,7 +277,7 @@
                             <span v-else-if="item.articleType === 'REPRINT'" class="cm-badge cm-badge-reprint">转载</span>
                             <span v-else-if="item.articleType === 'TRANSLATED'" class="cm-badge cm-badge-translated">翻译</span>
                           </div>
-                          <div class="cm-article-date">{{ item.createdAt }}</div>
+                          <div class="cm-article-date">{{ item.publishedAt ?? item.createdAt }}</div>
                         </div>
                       </div>
                     </td>

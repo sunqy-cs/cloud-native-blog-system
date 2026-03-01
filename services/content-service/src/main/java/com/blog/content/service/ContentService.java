@@ -70,6 +70,9 @@ public class ContentService {
     @Value("${app.interaction-service-url:http://localhost:8085}")
     private String interactionServiceUrl;
 
+    @Value("${app.search-service-url:http://localhost:8087}")
+    private String searchServiceUrl;
+
     /** 调用 interaction-service 判断 followerId 是否关注了 followeeId；失败或未关注返回 false */
     private boolean isFollowingRemote(Long followerId, Long followeeId) {
         if (followerId == null || followeeId == null) return false;
@@ -84,6 +87,39 @@ public class ContentService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /** 发布后通知 search-service 建索引（标题、摘要、正文、标签） */
+    private void notifySearchServiceIndex(Content c) {
+        if (c == null || c.getId() == null) return;
+        try {
+            List<String> tagNames = getTagNamesByContentIds(List.of(c.getId())).getOrDefault(c.getId(), List.of());
+            var body = new java.util.HashMap<String, Object>();
+            body.put("id", c.getId());
+            body.put("userId", c.getUserId());
+            body.put("title", c.getTitle() != null ? c.getTitle() : "");
+            body.put("summary", c.getSummary() != null ? c.getSummary() : "");
+            body.put("body", c.getBody() != null ? c.getBody() : "");
+            body.put("tagNames", tagNames);
+            body.put("publishedAt", c.getUpdatedAt() != null ? c.getUpdatedAt().format(ISO_FORMAT)
+                : (c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : LocalDateTime.now().format(ISO_FORMAT)));
+            String url = searchServiceUrl.replaceFirst("/$", "") + "/api/search/index";
+            restTemplate.postForObject(url, body, Void.class);
+        } catch (Exception ignored) {
+            // search-service 不可用时仅记录，不影响发布
+        }
+    }
+
+    /** 全量重建搜索索引：把所有已发布博客推送到 search-service，用于首次或重建索引。 */
+    public int reindexAllPublishedForSearch() {
+        List<Content> list = contentMapper.selectList(
+                new LambdaQueryWrapper<Content>()
+                        .eq(Content::getType, TYPE_BLOG)
+                        .eq(Content::getStatus, STATUS_PUBLISHED));
+        for (Content c : list) {
+            notifySearchServiceIndex(c);
+        }
+        return list.size();
     }
 
     public ContentsMeResponse listMyContents(Long userId, int page, int pageSize,
@@ -371,6 +407,9 @@ public class ContentService {
         vo.setLikeCount(c.getLikeCount() != null ? c.getLikeCount() : 0);
         vo.setCommentCount(c.getCommentCount() != null ? c.getCommentCount() : 0);
         vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
+        String viewPublishedAt = c.getUpdatedAt() != null ? c.getUpdatedAt().format(ISO_FORMAT)
+                : (c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
+        vo.setPublishedAt(viewPublishedAt);
         vo.setUserId(c.getUserId());
         List<ContentTag> ctList = contentTagMapper.selectList(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, id));
         if (!ctList.isEmpty()) {
@@ -437,6 +476,7 @@ public class ContentService {
         c.setStatus(STATUS_PUBLISHED);
         c.setUpdatedAt(LocalDateTime.now());
         contentMapper.updateById(c);
+        notifySearchServiceIndex(c);
         PublishResponse res = new PublishResponse();
         res.setId(c.getId());
         res.setTitle(c.getTitle());
@@ -612,6 +652,10 @@ public class ContentService {
         vo.setCollectionCount(c.getCollectionCount() != null ? c.getCollectionCount() : 0);
         vo.setCommentCount(c.getCommentCount() != null ? c.getCommentCount() : 0);
         vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
+        // 与搜索/筛选一致：优先 updatedAt（发布时间），无则用 createdAt，便于列表与 ES 时间一致
+        String publishedAtStr = c.getUpdatedAt() != null ? c.getUpdatedAt().format(ISO_FORMAT)
+                : (c.getCreatedAt() != null ? c.getCreatedAt().format(ISO_FORMAT) : null);
+        vo.setPublishedAt(publishedAtStr);
         return vo;
     }
 }

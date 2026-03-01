@@ -21,5 +21,7 @@ public class ContentViewVO {
     private Integer likeCount;
     private Integer commentCount;
     private String createdAt;
+    /** 发布时间（updatedAt），与搜索/筛选一致 */
+    private String publishedAt;
     private Long userId;
 }

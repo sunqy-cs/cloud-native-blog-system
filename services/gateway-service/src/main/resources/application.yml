@@ -64,6 +64,12 @@ spring:
           predicates:
             - Path=/api/tags/**
           order: 3
+        # 搜索服务：综合搜索（标题、摘要、正文、标签）
+        - id: search-service
+          uri: lb://search-service
+          predicates:
+            - Path=/api/search/**
+          order: 3
         # 互动服务：评论（有评论的文章、评论列表、热评）
         - id: interaction-service-comments
           uri: lb://interaction-service
@@ -117,3 +123,7 @@ gateway:
       - "GET:/api/columns/list"
       # 指定用户的关注统计（公开），用于他人个人主页展示关注者数
       - "GET:/api/follow/stats"
+      # 综合搜索（标题、摘要、正文、标签）
+      - "GET:/api/search"
+      # 全量重建搜索索引（开发/首次同步用）
+      - "POST:/api/contents/reindex-search"

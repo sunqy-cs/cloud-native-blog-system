@@ -239,7 +239,7 @@
                   <span class="stat"><el-icon><View /></el-icon> 阅读 {{ formatCount(item.viewCount) }}</span>
                   <span class="stat"><el-icon><Star /></el-icon> 赞 {{ formatCount(item.likeCount) }}</span>
                   <span class="stat"><el-icon><Collection /></el-icon> 收藏 {{ formatCount(item.collectionCount) }}</span>
-                  <span class="stat profile-card-time">发布时间 {{ formatCreatedAt(item.createdAt) }}</span>
+                  <span class="stat profile-card-time">发布时间 {{ formatCreatedAt(item.publishedAt ?? item.createdAt) }}</span>
                 </div>
               </div>
               <router-link :to="`/article/${item.id}`" class="profile-card-thumb">

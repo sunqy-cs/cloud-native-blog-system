@@ -18,7 +18,6 @@ spring:
     username: root
     password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
-
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
@@ -26,6 +25,7 @@ mybatis-plus:
     db-config:
       id-type: auto
 
-# 互动服务地址，用于创作者统计昨日点赞数（服务间调用）
+# 互动服务地址，用于创作者统计昨日点赞数（服务间调用）；search-service 用于发布后建索引
 app:
   interaction-service-url: http://localhost:8085
+  search-service-url: http://localhost:8087

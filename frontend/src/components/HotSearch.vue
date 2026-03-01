@@ -78,7 +78,7 @@ async function loadList() {
     const tagMeta = new Map<string, { showNew: boolean; count: number }>()
     for (const c of list) {
       const tagNames = (c.tagNames || []).filter((n) => n && !mainNames.has(n))
-      const articleNew = isNewArticle(c.createdAt)
+      const articleNew = isNewArticle(c.publishedAt ?? c.createdAt)
       for (const name of tagNames) {
         const key = name.trim()
         if (!key) continue

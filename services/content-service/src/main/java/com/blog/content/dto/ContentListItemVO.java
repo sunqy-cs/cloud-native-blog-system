@@ -19,6 +19,8 @@ public class ContentListItemVO {
     private Integer collectionCount;
     private Integer commentCount;
     private String createdAt;
+    /** 发布时间（updatedAt），与搜索/筛选用的时间一致；列表展示建议用此字段 */
+    private String publishedAt;
     /** 标签名称列表；仅在有搜索关键词 q 时填充，供前端高亮 */
     private List<String> tagNames;
     /** 热榜热度分（仅热榜接口返回），engagement * time_decay */
