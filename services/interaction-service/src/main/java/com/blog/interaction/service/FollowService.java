@@ -5,7 +5,9 @@ import com.blog.interaction.dto.FollowStatsVO;
 import com.blog.interaction.entity.Follow;
 import com.blog.interaction.mapper.FollowMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -38,5 +40,56 @@ public class FollowService {
         vo.setFollowerCount(followers != null ? followers : 0L);
         vo.setYesterdayFollowerDelta(yesterdayFollowers != null ? yesterdayFollowers : 0L);
         return vo;
+    }
+
+    /** 当前用户是否已关注指定用户（用于 visibility=FANS 的博客可见性校验） */
+    public boolean isFollowing(Long followerId, Long followeeId) {
+        if (followerId == null || followeeId == null) return false;
+        if (followerId.equals(followeeId)) return true;
+        Long n = followMapper.selectCount(
+                new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, followerId)
+                        .eq(Follow::getFolloweeId, followeeId));
+        return n != null && n > 0;
+    }
+
+    /** 指定用户的关注统计（公开），用于他人个人主页展示关注者/关注了数量 */
+    public FollowStatsVO getFollowStatsByUserId(Long targetUserId) {
+        if (targetUserId == null) {
+            FollowStatsVO vo = new FollowStatsVO();
+            vo.setFollowingCount(0L);
+            vo.setFollowerCount(0L);
+            vo.setYesterdayFollowerDelta(0L);
+            return vo;
+        }
+        return getFollowStats(targetUserId);
+    }
+
+    /** 关注某用户（不能关注自己） */
+    public void follow(Long currentUserId, Long followeeId) {
+        if (currentUserId == null || followeeId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数不能为空");
+        }
+        if (currentUserId.equals(followeeId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "不能关注自己");
+        }
+        Long n = followMapper.selectCount(
+                new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, currentUserId)
+                        .eq(Follow::getFolloweeId, followeeId));
+        if (n != null && n > 0) return;
+        Follow f = new Follow();
+        f.setFollowerId(currentUserId);
+        f.setFolloweeId(followeeId);
+        f.setCreatedAt(LocalDateTime.now());
+        followMapper.insert(f);
+    }
+
+    /** 取消关注 */
+    public void unfollow(Long currentUserId, Long followeeId) {
+        if (currentUserId == null || followeeId == null) return;
+        followMapper.delete(new LambdaQueryWrapper<Follow>()
+                .eq(Follow::getFollowerId, currentUserId)
+                .eq(Follow::getFolloweeId, followeeId));
     }
 }

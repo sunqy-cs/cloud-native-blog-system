@@ -69,4 +69,12 @@ public class CommentController {
         commentService.setHot(id, userId, Boolean.TRUE.equals(hot));
         return ResponseEntity.noContent().build();
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @PathVariable Long id,
+            @RequestHeader(HEADER_USER_ID) Long userId) {
+        commentService.deleteComment(id, userId);
+        return ResponseEntity.noContent().build();
+    }
 }

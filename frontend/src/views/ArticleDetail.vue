@@ -28,6 +28,10 @@
           <div class="author-info">
             <span class="author-name">{{ authorInfo.nickname || authorInfo.username || '用户' }}</span>
             <p v-if="authorInfo.intro || authorInfo.bio" class="author-intro">{{ authorInfo.intro || authorInfo.bio }}</p>
+            <template v-if="article.userId && article.userId !== userStore.userInfo?.id">
+              <router-link :to="{ path: '/blog', query: { userId: String(article.userId) } }" class="author-link-blog">查看TA的博客</router-link>
+              <router-link :to="{ path: '/profile', query: { userId: String(article.userId) } }" class="author-link-blog author-link-profile">进入TA的个人主页</router-link>
+            </template>
           </div>
         </template>
         <template v-else>
@@ -49,9 +53,17 @@
       <!-- 正文 Markdown -->
       <div ref="previewRef" class="article-body vditor-reset"></div>
 
-      <!-- 底部操作：点赞、收藏、评论（暂不实装） -->
+      <!-- 底部操作：点赞、收藏、评论 -->
       <div class="article-actions">
-        <el-button class="action-btn" :icon="Star">点赞 {{ article.likeCount }}</el-button>
+        <el-button
+          class="action-btn"
+          :class="{ 'is-liked': articleLikedByMe }"
+          :icon="articleLikedByMe ? StarFilled : Star"
+          :loading="likeSubmitting"
+          @click="toggleArticleLike"
+        >
+          点赞 {{ article.likeCount }}
+        </el-button>
         <el-button class="action-btn" :icon="Collection">收藏</el-button>
         <el-button class="action-btn" :icon="ChatDotRound">评论 {{ article.commentCount }}</el-button>
       </div>
@@ -135,7 +147,18 @@
                   <span class="comment-username">{{ c.userNickname || '用户' }}</span>
                   <el-tag v-if="c.isAuthor" type="danger" size="small" class="comment-tag-author">作者</el-tag>
                   <span class="comment-meta">{{ timeAgo(c.createdAt) }}</span>
-                  <el-icon class="comment-more" title="更多"><MoreFilled /></el-icon>
+                  <el-dropdown
+                    v-if="canDeleteComment(c)"
+                    trigger="click"
+                    @command="(cmd: string) => cmd === 'delete' && deleteCommentItem(c)"
+                  >
+                    <el-icon class="comment-more" title="更多"><MoreFilled /></el-icon>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
                 <div class="comment-body">{{ c.body }}</div>
                 <div class="comment-actions">
@@ -166,13 +189,14 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getContentView, type ContentView } from '@/api/content'
-import { getMe, type UserMe } from '@/api/user'
+import { getMe, getUserById, type UserMe } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
-import { Loading, Star, Collection, ChatDotRound, MoreFilled } from '@element-plus/icons-vue'
+import { Loading, Star, StarFilled, Collection, ChatDotRound, MoreFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getContentComments, createComment, likeComment, unlikeComment, type CommentItem } from '@/api/comment'
+import { getContentComments, createComment, likeComment, unlikeComment, deleteComment as apiDeleteComment, type CommentItem } from '@/api/comment'
+import { checkContentLiked, likeContent, unlikeContent } from '@/api/contentLike'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 
@@ -192,6 +216,8 @@ const commentSort = ref<'default' | 'latest'>('default')
 const emojiPickerVisible = ref(false)
 const commentSubmitting = ref(false)
 const replyingTo = ref<{ parentId: number; parentNickname: string } | null>(null)
+const articleLikedByMe = ref(false)
+const likeSubmitting = ref(false)
 
 const id = computed(() => {
   const p = route.params.id
@@ -233,15 +259,19 @@ const displayCommentCount = computed(() => {
   return article.value?.commentCount ?? 0
 })
 
-/** 排序后的评论列表（先按时间排序，再展平：顶级在前，回复紧跟其下并缩进） */
+/** 排序后的评论列表：默认按点赞数降序、再按时间；最新按时间降序。展平为顶级在前、回复紧跟其下。 */
 const displayComments = computed(() => {
   const list = [...commentList.value]
-  const order = commentSort.value === 'latest' ? -1 : 1
-  list.sort((a, b) => {
-    const t1 = new Date(a.createdAt).getTime()
-    const t2 = new Date(b.createdAt).getTime()
-    return (t1 - t2) * order
-  })
+  if (commentSort.value === 'latest') {
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  } else {
+    list.sort((a, b) => {
+      const la = a.likeCount ?? 0
+      const lb = b.likeCount ?? 0
+      if (lb !== la) return lb - la
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }
   const top = list.filter((c) => !c.parentId)
   const byParent = new Map<number, CommentItem[]>()
   list.filter((c) => c.parentId).forEach((c) => {
@@ -351,6 +381,53 @@ async function toggleLike(c: CommentItem) {
   }
 }
 
+async function toggleArticleLike() {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录后再点赞')
+    return
+  }
+  const aid = article.value?.id
+  if (aid == null) return
+  likeSubmitting.value = true
+  try {
+    if (articleLikedByMe.value) {
+      await unlikeContent(aid)
+      articleLikedByMe.value = false
+      if (article.value) article.value.likeCount = Math.max(0, (article.value.likeCount ?? 0) - 1)
+    } else {
+      await likeContent(aid)
+      articleLikedByMe.value = true
+      if (article.value) article.value.likeCount = (article.value.likeCount ?? 0) + 1
+    }
+  } catch {
+    // 错误已由拦截器提示
+  } finally {
+    likeSubmitting.value = false
+  }
+}
+
+/** 当前用户是否为评论作者或文章作者（可删评论） */
+function canDeleteComment(c: CommentItem): boolean {
+  if (!userStore.isLoggedIn || !userStore.userInfo?.id) return false
+  const uid = userStore.userInfo.id
+  return c.userId === uid || article.value?.userId === uid
+}
+
+async function deleteCommentItem(c: CommentItem) {
+  try {
+    await apiDeleteComment(c.id)
+    const replyIds = new Set(commentList.value.filter((x) => x.parentId === c.id).map((x) => x.id))
+    replyIds.add(c.id)
+    commentList.value = commentList.value.filter((x) => !replyIds.has(x.id))
+    if (article.value) {
+      article.value.commentCount = Math.max(0, (article.value.commentCount ?? 0) - replyIds.size)
+    }
+    ElMessage.success('已删除')
+  } catch {
+    // 错误已由拦截器提示
+  }
+}
+
 function formatDate(iso?: string) {
   if (!iso) return ''
   try {
@@ -379,12 +456,24 @@ async function loadArticle() {
   loading.value = true
   article.value = null
   authorInfo.value = null
+  articleLikedByMe.value = false
   try {
     const data = await getContentView(numId)
     article.value = data
-    if (data.userId && userStore.userInfo?.id === data.userId) {
+    if (userStore.isLoggedIn) {
       try {
-        authorInfo.value = await getMe()
+        const { liked } = await checkContentLiked(numId)
+        articleLikedByMe.value = liked
+      } catch {
+        articleLikedByMe.value = false
+      }
+    }
+    if (data.userId) {
+      try {
+        authorInfo.value =
+          userStore.userInfo?.id === data.userId
+            ? await getMe()
+            : await getUserById(data.userId)
       } catch {
         authorInfo.value = null
       }
@@ -516,6 +605,19 @@ watch(
   color: #555;
   line-height: 1.5;
 }
+.author-link-blog {
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #bb1919;
+  text-decoration: none;
+}
+.author-link-blog:hover {
+  text-decoration: underline;
+}
+.author-link-blog.author-link-profile {
+  margin-left: 1rem;
+}
 .article-stats {
   display: flex;
   flex-wrap: wrap;
@@ -552,6 +654,10 @@ watch(
   border-color: #ddd;
 }
 .article-actions .action-btn:hover {
+  color: #bb1919;
+  border-color: #bb1919;
+}
+.article-actions .action-btn.is-liked {
   color: #bb1919;
   border-color: #bb1919;
 }

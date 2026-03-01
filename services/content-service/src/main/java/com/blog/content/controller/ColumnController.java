@@ -26,6 +26,14 @@ public class ColumnController {
         return ResponseEntity.ok(list);
     }
 
+    /** 按用户 ID 获取专栏列表（公开），用于他人博客页顶栏「全部 / 专栏」导航；无需认证 */
+    @GetMapping("/list")
+    public ResponseEntity<List<ColumnVO>> list(@RequestParam(required = false) Long userId) {
+        if (userId == null) return ResponseEntity.ok(List.of());
+        List<ColumnVO> list = columnService.listColumnsByUserId(userId);
+        return ResponseEntity.ok(list);
+    }
+
     @PostMapping
     public ResponseEntity<ColumnVO> create(
             @RequestHeader(HEADER_USER_ID) Long userId,

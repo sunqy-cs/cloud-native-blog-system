@@ -136,6 +136,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { VideoPlay, Refresh } from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
 import { getMainTags } from '@/api/tag'
 import { getContentsList, type ContentListItem } from '@/api/content'
 import RecommendBlock from '@/components/RecommendBlock.vue'
@@ -402,9 +403,21 @@ function getRecSectionId(tagId: string): string {
 
 function scrollToRecSection() {
   const id = getRecSectionId(currentTagId.value)
-  nextTick(() => {
+  const doScroll = () => {
     const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return true
+    }
+    return false
+  }
+  // 等 DOM 更新后再滚动；同路由仅 query 变化时需多等一帧
+  nextTick(() => {
+    if (doScroll()) return
+    requestAnimationFrame(() => {
+      if (doScroll()) return
+      setTimeout(doScroll, 80)
+    })
   })
 }
 
@@ -416,9 +429,11 @@ watch([currentTagId, recNavTags], () => {
 }, { flush: 'post' })
 watch(currentTagId, (newVal, oldVal) => {
   if (oldVal !== undefined && newVal !== oldVal) scrollToRecSection()
-})
+}, { flush: 'post' })
 
-onMounted(() => {
+const userStore = useUserStore()
+/** 初始化推荐页：拉取主标签并加载各栏数据（切换用户后需重新执行以保证导航与内容一致） */
+function initRecPage() {
   getMainTags().then((list) => {
     if (!Array.isArray(list)) return
     const filtered = list.filter((t) => t.name !== '其他').map((t) => ({ id: String(t.id), name: stripParentheses(t.name) }))
@@ -430,11 +445,23 @@ onMounted(() => {
     updateRecTagIndicator()
     loadRecData()
   })
+}
+
+onMounted(() => {
+  initRecPage()
   window.addEventListener('resize', updateRecTagIndicator)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateRecTagIndicator)
 })
+
+/** 切换登录用户后重新初始化，避免导航栏与下方区块不同步导致跳转失效 */
+watch(
+  () => userStore.userInfo?.id,
+  () => {
+    initRecPage()
+  }
+)
 </script>
 
 <style scoped>

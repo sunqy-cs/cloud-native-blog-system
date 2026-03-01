@@ -90,11 +90,10 @@ public class CommentService {
                 .orderByDesc(Comment::getCreatedAt);
         List<Comment> list = commentMapper.selectList(q);
         List<Long> commentIds = list.stream().map(Comment::getId).collect(Collectors.toList());
-        java.util.Map<Long, Long> likeCountMap = countLikesByCommentIds(commentIds);
         Set<Long> likedByMeIds = currentUserId != null ? findLikedCommentIdsByUser(currentUserId, commentIds) : Set.of();
         return list.stream()
                 .map(c -> toCommentVO(c, contentOwnerId, getNicknameAndAvatar(c.getUserId()),
-                        likeCountMap.getOrDefault(c.getId(), 0L), likedByMeIds.contains(c.getId())))
+                        (long) (c.getLikeCount() != null ? c.getLikeCount() : 0), likedByMeIds.contains(c.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -150,6 +149,9 @@ public class CommentService {
         like.setUserId(userId);
         like.setCommentId(commentId);
         commentLikeMapper.insert(like);
+        LambdaUpdateWrapper<Comment> u = new LambdaUpdateWrapper<>();
+        u.eq(Comment::getId, commentId).setSql("like_count = like_count + 1");
+        commentMapper.update(null, u);
     }
 
     /** 取消点赞评论 */
@@ -157,14 +159,12 @@ public class CommentService {
     public void unlikeComment(Long commentId, Long userId) {
         LambdaQueryWrapper<CommentLike> q = new LambdaQueryWrapper<>();
         q.eq(CommentLike::getUserId, userId).eq(CommentLike::getCommentId, commentId);
-        commentLikeMapper.delete(q);
-    }
-
-    private java.util.Map<Long, Long> countLikesByCommentIds(List<Long> commentIds) {
-        if (commentIds.isEmpty()) return java.util.Map.of();
-        List<CommentLike> all = commentLikeMapper.selectList(
-                new LambdaQueryWrapper<CommentLike>().in(CommentLike::getCommentId, commentIds));
-        return all.stream().collect(Collectors.groupingBy(CommentLike::getCommentId, Collectors.counting()));
+        long deleted = commentLikeMapper.delete(q);
+        if (deleted > 0) {
+            LambdaUpdateWrapper<Comment> u = new LambdaUpdateWrapper<>();
+            u.eq(Comment::getId, commentId).setSql("like_count = GREATEST(0, like_count - 1)");
+            commentMapper.update(null, u);
+        }
     }
 
     private Set<Long> findLikedCommentIdsByUser(Long userId, List<Long> commentIds) {
@@ -186,6 +186,37 @@ public class CommentService {
         LambdaUpdateWrapper<Comment> u = new LambdaUpdateWrapper<>();
         u.eq(Comment::getId, commentId).set(Comment::getIsHot, hot);
         commentMapper.update(null, u);
+    }
+
+    /**
+     * 删除评论：仅评论本人或文章作者可删。若为顶级评论会级联删除其下回复，并同步扣减 content.comment_count。
+     */
+    @Transactional
+    public void deleteComment(Long commentId, Long currentUserId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "评论不存在");
+        }
+        Content content = contentMapper.selectById(comment.getContentId());
+        if (content == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
+        }
+        boolean isCommentAuthor = currentUserId != null && currentUserId.equals(comment.getUserId());
+        boolean isArticleAuthor = content.getUserId() != null && content.getUserId().equals(currentUserId);
+        if (!isCommentAuthor && !isArticleAuthor) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权删除该评论");
+        }
+        LambdaQueryWrapper<Comment> replyQ = new LambdaQueryWrapper<>();
+        replyQ.eq(Comment::getParentId, commentId);
+        List<Comment> replies = commentMapper.selectList(replyQ);
+        int totalDeleted = 1 + replies.size();
+        commentMapper.deleteById(commentId);
+        for (Comment r : replies) {
+            commentMapper.deleteById(r.getId());
+        }
+        LambdaUpdateWrapper<Content> u = new LambdaUpdateWrapper<>();
+        u.eq(Content::getId, comment.getContentId()).setSql("comment_count = GREATEST(0, comment_count - " + totalDeleted + ")");
+        contentMapper.update(null, u);
     }
 
     /** 从 user-service 拉取昵称与头像，失败时返回兜底昵称 */

@@ -52,17 +52,24 @@ public class JwtAuthGlobalFilter implements org.springframework.cloud.gateway.fi
             return chain.filter(exchange);
         }
 
-        // 白名单：POST /api/sessions、POST /api/users 无需 Token
+        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        Long userId = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            userId = verifyAndGetUserId(token);
+        }
+
+        // 白名单：无需 Token 即可访问；若带有效 Token 则仍向下游传递 X-User-Id（便于阅读去重等）
         if (isPermitAll(method, path)) {
+            if (userId != null) {
+                ServerHttpRequest mutated = request.mutate()
+                        .header(HEADER_USER_ID, String.valueOf(userId))
+                        .build();
+                return chain.filter(exchange.mutate().request(mutated).build());
+            }
             return chain.filter(exchange);
         }
 
-        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return unauthorized(exchange.getResponse(), "未认证或 Token 失效");
-        }
-        String token = authHeader.substring(7);
-        Long userId = verifyAndGetUserId(token);
         if (userId == null) {
             return unauthorized(exchange.getResponse(), "未认证或 Token 失效");
         }

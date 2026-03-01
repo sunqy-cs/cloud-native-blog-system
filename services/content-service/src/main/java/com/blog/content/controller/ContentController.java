@@ -59,10 +59,12 @@ public class ContentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
-    /** 公开阅读：已发布博客，无需登录；路径 /api/contents/view/{id} 便于网关放行 */
+    /** 公开阅读：已发布博客，无需登录；路径 /api/contents/view/{id} 便于网关放行。传 X-User-Id 时按用户去重，仅首次阅读增加阅读量 */
     @GetMapping("/view/{id}")
-    public ResponseEntity<ContentViewVO> getForView(@PathVariable Long id) {
-        ContentViewVO vo = contentService.getForView(id);
+    public ResponseEntity<ContentViewVO> getForView(
+            @PathVariable Long id,
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long userId) {
+        ContentViewVO vo = contentService.getForView(id, userId);
         return ResponseEntity.ok(vo);
     }
 
@@ -82,17 +84,20 @@ public class ContentController {
         return ResponseEntity.ok(res);
     }
 
-    /** 公开推荐列表：已发布博客，可选 mainTagId，供推荐页使用（可不传 X-User-Id） */
+    /** 公开推荐列表：已发布博客，可选 mainTagId、userId（按用户筛即「TA的博客」）；传 X-User-Id 时按 visibility 过滤他人博客 */
     @GetMapping("/list")
     public ResponseEntity<ContentsMeResponse> list(
             @RequestParam(required = false) Long mainTagId,
+            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) Long columnId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
             @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false) String order) {
+            @RequestParam(required = false) String order,
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long currentUserId) {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
-        ContentsMeResponse res = contentService.listPublic(mainTagId, page, pageSize, sortBy, order);
+        ContentsMeResponse res = contentService.listPublic(mainTagId, userId, columnId, page, pageSize, sortBy, order, currentUserId);
         return ResponseEntity.ok(res);
     }
 

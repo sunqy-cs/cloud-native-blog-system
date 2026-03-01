@@ -1,6 +1,7 @@
 package com.blog.content.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
@@ -13,15 +14,23 @@ import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.entity.Content;
 import com.blog.content.entity.ContentCollection;
 import com.blog.content.entity.ContentTag;
+import com.blog.content.entity.ContentView;
 import com.blog.content.entity.Tag;
 import com.blog.content.mapper.ContentCollectionMapper;
 import com.blog.content.mapper.ContentMapper;
 import com.blog.content.mapper.ContentTagMapper;
+import com.blog.content.mapper.ContentViewMapper;
 import com.blog.content.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -42,6 +51,9 @@ public class ContentService {
     private static final String TYPE_BLOG = "BLOG";
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
+    private static final String VISIBILITY_ALL = "ALL";
+    private static final String VISIBILITY_SELF = "SELF";
+    private static final String VISIBILITY_FANS = "FANS";
     private static final String TITLE_EMPTY = "[无标题]";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
@@ -51,10 +63,27 @@ public class ContentService {
     private final ContentTagMapper contentTagMapper;
     private final TagMapper tagMapper;
     private final ContentCollectionMapper contentCollectionMapper;
+    private final ContentViewMapper contentViewMapper;
     private final RestTemplate restTemplate;
 
     @Value("${app.interaction-service-url:http://localhost:8085}")
     private String interactionServiceUrl;
+
+    /** 调用 interaction-service 判断 followerId 是否关注了 followeeId；失败或未关注返回 false */
+    private boolean isFollowingRemote(Long followerId, Long followeeId) {
+        if (followerId == null || followeeId == null) return false;
+        try {
+            String url = interactionServiceUrl.replaceFirst("/$", "") + "/api/follow/check?followeeId=" + followeeId;
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-User-Id", String.valueOf(followerId));
+            ResponseEntity<Map<String, Boolean>> resp = restTemplate.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers),
+                    new ParameterizedTypeReference<Map<String, Boolean>>() {});
+            return Boolean.TRUE.equals(resp.getBody() != null ? resp.getBody().get("following") : false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     public ContentsMeResponse listMyContents(Long userId, int page, int pageSize,
                                             String visibility, String status, String sortBy, String order, String keyword, Long columnId) {
@@ -107,11 +136,23 @@ public class ContentService {
     }
 
     /**
-     * 公开推荐列表：已发布博客，可选按主标签筛选，按时间/点赞排序。供推荐页等使用，无需登录。
+     * 公开推荐列表：已发布博客，可选按主标签、按用户筛选，按时间/点赞排序。
+     * 当按用户筛选（他人博客）时根据 visibility 与 currentUserId 过滤：ALL 所有人可见，SELF 仅作者，FANS 仅作者与粉丝。
      */
-    public ContentsMeResponse listPublic(Long mainTagId, int page, int pageSize, String sortBy, String order) {
+    public ContentsMeResponse listPublic(Long mainTagId, Long userId, Long columnId, int page, int pageSize, String sortBy, String order, Long currentUserId) {
         LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
         q.eq(Content::getType, TYPE_BLOG).eq(Content::getStatus, STATUS_PUBLISHED);
+        if (userId != null) {
+            q.eq(Content::getUserId, userId);
+            if (currentUserId == null) {
+                q.eq(Content::getVisibility, VISIBILITY_ALL);
+            } else if (!currentUserId.equals(userId)) {
+                q.and(w -> w.eq(Content::getVisibility, VISIBILITY_ALL).or().eq(Content::getVisibility, VISIBILITY_FANS));
+            }
+        }
+        if (columnId != null) {
+            q.eq(Content::getColumnId, columnId);
+        }
         if (mainTagId != null) {
             List<Long> contentIdsWithTag = contentTagMapper.selectList(
                     new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getTagId, mainTagId))
@@ -133,7 +174,14 @@ public class ContentService {
             q.orderBy(true, asc, Content::getCreatedAt);
         }
         Page<Content> p = contentMapper.selectPage(new Page<>(page, pageSize), q);
-        List<ContentListItemVO> list = p.getRecords().stream().map(this::toListItemVO).collect(Collectors.toList());
+        List<Content> records = p.getRecords();
+        if (userId != null && currentUserId != null && !currentUserId.equals(userId)) {
+            boolean following = isFollowingRemote(currentUserId, userId);
+            records = records.stream()
+                    .filter(c -> VISIBILITY_ALL.equals(c.getVisibility()) || (VISIBILITY_FANS.equals(c.getVisibility()) && following))
+                    .collect(Collectors.toList());
+        }
+        List<ContentListItemVO> list = records.stream().map(this::toListItemVO).collect(Collectors.toList());
         ContentsMeResponse res = new ContentsMeResponse();
         res.setList(list);
         res.setTotal(p.getTotal());
@@ -186,16 +234,44 @@ public class ContentService {
     }
 
     /**
-     * 公开阅读：已发布博客，返回正文、阅读数、点赞数、作者 id 等；不存在或未发布则 404
+     * 公开阅读：已发布博客，返回正文、阅读数、点赞数、作者 id 等；不存在或未发布则 404。
+     * 按 visibility 校验：ALL 所有人可见，SELF 仅作者，FANS 仅作者与粉丝；无权限返回 404。
+     * 阅读量仅在该用户首次阅读该文章时 +1（依赖 content_view 中间表去重）；未登录不增加阅读量。
      */
-    public ContentViewVO getForView(Long id) {
+    @Transactional
+    public ContentViewVO getForView(Long id, Long userId) {
         if (id == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
         Content c = contentMapper.selectById(id);
         if (c == null || !TYPE_BLOG.equals(c.getType()) || !STATUS_PUBLISHED.equals(c.getStatus())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
         }
-        c.setViewCount(c.getViewCount() != null ? c.getViewCount() + 1 : 1);
-        contentMapper.updateById(c);
+        String vis = c.getVisibility() != null ? c.getVisibility().toUpperCase() : VISIBILITY_ALL;
+        if (VISIBILITY_SELF.equals(vis)) {
+            if (userId == null || !userId.equals(c.getUserId())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
+            }
+        } else if (VISIBILITY_FANS.equals(vis)) {
+            if (userId == null || (!userId.equals(c.getUserId()) && !isFollowingRemote(userId, c.getUserId()))) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
+            }
+        }
+        if (userId != null) {
+            long exists = contentViewMapper.selectCount(
+                    new LambdaQueryWrapper<ContentView>()
+                            .eq(ContentView::getUserId, userId)
+                            .eq(ContentView::getContentId, id));
+            if (exists == 0) {
+                ContentView cv = new ContentView();
+                cv.setUserId(userId);
+                cv.setContentId(id);
+                cv.setCreatedAt(LocalDateTime.now());
+                contentViewMapper.insert(cv);
+                LambdaUpdateWrapper<Content> u = new LambdaUpdateWrapper<>();
+                u.eq(Content::getId, id).setSql("view_count = view_count + 1");
+                contentMapper.update(null, u);
+                c.setViewCount(c.getViewCount() != null ? c.getViewCount() + 1 : 1);
+            }
+        }
         ContentViewVO vo = new ContentViewVO();
         vo.setId(c.getId());
         vo.setTitle(c.getTitle());

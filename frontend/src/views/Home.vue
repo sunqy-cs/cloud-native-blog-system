@@ -214,9 +214,9 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ArrowRight, Search, ArrowDown, ArrowUp, Location, Briefcase, User, Document, View, Star, Collection } from '@element-plus/icons-vue'
-import { getColumnsMe, type ColumnItem } from '@/api/column'
-import { getContentsMe, type ContentListItem } from '@/api/content'
-import { getMe, type UserMe } from '@/api/user'
+import { getColumnsMe, getColumnsByUserId, type ColumnItem } from '@/api/column'
+import { getContentsMe, getContentsList, type ContentListItem } from '@/api/content'
+import { getMe, getUserById, type UserMe } from '@/api/user'
 
 const route = useRoute()
 const router = useRouter()
@@ -227,6 +227,13 @@ const blogUserId = computed(() => {
   const q = route.query.userId as string | undefined
   if (q) return Number(q)
   return userStore.userInfo?.id ?? null
+})
+
+/** 是否正在查看他人博客（有 query.userId 且不是当前用户） */
+const isViewingOthersBlog = computed(() => {
+  if (route.query.userId == null) return false
+  const uid = blogUserId.value
+  return uid != null && userStore.userInfo?.id != null && uid !== userStore.userInfo.id
 })
 
 const carouselList = ref<ContentListItem[]>([])
@@ -262,10 +269,10 @@ const currentColumnId = computed(() => {
   return Number.isNaN(n) ? undefined : n
 })
 
-/** 生成博客顶栏/侧栏链接的 query，便于扩展 userId */
+/** 生成博客顶栏/侧栏链接的 query；访问他人博客时始终保留 URL 中的 userId */
 function blogNavQuery(opts: { columnId?: number }) {
   const query: Record<string, string> = {}
-  if (blogUserId.value != null && route.query.userId != null) query.userId = String(blogUserId.value)
+  if (route.query.userId != null) query.userId = String(route.query.userId)
   if (opts.columnId != null) query.columnId = String(opts.columnId)
   return { path: '/blog', query: Object.keys(query).length ? query : {} }
 }
@@ -349,8 +356,29 @@ function contentsMeParams(overrides: { sortBy: string; order: string; page: numb
   return params
 }
 
-/** 轮播：当前专栏下最新 3 篇（按时间） */
+/** 轮播：当前专栏下最新 3 篇（按时间）；他人博客时用公开列表按 userId */
 async function loadCarousel() {
+  if (isViewingOthersBlog.value) {
+    if (blogUserId.value == null) {
+      carouselList.value = []
+      return
+    }
+    carouselLoading.value = true
+    try {
+      const res = await getContentsList({
+        userId: blogUserId.value,
+        columnId: currentColumnId.value,
+        sortBy: 'time',
+        order: 'desc',
+        page: 1,
+        pageSize: 3,
+      })
+      carouselList.value = res.list
+    } finally {
+      carouselLoading.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) {
     carouselList.value = []
     return
@@ -364,8 +392,30 @@ async function loadCarousel() {
   }
 }
 
-/** 人气最高：当前专栏下按点赞排序，排除轮播中已展示的，最多 4 篇 */
+/** 人气最高：当前专栏下按点赞排序，排除轮播中已展示的，最多 4 篇；他人博客时用公开列表 */
 async function loadPopular() {
+  if (isViewingOthersBlog.value) {
+    if (blogUserId.value == null) {
+      popularList.value = []
+      return
+    }
+    popularLoading.value = true
+    try {
+      const carouselIds = new Set(carouselList.value.map((c) => c.id))
+      const res = await getContentsList({
+        userId: blogUserId.value,
+        columnId: currentColumnId.value,
+        sortBy: 'likes',
+        order: 'desc',
+        page: 1,
+        pageSize: 20,
+      })
+      popularList.value = res.list.filter((item) => !carouselIds.has(item.id)).slice(0, 4)
+    } finally {
+      popularLoading.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) {
     popularList.value = []
     return
@@ -387,13 +437,35 @@ async function loadTopSections() {
 }
 
 function loadData() {
-  if (userStore.isLoggedIn) {
+  if (isViewingOthersBlog.value && blogUserId.value != null) {
+    getColumnsByUserId(blogUserId.value).then((list) => { navColumns.value = list })
+  } else if (userStore.isLoggedIn) {
     getColumnsMe().then((list) => { navColumns.value = list })
+  } else {
+    navColumns.value = []
   }
   loadTopSections()
 }
 
 function loadArticleList() {
+  if (isViewingOthersBlog.value) {
+    if (blogUserId.value == null) {
+      articleList.value = []
+      return
+    }
+    const sortBy = listTab.value === 'top' ? 'likes' : 'time'
+    getContentsList({
+      userId: blogUserId.value,
+      columnId: currentColumnId.value,
+      sortBy,
+      order: 'desc',
+      page: 1,
+      pageSize: 30,
+    }).then((res) => {
+      articleList.value = res.list
+    })
+    return
+  }
   if (!userStore.isLoggedIn) {
     articleList.value = []
     return
@@ -430,12 +502,26 @@ watch([listTab, currentColumnId], loadArticleList)
 watch(currentColumnId, () => { loadTopSections() }, { flush: 'post' })
 watch(currentColumnId, updateSubNavIndicator)
 watch(navColumns, () => updateSubNavIndicator(), { flush: 'post' })
+watch(
+  () => [route.query.userId, route.query.columnId],
+  () => {
+    loadData()
+    loadArticleList()
+    loadBlogAuthor()
+  },
+  { deep: true }
+)
 async function loadBlogAuthor() {
-  if (!userStore.isLoggedIn || blogUserId.value == null) return
-  if (blogUserId.value !== userStore.userInfo?.id) {
-    // 今后查看他人博客时可在此根据 blogUserId 拉取对应用户信息
+  if (blogUserId.value == null) return
+  if (isViewingOthersBlog.value) {
+    try {
+      blogAuthor.value = await getUserById(blogUserId.value)
+    } catch {
+      blogAuthor.value = null
+    }
     return
   }
+  if (!userStore.isLoggedIn) return
   try {
     blogAuthor.value = await getMe()
   } catch {

@@ -111,3 +111,9 @@ gateway:
       - "GET:/api/contents/list"
       # 文章公开阅读（已发布博客）
       - "GET:/api/contents/view/**"
+      # 按 ID 获取用户公开资料（昵称、头像），用于文章页作者展示
+      - "GET:/api/users/**"
+      # 按 userId 获取专栏列表（公开），用于他人博客页「全部/专栏」导航
+      - "GET:/api/columns/list"
+      # 指定用户的关注统计（公开），用于他人个人主页展示关注者数
+      - "GET:/api/follow/stats"

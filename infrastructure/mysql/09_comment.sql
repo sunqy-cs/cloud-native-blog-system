@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `comment` (
     `body`       TEXT         NOT NULL COMMENT '评论内容',
     `parent_id`  BIGINT       DEFAULT NULL COMMENT '父评论 ID（回复时）',
     `is_hot`     TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '是否热评：0-否 1-是（作者推荐）',
+    `like_count` INT          NOT NULL DEFAULT 0 COMMENT '点赞数（与 comment_like 表可同步）',
     `created_at` DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at` DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

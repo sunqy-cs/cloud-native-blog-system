@@ -30,6 +30,15 @@ export function getColumnsMe(): Promise<ColumnItem[]> {
 }
 
 /**
+ * 按用户 ID 获取专栏列表（公开），用于他人博客页「全部 / 专栏」导航
+ */
+export function getColumnsByUserId(userId: number): Promise<ColumnItem[]> {
+  return request
+    .get<ColumnItem[]>('columns/list', { params: { userId } })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
+/**
  * 创建专栏
  */
 export function createColumn(body: CreateColumnBody): Promise<ColumnItem> {

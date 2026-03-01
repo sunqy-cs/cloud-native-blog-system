@@ -29,6 +29,12 @@ public class ColumnService {
     private final ContentMapper contentMapper;
 
     public List<ColumnVO> listMyColumns(Long userId) {
+        return listColumnsByUserId(userId);
+    }
+
+    /** 按用户 ID 获取专栏列表（公开），用于他人博客页「全部 / 专栏」导航，无需认证 */
+    public List<ColumnVO> listColumnsByUserId(Long userId) {
+        if (userId == null) return List.of();
         LambdaQueryWrapper<Column> q = new LambdaQueryWrapper<>();
         q.eq(Column::getUserId, userId)
                 .orderByDesc(Column::getUpdatedAt)

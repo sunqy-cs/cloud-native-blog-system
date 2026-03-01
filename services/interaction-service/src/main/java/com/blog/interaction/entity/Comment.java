@@ -18,6 +18,7 @@ public class Comment {
     private String body;
     private Long parentId;
     private Boolean isHot;
+    private Integer likeCount;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

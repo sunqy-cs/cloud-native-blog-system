@@ -78,3 +78,10 @@ export function unlikeComment(commentId: number): Promise<void> {
 export function setCommentHot(commentId: number, hot: boolean): Promise<void> {
   return request.patch(`comments/${commentId}/hot`, { hot })
 }
+
+/**
+ * 删除评论（仅评论本人或文章作者）
+ */
+export function deleteComment(commentId: number): Promise<void> {
+  return request.delete(`comments/${commentId}`)
+}

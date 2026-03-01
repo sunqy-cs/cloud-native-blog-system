@@ -3,17 +3,19 @@
     <!-- 封面 + 头像与资料区 -->
     <section class="profile-header">
       <div class="profile-cover" :style="coverStyle">
-        <input
-          ref="coverFileInputRef"
-          type="file"
-          accept="image/*"
-          class="cover-file-input"
-          @change="onCoverFileChange"
-        />
-        <button type="button" class="cover-upload-btn" @click="triggerCoverUpload">
-          <el-icon><Camera /></el-icon>
-          上传封面图片
-        </button>
+        <template v-if="!isViewingOthers">
+          <input
+            ref="coverFileInputRef"
+            type="file"
+            accept="image/*"
+            class="cover-file-input"
+            @change="onCoverFileChange"
+          />
+          <button type="button" class="cover-upload-btn" @click="triggerCoverUpload">
+            <el-icon><Camera /></el-icon>
+            上传封面图片
+          </button>
+        </template>
       </div>
       <div class="profile-info-row">
         <div class="profile-avatar-wrap">
@@ -22,6 +24,10 @@
         </div>
         <div class="profile-meta">
           <h1 class="profile-name">{{ displayName }}</h1>
+          <p v-if="isViewingOthers" class="profile-follower-inline">
+            <span class="profile-follower-value">{{ followerCount }}</span>
+            <span class="profile-follower-label">关注者</span>
+          </p>
           <template v-if="detailCollapsed">
             <p v-if="profile.intro" class="profile-intro-plain">{{ profile.intro }}</p>
           </template>
@@ -52,7 +58,26 @@
           </button>
         </div>
         <div class="profile-actions">
-          <button type="button" class="btn-edit-profile" @click="openEditProfile">编辑个人资料</button>
+          <template v-if="isViewingOthers">
+            <el-button
+              v-if="!followingThisUser"
+              type="primary"
+              class="btn-edit-profile btn-follow"
+              :loading="followSubmitting"
+              @click="onFollowClick"
+            >
+              关注TA
+            </el-button>
+            <el-button
+              v-else
+              class="btn-edit-profile btn-followed"
+              :loading="followSubmitting"
+              @click="onUnfollowClick"
+            >
+              已关注
+            </el-button>
+          </template>
+          <button v-else type="button" class="btn-edit-profile" @click="openEditProfile">编辑个人资料</button>
         </div>
       </div>
     </section>
@@ -100,7 +125,7 @@
         <template v-if="currentTab === 'collection'">
           <div class="blog-header-row collection-header-row">
             <h2 class="section-title">我的收藏</h2>
-            <button type="button" class="btn-new-folder" @click="openCreateFolder">
+            <button v-if="!isViewingOthers" type="button" class="btn-new-folder" @click="openCreateFolder">
               <el-icon><Plus /></el-icon>
               新建收藏夹
             </button>
@@ -108,8 +133,8 @@
         </template>
         <template v-if="currentTab === 'column'">
           <div class="blog-header-row collection-header-row">
-            <h2 class="section-title">我的专栏</h2>
-            <button type="button" class="btn-new-folder" @click="openCreateColumn">
+            <h2 class="section-title">{{ isViewingOthers ? 'TA的专栏' : '我的专栏' }}</h2>
+            <button v-if="!isViewingOthers" type="button" class="btn-new-folder" @click="openCreateColumn">
               <el-icon><Plus /></el-icon>
               新建专栏
             </button>
@@ -117,7 +142,7 @@
         </template>
         <template v-if="currentTab === 'blog'">
           <div class="blog-header-row">
-            <h2 class="section-title">我的博客</h2>
+            <h2 class="section-title">{{ isViewingOthers ? 'TA的博客' : '我的博客' }}</h2>
             <div class="blog-filters">
               <el-dropdown trigger="click" popper-class="blog-visibility-dropdown" @command="setVisibility">
                 <span class="blog-sort blog-sort--dropdown">
@@ -265,14 +290,14 @@
           <div v-else-if="columnList.length === 0" class="blog-empty">
             <el-icon class="blog-empty-icon"><FolderOpened /></el-icon>
             <p class="blog-empty-text">还没有专栏</p>
-            <button type="button" class="btn-new-folder-inline" @click="openCreateColumn">新建专栏</button>
+            <button v-if="!isViewingOthers" type="button" class="btn-new-folder-inline" @click="openCreateColumn">新建专栏</button>
           </div>
           <div v-else class="profile-card-list column-list">
             <article v-for="item in columnList" :key="item.id" class="profile-card-item profile-card-item--column">
               <div class="profile-card-body">
                 <div class="column-main">
                   <router-link :to="`/column/${item.id}`" class="profile-card-title column-title-link">{{ item.name }}</router-link>
-                  <div class="column-actions">
+                  <div v-if="!isViewingOthers" class="column-actions">
                     <button type="button" class="folder-action-btn" @click.stop="openEditColumn(item)">编辑</button>
                     <button type="button" class="folder-action-btn folder-action-btn--danger" @click.stop="confirmDeleteColumn(item)">删除</button>
                   </div>
@@ -288,7 +313,7 @@
           </div>
         </div>
       </main>
-      <aside class="profile-sidebar">
+      <aside v-if="!isViewingOthers" class="profile-sidebar">
         <CreationCenter />
         <div class="sidebar-stats">
           <div class="stat-item">
@@ -580,21 +605,42 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Camera, Search, ArrowDown, ArrowUp, Plus, Loading, Location, Briefcase, User, Document, ChatDotRound, View, Star, Collection, FolderOpened } from '@element-plus/icons-vue'
-import { getMe, updateMe, type UpdateProfilePayload } from '@/api/user'
-import { getContentsMe, getContentsByIds, type ContentListItem } from '@/api/content'
+import { getMe, getUserById, updateMe, type UpdateProfilePayload, type UserMe } from '@/api/user'
+import { getContentsMe, getContentsList, getContentsByIds, type ContentListItem } from '@/api/content'
 import { getContentLikesMe } from '@/api/contentLike'
 import { getCollectionFoldersMe, createCollectionFolder, updateCollectionFolder, deleteCollectionFolder, type CollectionFolderItem } from '@/api/collectionFolder'
-import { getColumnsMe, createColumn, updateColumn, deleteColumn, type ColumnItem } from '@/api/column'
-import { getFollowMe } from '@/api/follow'
+import { getColumnsMe, getColumnsByUserId, createColumn, updateColumn, deleteColumn, type ColumnItem } from '@/api/column'
+import { getFollowMe, getFollowStatsByUserId, checkFollow, followUser, unfollowUser } from '@/api/follow'
 import { uploadImage } from '@/api/upload'
 import provincesData from 'china-division/dist/provinces.json'
 import pcData from 'china-division/dist/pc.json'
 
+const route = useRoute()
 const userStore = useUserStore()
+
+/** 当前个人主页所属用户 ID：他人主页为 query.userId，否则为当前用户 */
+const profileUserId = computed(() => {
+  const q = route.query.userId as string | undefined
+  if (q) {
+    const n = Number(q)
+    return Number.isNaN(n) ? null : n
+  }
+  return userStore.userInfo?.id ?? null
+})
+
+/** 是否正在查看他人主页（有 query.userId 且不是当前用户） */
+const isViewingOthers = computed(() => {
+  const uid = profileUserId.value
+  return uid != null && userStore.userInfo?.id != null && uid !== userStore.userInfo.id
+})
+
+/** 他人主页时展示的用户信息（头像、昵称、简介等），自己时用 userStore + profile */
+const profileUser = ref<UserMe | null>(null)
 
 type ProvinceItem = { code: string; name: string }
 type PcData = Record<string, string[]>
@@ -650,8 +696,16 @@ function onProfileSearch() {
   fetchBlogList()
 }
 
-const displayName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '用户')
-const avatarUrl = computed(() => (userStore.userInfo as { avatar?: string })?.avatar || '')
+const displayName = computed(() => {
+  if (isViewingOthers.value && profileUser.value) {
+    return profileUser.value.nickname || profileUser.value.username || '用户'
+  }
+  return userStore.userInfo?.nickname || userStore.userInfo?.username || '用户'
+})
+const avatarUrl = computed(() => {
+  if (isViewingOthers.value && profileUser.value?.avatar) return profileUser.value.avatar
+  return (userStore.userInfo as { avatar?: string })?.avatar || ''
+})
 
 const profile = ref<{
   nickname?: string
@@ -768,6 +822,9 @@ function resetEditForm() {
   residenceCascaderValue.value = []
 }
 const coverStyle = computed(() => {
+  if (isViewingOthers.value && profileUser.value?.cover) {
+    return { backgroundImage: `url(${profileUser.value.cover})` }
+  }
   const url = profile.value.cover || (userStore.userInfo as { cover?: string })?.cover || ''
   return url ? { backgroundImage: `url(${url})` } : {}
 })
@@ -1095,7 +1152,32 @@ function resetColumnCropState() {
   }
 }
 
-onMounted(() => {
+async function loadProfileData() {
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    if (currentTab.value === 'collection') currentTab.value = 'blog'
+    try {
+      const user = await getUserById(uid)
+      profileUser.value = user
+      profile.value.nickname = user.nickname
+      profile.value.cover = user.cover ?? profile.value.cover
+      profile.value.intro = user.intro
+      profile.value.gender = user.gender
+      profile.value.residence = user.residence
+      profile.value.industry = user.industry
+      profile.value.bio = user.bio
+      profile.value.wechatId = user.wechatId
+    } catch {
+      profileUser.value = null
+    }
+    fetchBlogCount()
+    fetchColumnList()
+    fetchFollowStats()
+    if (currentTab.value === 'blog') fetchBlogList()
+    if (currentTab.value === 'dynamic') fetchDynamicBlogs()
+    if (currentTab.value === 'column') fetchColumnList()
+    return
+  }
   if (!userStore.isLoggedIn) return
   getMe().then((user) => {
     userStore.setUserInfo(user)
@@ -1110,21 +1192,42 @@ onMounted(() => {
   }).catch(() => {})
   if (currentTab.value === 'blog') fetchBlogList()
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()
-  // 预拉取博客数量、收藏夹、专栏列表、关注统计，使 Tab 数量与右侧关注数正确显示
   fetchBlogCount()
   fetchFolderList()
   fetchColumnList()
   fetchFollowStats()
+}
+
+watch(
+  () => route.query.userId,
+  () => {
+    loadProfileData()
+  }
+)
+
+onMounted(() => {
+  loadProfileData()
 })
 
-const tabs = computed(() => [
-  { key: 'dynamic', label: '动态', count: undefined as number | undefined },
-  { key: 'blog', label: '博客', count: blogTotal.value },
-  { key: 'collection', label: '收藏', count: folderList.value.length },
-  { key: 'column', label: '专栏', count: columnList.value.length },
-])
+const tabs = computed(() => {
+  const base = [
+    { key: 'dynamic', label: '动态', count: undefined as number | undefined },
+    { key: 'blog', label: isViewingOthers.value ? 'TA的博客' : '博客', count: blogTotal.value },
+    ...(isViewingOthers.value ? [] : [{ key: 'collection', label: '收藏', count: folderList.value.length }]),
+    { key: 'column', label: isViewingOthers.value ? 'TA的专栏' : '专栏', count: columnList.value.length },
+  ]
+  return base
+})
 
 const sectionTitle = computed(() => {
+  if (isViewingOthers.value) {
+    const map: Record<string, string> = {
+      dynamic: 'TA的动态',
+      blog: 'TA的博客',
+      column: 'TA的专栏',
+    }
+    return map[currentTab.value] || 'TA的动态'
+  }
   const map: Record<string, string> = {
     dynamic: '我的动态',
     blog: '我的博客',
@@ -1157,6 +1260,28 @@ function parseTimeForSort(t: string): number {
 }
 
 async function fetchDynamicBlogs() {
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    dynamicLoading.value = true
+    dynamicBlogPage.value = 0
+    dynamicBlogList.value = []
+    likedActivities.value = []
+    try {
+      const res = await getContentsList({
+        userId: uid,
+        page: 1,
+        pageSize: dynamicPageSize,
+        sortBy: 'time',
+        order: 'desc',
+      })
+      dynamicBlogList.value = res.list
+      dynamicBlogTotal.value = res.total
+      dynamicBlogPage.value = 1
+    } finally {
+      dynamicLoading.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) return
   dynamicLoading.value = true
   dynamicBlogPage.value = 0
@@ -1197,7 +1322,28 @@ async function fetchDynamicBlogs() {
 }
 
 async function loadMoreDynamic() {
-  if (!userStore.isLoggedIn || dynamicLoadingMore.value || !hasMoreDynamic.value) return
+  if (dynamicLoadingMore.value || !hasMoreDynamic.value) return
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    dynamicLoadingMore.value = true
+    try {
+      const nextPage = dynamicBlogPage.value + 1
+      const res = await getContentsList({
+        userId: uid,
+        page: nextPage,
+        pageSize: dynamicPageSize,
+        sortBy: 'time',
+        order: 'desc',
+      })
+      dynamicBlogList.value = [...dynamicBlogList.value, ...res.list]
+      dynamicBlogTotal.value = res.total
+      dynamicBlogPage.value = nextPage
+    } finally {
+      dynamicLoadingMore.value = false
+    }
+    return
+  }
+  if (!userStore.isLoggedIn) return
   dynamicLoadingMore.value = true
   try {
     const nextPage = dynamicBlogPage.value + 1
@@ -1307,8 +1453,24 @@ function setSort(field: 'time' | 'likes' | 'views') {
   blogPage.value = 1
   fetchBlogList()
 }
-/** 仅拉取博客总数，用于 Tab 显示（进入页面时即请求，刷新后数字正确；有搜索词时不调用，用搜索结果 total） */
+/** 仅拉取博客总数，用于 Tab 显示 */
 async function fetchBlogCount() {
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    try {
+      const res = await getContentsList({
+        userId: uid,
+        page: 1,
+        pageSize: 1,
+        sortBy: blogSortBy.value,
+        order: blogOrder.value,
+      })
+      blogTotal.value = res?.total ?? 0
+    } catch {
+      blogTotal.value = 0
+    }
+    return
+  }
   if (!userStore.isLoggedIn) return
   try {
     const res = await getContentsMe({
@@ -1327,6 +1489,24 @@ async function fetchBlogCount() {
 }
 
 async function fetchBlogList() {
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    blogLoading.value = true
+    try {
+      const res = await getContentsList({
+        userId: uid,
+        page: blogPage.value,
+        pageSize: blogPageSize,
+        sortBy: blogSortBy.value,
+        order: blogOrder.value,
+      })
+      blogList.value = res.list
+      blogTotal.value = res.total
+    } finally {
+      blogLoading.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) return
   blogLoading.value = true
   try {
@@ -1490,6 +1670,17 @@ const createColumnSubmitting = ref(false)
 const createColumnForm = ref({ name: '', description: '', cover: '' })
 
 async function fetchColumnList() {
+  const uid = profileUserId.value
+  if (isViewingOthers.value && uid != null) {
+    columnLoading.value = true
+    try {
+      const list = await getColumnsByUserId(uid)
+      columnList.value = list
+    } finally {
+      columnLoading.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) return
   columnLoading.value = true
   try {
@@ -1587,8 +1778,28 @@ function confirmDeleteColumn(item: ColumnItem) {
 
 const followingCount = ref(0)
 const followerCount = ref(0)
+const followingThisUser = ref(false)
+const followSubmitting = ref(false)
 
 async function fetchFollowStats() {
+  const uid = profileUserId.value
+  if (uid == null) return
+  if (isViewingOthers.value) {
+    try {
+      const stats = await getFollowStatsByUserId(uid)
+      followerCount.value = stats.followerCount
+      if (userStore.isLoggedIn) {
+        const { following } = await checkFollow(uid)
+        followingThisUser.value = following
+      } else {
+        followingThisUser.value = false
+      }
+    } catch {
+      followerCount.value = 0
+      followingThisUser.value = false
+    }
+    return
+  }
   if (!userStore.isLoggedIn) return
   try {
     const stats = await getFollowMe()
@@ -1596,6 +1807,41 @@ async function fetchFollowStats() {
     followerCount.value = stats.followerCount
   } catch {
     // 忽略错误，保持 0
+  }
+}
+
+async function onFollowClick() {
+  const uid = profileUserId.value
+  if (uid == null || !userStore.isLoggedIn) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  followSubmitting.value = true
+  try {
+    await followUser(uid)
+    followingThisUser.value = true
+    followerCount.value += 1
+    ElMessage.success('关注成功')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    followSubmitting.value = false
+  }
+}
+
+async function onUnfollowClick() {
+  const uid = profileUserId.value
+  if (uid == null || !userStore.isLoggedIn) return
+  followSubmitting.value = true
+  try {
+    await unfollowUser(uid)
+    followingThisUser.value = false
+    followerCount.value = Math.max(0, followerCount.value - 1)
+    ElMessage.success('已取消关注')
+  } catch {
+    // 拦截器已提示
+  } finally {
+    followSubmitting.value = false
   }
 }
 </script>
@@ -1951,6 +2197,20 @@ async function fetchFollowStats() {
   margin: 0 0 8px;
 }
 
+.profile-follower-inline {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #666;
+}
+.profile-follower-value {
+  font-weight: 600;
+  color: #111;
+  margin-right: 4px;
+}
+.profile-follower-label {
+  color: #888;
+}
+
 .profile-line {
   display: flex;
   align-items: flex-start;
@@ -2016,6 +2276,16 @@ async function fetchFollowStats() {
 
 .btn-edit-profile:hover {
   background: #9e1515;
+}
+
+.btn-followed {
+  color: #666;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+}
+.btn-followed:hover {
+  background: #eee;
+  border-color: #ccc;
 }
 
 /* Tab：与上方资料区左缘对齐 */

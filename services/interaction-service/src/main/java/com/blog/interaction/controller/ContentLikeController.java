@@ -1,9 +1,12 @@
 package com.blog.interaction.controller;
 
+import com.blog.interaction.dto.CheckLikedResponse;
 import com.blog.interaction.dto.ContentLikesMeResponse;
+import com.blog.interaction.dto.LikeContentRequest;
 import com.blog.interaction.dto.YesterdayCountRequest;
 import com.blog.interaction.dto.YesterdayCountResponse;
 import com.blog.interaction.service.ContentLikeService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +31,33 @@ public class ContentLikeController {
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
         ContentLikesMeResponse res = contentLikeService.listMyLiked(userId, page, pageSize);
         return ResponseEntity.ok(res);
+    }
+
+    /** 查询当前用户是否已点赞指定内容（未登录时返回 liked=false） */
+    @GetMapping("/check")
+    public ResponseEntity<CheckLikedResponse> check(
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long userId,
+            @RequestParam Long contentId) {
+        boolean liked = contentLikeService.hasLiked(userId, contentId);
+        return ResponseEntity.ok(new CheckLikedResponse(liked));
+    }
+
+    /** 点赞文章（需登录） */
+    @PostMapping
+    public ResponseEntity<Void> like(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @Valid @RequestBody LikeContentRequest request) {
+        contentLikeService.like(userId, request.getContentId());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** 取消点赞文章（需登录） */
+    @DeleteMapping("/{contentId}")
+    public ResponseEntity<Void> unlike(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long contentId) {
+        contentLikeService.unlike(userId, contentId);
+        return ResponseEntity.noContent().build();
     }
 
     /**

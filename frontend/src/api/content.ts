@@ -58,9 +58,11 @@ export function getContentsMe(params?: ContentsMeParams): Promise<ContentsMeResp
   return request.get('contents/me', { params }).then((data) => data as unknown as ContentsMeResponse)
 }
 
-/** 公开推荐列表参数（推荐页顶区与各主标签栏） */
+/** 公开推荐列表参数（推荐页顶区与各主标签栏；传 userId 即「TA的博客」，可带 columnId 按专栏筛） */
 export interface ContentsListParams {
   mainTagId?: number
+  userId?: number
+  columnId?: number
   page?: number
   pageSize?: number
   sortBy?: 'time' | 'likes' | 'views'
