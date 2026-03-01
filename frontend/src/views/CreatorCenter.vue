@@ -242,10 +242,10 @@
                 placeholder="请输入关键词"
                 clearable
                 class="cm-search"
-                @keyup.enter="fetchCmList"
+                @keyup.enter="runCmSearch"
               >
                 <template #suffix>
-                  <el-icon class="cm-search-icon" @click="fetchCmList"><Search /></el-icon>
+                  <el-icon class="cm-search-icon" @click="runCmSearch"><Search /></el-icon>
                 </template>
               </el-input>
             </div>
@@ -277,7 +277,7 @@
                             <span v-else-if="item.articleType === 'REPRINT'" class="cm-badge cm-badge-reprint">转载</span>
                             <span v-else-if="item.articleType === 'TRANSLATED'" class="cm-badge cm-badge-translated">翻译</span>
                           </div>
-                          <div class="cm-article-date">{{ item.publishedAt ?? item.createdAt }}</div>
+                          <div class="cm-article-date">{{ formatCmDate(item.publishedAt ?? item.createdAt) }}</div>
                         </div>
                       </div>
                     </td>
@@ -335,25 +335,56 @@
                 </template>
                 <template v-else>
                   <div class="comments-toolbar">
-                    <span class="comments-sort-label">评论排序: 默认排序</span>
+                    <div class="comments-sort">
+                      <button
+                        type="button"
+                        :class="['comments-sort-btn', { active: commentSort === 'default' }]"
+                        @click="commentSort = 'default'"
+                      >
+                        默认
+                      </button>
+                      <button
+                        type="button"
+                        :class="['comments-sort-btn', { active: commentSort === 'latest' }]"
+                        @click="commentSort = 'latest'"
+                      >
+                        最新
+                      </button>
+                    </div>
                     <el-icon class="comments-refresh" @click="fetchCommentList"><Refresh /></el-icon>
                   </div>
                   <div v-if="commentListLoading" class="comments-loading">加载中…</div>
-                  <div v-else-if="!commentList.length" class="comments-empty">暂无评论</div>
+                  <div v-else-if="!displayCommentList.length" class="comments-empty">暂无评论</div>
                   <div v-else class="comment-list">
-                    <article v-for="c in commentList" :key="c.id" class="comment-item">
+                    <article v-for="c in displayCommentList" :key="c.id" class="comment-item">
                       <div class="comment-head">
-                        <span class="comment-avatar">{{ (c.userNickname || '用户').charAt(0) }}</span>
+                        <el-avatar :size="36" class="comment-avatar" :src="c.userAvatar">
+                          {{ (c.userNickname || '用户').charAt(0) }}
+                        </el-avatar>
                         <span class="comment-username">{{ c.userNickname || '用户' }}</span>
                         <span v-if="c.isAuthor" class="comment-tag-author">作者</span>
-                        <span class="comment-time">{{ c.createdAt }}</span>
+                        <span class="comment-time">{{ formatCommentTime(c.createdAt) }}</span>
+                        <el-dropdown trigger="click" class="comment-more-wrap" @command="(cmd: string) => cmd === 'delete' && deleteCommentItem(c)">
+                          <el-icon class="comment-more" title="更多"><MoreFilled /></el-icon>
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item command="delete" style="color: var(--el-color-danger)">删除</el-dropdown-item>
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
                       </div>
                       <div class="comment-body">
                         <span v-if="c.isHot" class="comment-hot-label">热评</span>
                         <span class="comment-text">{{ c.body }}</span>
                       </div>
                       <div class="comment-actions">
-                        <span class="comment-action">喜欢</span>
+                        <span
+                          class="comment-action"
+                          :class="{ 'comment-action--active': c.likedByMe }"
+                          @click="toggleCommentLike(c)"
+                        >
+                          <el-icon><Star /></el-icon> 点赞 {{ c.likeCount ?? 0 }}
+                        </span>
                         <span
                           class="comment-action comment-action-recommend"
                           :class="{ active: c.isHot }"
@@ -361,7 +392,6 @@
                         >
                           {{ c.isHot ? '取消推荐' : '推荐' }}
                         </span>
-                        <span class="comment-action">···</span>
                       </div>
                     </article>
                   </div>
@@ -678,10 +708,10 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete } from '@element-plus/icons-vue'
+import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete, MoreFilled } from '@element-plus/icons-vue'
 import { getContentMeStats, getContentsMe } from '@/api/content'
 import type { ContentMeStats, ContentListItem } from '@/api/content'
-import { getCommentedArticles, getContentComments, setCommentHot } from '@/api/comment'
+import { getCommentedArticles, getContentComments, setCommentHot, likeComment, unlikeComment, deleteComment as apiDeleteComment } from '@/api/comment'
 import type { CommentedArticle, CommentItem } from '@/api/comment'
 import { getFollowMe } from '@/api/follow'
 import type { FollowStats } from '@/api/follow'
@@ -714,6 +744,29 @@ const commentedArticlesLoading = ref(false)
 const selectedContentId = ref<number | null>(null)
 const commentList = ref<CommentItem[]>([])
 const commentListLoading = ref(false)
+const commentSort = ref<'default' | 'latest'>('default')
+
+/** 排序后的评论列表：与博客阅读界面一致，默认按点赞+时间，最新按时间 */
+const displayCommentList = computed(() => {
+  const list = [...commentList.value]
+  if (commentSort.value === 'latest') {
+    list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  } else {
+    list.sort((a, b) => {
+      const la = a.likeCount ?? 0
+      const lb = b.likeCount ?? 0
+      if (lb !== la) return lb - la
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    })
+  }
+  return list
+})
+
+function formatCommentTime(iso: string) {
+  if (!iso) return ''
+  return iso.replace('T', ' ')
+}
+
 async function fetchCommentedArticles() {
   if (!userStore.isLoggedIn) return
   commentedArticlesLoading.value = true
@@ -753,6 +806,44 @@ async function toggleCommentHot(c: CommentItem) {
     c.isHot = nextHot
   } catch {
     // ignore
+  }
+}
+
+async function toggleCommentLike(c: CommentItem) {
+  if (!userStore.isLoggedIn) return
+  try {
+    if (c.likedByMe) {
+      await unlikeComment(c.id)
+      c.likedByMe = false
+      c.likeCount = Math.max(0, (c.likeCount ?? 0) - 1)
+    } else {
+      await likeComment(c.id)
+      c.likedByMe = true
+      c.likeCount = (c.likeCount ?? 0) + 1
+    }
+  } catch {
+    // 错误已由拦截器提示
+  }
+}
+
+async function deleteCommentItem(c: CommentItem) {
+  try {
+    await ElMessageBox.confirm('确定要删除这条评论吗？删除后不可恢复。', '确认删除', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await apiDeleteComment(c.id)
+    const replyIds = new Set(commentList.value.filter((x) => x.parentId === c.id).map((x) => x.id))
+    replyIds.add(c.id)
+    commentList.value = commentList.value.filter((x) => !replyIds.has(x.id))
+    ElMessage.success('已删除')
+  } catch {
+    // 错误已由拦截器提示
   }
 }
 
@@ -1105,7 +1196,7 @@ function resetColumnCropState() {
 // 内容管理：文章列表
 const cmStatus = ref<'ALL' | 'PUBLISHED' | 'REJECTED' | 'DRAFT'>('ALL')
 const cmPage = ref(1)
-const cmPageSize = ref(10)
+const cmPageSize = ref(5)
 const cmList = ref<ContentListItem[]>([])
 const cmTotal = ref(0)
 const cmLoading = ref(false)
@@ -1130,10 +1221,17 @@ function setCmVisibility(cmd: string) {
   cmPage.value = 1
   fetchCmList()
 }
+/** 内容管理日期显示：去掉 ISO 里的 T */
+function formatCmDate(iso: string | undefined) {
+  if (!iso) return ''
+  return iso.replace('T', ' ')
+}
+
 async function fetchCmList() {
   if (!userStore.isLoggedIn) return
   cmLoading.value = true
   try {
+    const kw = cmKeyword.value?.trim()
     const res = await getContentsMe({
       page: cmPage.value,
       pageSize: cmPageSize.value,
@@ -1141,15 +1239,19 @@ async function fetchCmList() {
       visibility: cmVisibility.value || undefined,
       sortBy: cmSortBy.value,
       order: cmOrder.value,
+      q: kw || undefined,
     })
     cmTotal.value = res.total
-    const kw = cmKeyword.value?.trim()
-    cmList.value = kw
-      ? res.list.filter((x) => (x.title || '').toLowerCase().includes(kw.toLowerCase()) || (x.summary || '').toLowerCase().includes(kw.toLowerCase()))
-      : res.list
+    cmList.value = res.list
   } finally {
     cmLoading.value = false
   }
+}
+
+/** 搜索时回到第一页并请求（与分页一起在后端搜） */
+function runCmSearch() {
+  cmPage.value = 1
+  fetchCmList()
 }
 watch(cmPage, () => { fetchCmList() })
 async function fetchBotList() {
@@ -1785,12 +1887,30 @@ const avatarInitial = computed(() => {
 .comments-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 16px;
 }
-.comments-sort-label {
-  font-size: 14px;
+.comments-sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.comments-sort-btn {
+  padding: 4px 12px;
+  font-size: 13px;
   color: #666;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.comments-sort-btn:hover {
+  color: #111;
+  background: #eee;
+}
+.comments-sort-btn.active {
+  color: #b31b1b;
+  background: #fff5f5;
 }
 .comments-refresh {
   font-size: 18px;
@@ -1824,17 +1944,18 @@ const avatarInitial = computed(() => {
   margin-bottom: 8px;
 }
 .comment-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #111;
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
   flex-shrink: 0;
+}
+.comment-more-wrap {
+  margin-left: auto;
+}
+.comment-more {
+  font-size: 16px;
+  color: #999;
+  cursor: pointer;
+}
+.comment-more:hover {
+  color: #666;
 }
 .comment-username {
   font-size: 14px;
@@ -1884,6 +2005,9 @@ const avatarInitial = computed(() => {
   color: #666;
 }
 .comment-action-recommend.active {
+  color: #b31b1b;
+}
+.comment-action--active {
   color: #b31b1b;
 }
 

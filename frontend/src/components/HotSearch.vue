@@ -34,7 +34,7 @@
 import { ref, onMounted } from 'vue'
 import { TrendCharts, Refresh } from '@element-plus/icons-vue'
 import { getHotList } from '@/api/content'
-import { getMainTags, getOtherTags } from '@/api/tag'
+import { getMainTags } from '@/api/tag'
 
 export interface HotSearchItem {
   id: string
@@ -66,13 +66,11 @@ function isNewArticle(createdAt: string | undefined): boolean {
 async function loadList() {
   loading.value = true
   try {
-    const [mainTagsRes, otherTagsRes, hotRes] = await Promise.all([
+    const [mainTagsRes, hotRes] = await Promise.all([
       getMainTags(),
-      getOtherTags(),
       getHotList({ page: 1, pageSize: 50 }),
     ])
     const mainNames = new Set((mainTagsRes || []).map((t) => t.name))
-    const otherIdByName = new Map((otherTagsRes || []).map((t) => [t.name, t.id]))
     const list = hotRes.list || []
 
     const tagMeta = new Map<string, { showNew: boolean; count: number }>()
@@ -95,14 +93,15 @@ async function loadList() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10)
 
-    displayList.value = ordered.map((entry, i) => ({
-      id: `tag-${i}-${entry.name}`,
-      title: stripParentheses(entry.name),
-      showNew: entry.showNew,
-      link: otherIdByName.has(entry.name)
-        ? `/recommend?tag=${otherIdByName.get(entry.name)!}`
-        : '/recommend',
-    }))
+    displayList.value = ordered.map((entry, i) => {
+      const title = stripParentheses(entry.name)
+      return {
+        id: `tag-${i}-${entry.name}`,
+        title,
+        showNew: entry.showNew,
+        link: `/search?q=${encodeURIComponent(title)}&type=all`,
+      }
+    })
   } catch {
     displayList.value = []
   } finally {
