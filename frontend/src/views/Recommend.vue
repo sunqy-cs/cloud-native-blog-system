@@ -1,28 +1,26 @@
 <template>
   <div class="recommend-page">
-    <!-- 顶部：推荐标签栏，tag 居中，最右为换一批 icon -->
+    <!-- 顶部：全部（默认选中）+ 3 个主标签 + 换一批，括号内容不显示 -->
     <nav class="rec-tag-bar">
-      <div class="rec-tag-bar-inner">
-        <div class="rec-tag-bar-left"></div>
-        <div class="rec-tag-bar-center" ref="recTagBarCenterRef">
-          <router-link
-            v-for="tag in recTags"
-            :key="tag.id"
-            :to="{ path: '/recommend', query: { tag: tag.id } }"
-            class="rec-tag-item"
-            :class="{ active: currentTagId === tag.id }"
-          >
-            {{ tag.name }}
-          </router-link>
-          <div class="rec-tag-indicator" :style="recTagIndicatorStyle"></div>
-        </div>
-        <button type="button" class="rec-tag-refresh" title="换一批" @click="refreshTags">
+      <div class="rec-tag-bar-inner" ref="recTagBarWrapperRef">
+        <router-link :to="{ path: '/recommend' }" class="rec-tag-item rec-tag-all" :class="{ active: isAllActive }">全部</router-link>
+        <router-link
+          v-for="tag in recDisplayedTags"
+          :key="tag.id"
+          :to="{ path: '/recommend', query: { tag: tag.id } }"
+          class="rec-tag-item"
+          :class="{ active: currentTagId === tag.id }"
+        >
+          {{ tag.name }}
+        </router-link>
+        <button type="button" class="rec-tag-refresh" title="换一批" @click="refreshDisplayedTags">
           <el-icon><Refresh /></el-icon>
         </button>
+        <div class="rec-tag-indicator" :style="recTagIndicatorStyle"></div>
       </div>
     </nav>
 
-    <div class="page-layout">
+    <div id="rec-section-all" class="page-layout">
       <main class="rec-main">
         <!-- BBC 三栏：左 2 条带图 | 中 1 条大头条+相关链接 | 右 4 条纯文 -->
         <div class="bbc-grid">
@@ -75,118 +73,60 @@
           </div>
         </div>
 
-        <div class="rec-section-divider"></div>
-
-        <!-- 第一次：2 条，WEEKEND READS 风格 -->
-        <RecommendBlock
-          title="WEEKEND READS"
-          variant="two"
-          :items="weekendReads"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第二次：4 条，WINTER OLYMPICS 风格 -->
-        <RecommendBlock
-          title="WINTER OLYMPICS >"
-          title-link="/recommend?tab=olympics"
-          variant="four"
-          :items="winterOlympics"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第三次：多条 + 按钮滚动，BEST AUDIO OF THE WEEK 风格 -->
-        <RecommendBlock
-          title="BEST AUDIO OF THE WEEK >"
-          title-link="/recommend?tab=audio"
-          variant="strip"
-          :items="bestAudioItems"
-        />
+        <!-- 第 1～3 栏（白），带 id 供导航滚动 -->
+        <template v-for="(tag, idx) in mainTagsForSections.slice(0, 3)" :key="'w-' + tag.id">
+          <div class="rec-section-divider"></div>
+          <div :id="'rec-section-tag-' + tag.id">
+            <RecommendBlock
+              :title="tag.name"
+              :title-link="`/recommend?tag=${tag.id}`"
+              :variant="(SECTION_VARIANTS[idx] && SECTION_VARIANTS[idx].variant) || 'two'"
+              :items="(tagSectionItems[idx] || [])"
+              :image-side="SECTION_VARIANTS[idx]?.imageSide || 'left'"
+            />
+          </div>
+        </template>
 
         <div class="rec-section-divider"></div>
       </main>
     </div>
 
-    <!-- 两栏中间：全宽黑色栏，占满从左到右 -->
-    <div class="rec-dark-strip-wrap">
+    <!-- 第 1 条黑色栏：第四个主标签「多模态与生成模型」内容 -->
+    <div id="rec-section-black-1" class="rec-dark-strip-wrap">
       <div class="rec-dark-strip-inner">
-        <EditorPicksStrip title="EDITOR'S PICKS" :items="editorPicksItems" />
+        <EditorPicksStrip
+          :title="mainTagsForSections[3]?.name ?? '编辑精选'"
+          :items="editorPicksFirstStripItems"
+        />
       </div>
     </div>
 
     <div class="page-layout">
       <main class="rec-main">
         <div class="rec-section-divider"></div>
-
-        <!-- 第四栏：MORE NEWS 风格，4 条 -->
-        <RecommendBlock
-          title="MORE NEWS >"
-          title-link="/recommend?tab=news"
-          variant="four"
-          :items="moreNewsItems"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第五栏：ARTS IN MOTION 风格，2 条 -->
-        <RecommendBlock
-          title="ARTS IN MOTION >"
-          title-link="/recommend?tab=arts"
-          variant="two"
-          :items="artsInMotionItems"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第六栏：IN CASE YOU MISSED IT，3 条 -->
-        <RecommendBlock
-          title="IN CASE YOU MISSED IT"
-          title-link="/recommend?tab=missed"
-          variant="three"
-          :items="inCaseYouMissedItems"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第七栏：TRAVEL，左图右文 + See more -->
-        <RecommendBlock
-          title="TRAVEL >"
-          title-link="/recommend?tab=travel"
-          variant="feature"
-          :image-side="'left'"
-          :items="travelFeatureItems"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第八栏：HEALTH AND WELLNESS，3 张卡片 -->
-        <RecommendBlock
-          title="HEALTH AND WELLNESS >"
-          title-link="/recommend?tab=health"
-          variant="three"
-          :items="healthWellnessItems"
-        />
-
-        <div class="rec-section-divider"></div>
-
-        <!-- 第九栏：CULTURE，左文右图 + See more -->
-        <RecommendBlock
-          title="CULTURE >"
-          title-link="/recommend?tab=culture"
-          variant="feature"
-          :image-side="'right'"
-          :items="cultureFeatureItems"
-        />
-
-        <div class="rec-section-divider"></div>
+        <!-- 第 4～9 栏（白），带 id 供导航滚动 -->
+        <template v-for="idx in 6" :key="'w-' + (idx + 3)">
+          <div v-if="mainTagsForSections[idx + 3]" :id="'rec-section-tag-' + mainTagsForSections[idx + 3].id">
+            <RecommendBlock
+              :title="mainTagsForSections[idx + 3].name"
+              :title-link="`/recommend?tag=${mainTagsForSections[idx + 3].id}`"
+              :variant="(SECTION_VARIANTS[idx + 3] && SECTION_VARIANTS[idx + 3].variant) || 'two'"
+              :items="(tagSectionItems[idx + 3] || [])"
+              :image-side="SECTION_VARIANTS[idx + 3]?.imageSide || 'left'"
+            />
+          </div>
+          <div v-if="mainTagsForSections[idx + 3]" class="rec-section-divider"></div>
+        </template>
       </main>
     </div>
 
-    <!-- 底部全宽深色栏：EDITOR'S PICKS，占满从左到右 -->
-    <div class="rec-dark-strip-wrap">
+    <!-- 第 2 条黑色栏：最后一个主标签「评测基准与实验方法」内容 -->
+    <div id="rec-section-black-2" class="rec-dark-strip-wrap">
       <div class="rec-dark-strip-inner">
-        <EditorPicksStrip title="EDITOR'S PICKS" :items="editorPicksItems" />
+        <EditorPicksStrip
+          :title="lastMainTag?.name ?? '编辑精选'"
+          :items="editorPicksSecondStripItems"
+        />
       </div>
     </div>
   </div>
@@ -195,52 +135,149 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh, VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, Refresh } from '@element-plus/icons-vue'
+import { getMainTags } from '@/api/tag'
+import { getContentsList, type ContentListItem } from '@/api/content'
 import RecommendBlock from '@/components/RecommendBlock.vue'
 import EditorPicksStrip from '@/components/EditorPicksStrip.vue'
+import type { RecommendBlockItem } from '@/components/RecommendBlock.vue'
+import type { EditorPicksItem } from '@/components/EditorPicksStrip.vue'
 
 interface RecTag {
   id: string
   name: string
 }
 
-interface BbcItem {
-  id: string
-  title: string
-  subtitle?: string
-  summary?: string
-  meta?: string
-  cover?: string
-  link?: string
-  label?: string
+/** 将接口内容项转为推荐块/编辑精选的展示项 */
+function toRecItem(c: ContentListItem): RecommendBlockItem {
+  return {
+    id: String(c.id),
+    title: c.title || '无标题',
+    summary: c.summary ?? '',
+    meta: formatRecMeta(c.createdAt),
+    cover: c.cover ?? undefined,
+  }
 }
 
-const route = useRoute()
-const recTags = ref<RecTag[]>([])
-const currentTagId = computed(() => (route.query.tag as string) || '')
+function toEditorPickItem(c: ContentListItem): EditorPicksItem {
+  return {
+    id: String(c.id),
+    title: c.title || '无标题',
+    subtitle: c.summary ?? '',
+    cover: c.cover ?? undefined,
+    meta: formatRecMeta(c.createdAt),
+  }
+}
 
-const allTagPool: RecTag[] = [
-  { id: '1', name: 'Home' },
-  { id: '2', name: '技术' },
-  { id: '3', name: '云原生' },
-  { id: '4', name: 'Kubernetes' },
-  { id: '5', name: '写作' },
-  { id: '6', name: '产品' },
-  { id: '7', name: 'AI' },
-  { id: '8', name: '开源' },
-  { id: '9', name: '商业' },
-  { id: '10', name: '健康' },
-  { id: '11', name: '文化' },
-  { id: '12', name: '旅行' },
+function formatRecMeta(createdAt: string): string {
+  if (!createdAt) return ''
+  const d = new Date(createdAt)
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}年${m}月${day}日`
+}
+
+/** 11 个主标签栏的版式配置（保持原有格式：two/four/strip/feature 等） */
+const SECTION_VARIANTS: { variant: 'two' | 'three' | 'four' | 'strip' | 'feature'; pageSize: number; imageSide?: 'left' | 'right' }[] = [
+  { variant: 'two', pageSize: 2 },
+  { variant: 'four', pageSize: 4 },
+  { variant: 'strip', pageSize: 6 },
+  { variant: 'four', pageSize: 4 },
+  { variant: 'two', pageSize: 2 },
+  { variant: 'three', pageSize: 3 },
+  { variant: 'feature', pageSize: 1, imageSide: 'left' },
+  { variant: 'three', pageSize: 3 },
+  { variant: 'feature', pageSize: 1, imageSide: 'right' },
+  { variant: 'two', pageSize: 2 },
+  { variant: 'four', pageSize: 4 },
 ]
 
-function pickTags(count: number) {
-  const shuffled = [...allTagPool].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, count)
+const route = useRoute()
+/** 去掉标签名中括号及括号内内容（支持半角 () 与全角 （）），仅显示主名称 */
+function stripParentheses(name: string): string {
+  if (!name || typeof name !== 'string') return name
+  return name
+    .replace(/\s*\([^)]*\)/g, '')           // 半角括号
+    .replace(/\s*（[^）]*）/g, '')           // 全角括号
+    .trim() || name
 }
 
-function refreshTags() {
-  recTags.value = pickTags(10)
+/** 除「其他」外的主标签池（展示名已去括号） */
+const recNavTags = ref<RecTag[]>([])
+/** 当前展示的 3 个标签 */
+const recDisplayedTags = ref<RecTag[]>([])
+const DISPLAYED_TAG_COUNT = 3
+/** 选「全部」时：顺序切换的起始下标，换一批 +3 */
+const recDisplayStartIndex = ref(0)
+/** 选中某个标签时：另外两个的起始下标（在「除当前外」的池子里），换一批 +2 */
+const recOthersStartIndex = ref(0)
+
+const currentTagId = computed(() => {
+  const t = route.query.tag as string | undefined
+  return t ?? ''
+})
+const isAllActive = computed(() => !currentTagId.value)
+
+/** 选「全部」时：按起始下标取 3 个 */
+function applyDisplayedFromStart() {
+  const pool = recNavTags.value
+  const n = pool.length
+  if (n <= DISPLAYED_TAG_COUNT) {
+    recDisplayedTags.value = [...pool]
+    return
+  }
+  const start = recDisplayStartIndex.value % n
+  recDisplayedTags.value = [
+    pool[start],
+    pool[(start + 1) % n],
+    pool[(start + 2) % n],
+  ]
+}
+
+/** 选中某标签时：保留当前选中，另外两个从「除当前外」的池子里按顺序取 */
+function applyDisplayedWithCurrent() {
+  const pool = recNavTags.value
+  const curId = currentTagId.value
+  const current = pool.find((t) => t.id === curId)
+  if (!current) {
+    applyDisplayedFromStart()
+    return
+  }
+  const others = pool.filter((t) => t.id !== curId)
+  const L = others.length
+  if (L < 2) {
+    recDisplayedTags.value = L === 1 ? [current, others[0]] : [current]
+    return
+  }
+  const start = recOthersStartIndex.value % L
+  recDisplayedTags.value = [
+    current,
+    others[start],
+    others[(start + 1) % L],
+  ]
+}
+
+function applyDisplayed() {
+  if (isAllActive.value) applyDisplayedFromStart()
+  else applyDisplayedWithCurrent()
+}
+
+function refreshDisplayedTags() {
+  const pool = recNavTags.value
+  const n = pool.length
+  if (n <= DISPLAYED_TAG_COUNT) return
+  if (isAllActive.value) {
+    recDisplayStartIndex.value = (recDisplayStartIndex.value + DISPLAYED_TAG_COUNT) % n
+  } else {
+    const curId = currentTagId.value
+    const othersCount = pool.some((t) => t.id === curId) ? pool.length - 1 : pool.length
+    if (othersCount >= 2) {
+      recOthersStartIndex.value = (recOthersStartIndex.value + 2) % othersCount
+    }
+  }
+  applyDisplayed()
+  updateRecTagIndicator()
 }
 
 interface RecArticle {
@@ -251,128 +288,148 @@ interface RecArticle {
   cover?: string
 }
 
-const leftArticles = ref<RecArticle[]>([
-  { id: '1', title: 'Trump lashes out at US Supreme Court justices over tariffs ruling', summary: 'The six justices who voted against the tariffs, dealing a major blow to his signature economic policy, should be \'absolutely ashamed\', Trump said.', meta: '51 mins ago | US & Canada' },
-  { id: '2', title: 'UK government considers removing Andrew from royal line of succession', summary: 'The former Duke of York is eighth in line to the throne, meaning he remains eligible to be King.', meta: '6 hrs ago | Politics' },
-])
+/** 顶区：除下面 11 栏之外的最新文章（左2 + 中1 + 右4 + 相关2） */
+const leftArticles = ref<RecommendBlockItem[]>([])
+const featureArticle = ref<RecommendBlockItem | null>(null)
+const relatedLinks = ref<{ title: string; to: string }[]>([])
+const rightArticles = ref<RecommendBlockItem[]>([])
 
-const featureArticle = ref<RecArticle>({
-  id: '3',
-  title: 'Trump brings in new 10% tariff as Supreme Court rejects his global import taxes',
-  summary: 'The US Supreme Court\'s decision, striking down some of Trump\'s most sweeping tariffs, injects new uncertainty into global trade.',
-  meta: '1 hr ago | Business',
+/** 11 个主标签栏的数据，与 mainTagsForSections 一一对应 */
+const tagSectionItems = ref<RecommendBlockItem[][]>([])
+const mainTagsForSections = ref<RecTag[]>([])
+const recTopLoading = ref(false)
+const recSectionsLoading = ref(false)
+
+/** 第一条黑色栏：第四个主标签「多模态与生成模型」 */
+const editorPicksFirstStripItems = ref<EditorPicksItem[]>([])
+const FIRST_EDITOR_STRIP_TAG_INDEX = 3
+/** 第二条黑色栏：最后一个主标签「评测基准与实验方法」 */
+const editorPicksSecondStripItems = ref<EditorPicksItem[]>([])
+const lastMainTag = computed(() => {
+  const tags = mainTagsForSections.value
+  return tags.length > 0 ? tags[tags.length - 1] : null
 })
 
-const relatedLinks = ref<{ title: string; to: string }[]>([
-  { title: 'Canada looks to trade talks after US Supreme Court tosses Trump\'s tariffs', to: '/article/4' },
-  { title: 'BBC inside Trump press briefing slamming Supreme Court tariffs ruling', to: '/article/5' },
-])
+/** 加载推荐页数据：11 栏按主标签拉取最新文章，顶区为除此以外的全局最新（需先已设置 mainTagsForSections） */
+async function loadRecData() {
+  const tags = mainTagsForSections.value
+  if (tags.length === 0) return
 
-const rightArticles = ref<RecArticle[]>([
-  { id: '6', title: 'Andrew and King Charles: A personal battle of royal brothers', summary: 'Short context here.', meta: '9 hrs ago | UK' },
-  { id: '7', title: 'In the army now: Pictures that show how ordinary Ukrainians have been shaped by war', summary: 'Short context here.', meta: '5 hrs ago | Europe' },
-  { id: '8', title: 'Trump says he is considering limited military strike on Iran', summary: 'Short context here.', meta: '5 hrs ago | World' },
-  { id: '9', title: 'Canada and USA to meet in charged Olympic finale', summary: 'Short context here.', meta: '4 hrs ago | Winter Olympics' },
-])
+  recSectionsLoading.value = true
+  try {
+    const sectionPromises = tags.map((tag, i) => {
+      const conf = SECTION_VARIANTS[i] ?? { variant: 'two', pageSize: 2 }
+      return getContentsList({
+        mainTagId: Number(tag.id),
+        page: 1,
+        pageSize: conf.pageSize,
+        sortBy: 'time',
+        order: 'desc',
+      }).then((res) => res.list.map(toRecItem))
+    })
+    const sectionLists = await Promise.all(sectionPromises)
+    tagSectionItems.value = sectionLists
 
-// 第一次：2 条
-const weekendReads = ref<BbcItem[]>([
-  { id: '1', title: 'The most anticipated museum openings of 2026', subtitle: 'From Paris to Tokyo, a look at the bold new institutions set to redefine cultural landscapes in the coming year.' },
-  { id: '2', title: '10 early photographic \'fakes\' that trick the eye', subtitle: 'Long before Photoshop, pioneers of photography were already manipulating images to surprise and deceive.' },
-])
+    if (tags.length > FIRST_EDITOR_STRIP_TAG_INDEX) {
+      const fourthTag = tags[FIRST_EDITOR_STRIP_TAG_INDEX]
+      const res = await getContentsList({
+        mainTagId: Number(fourthTag.id),
+        page: 1,
+        pageSize: 8,
+        sortBy: 'time',
+        order: 'desc',
+      })
+      editorPicksFirstStripItems.value = res.list.map(toEditorPickItem)
+    } else {
+      editorPicksFirstStripItems.value = []
+    }
+    const lastTag = tags[tags.length - 1]
+    if (lastTag) {
+      const resLast = await getContentsList({
+        mainTagId: Number(lastTag.id),
+        page: 1,
+        pageSize: 8,
+        sortBy: 'time',
+        order: 'desc',
+      })
+      editorPicksSecondStripItems.value = resLast.list.map(toEditorPickItem)
+    } else {
+      editorPicksSecondStripItems.value = []
+    }
+  } finally {
+    recSectionsLoading.value = false
+  }
 
-// 第二次：4 条
-const winterOlympics = ref<BbcItem[]>([
-  { id: '3', title: '11 of the Winter Olympics\' most striking images - as classical artworks', subtitle: 'We reimagine the finest moments from the Games in the style of old masters.' },
-  { id: '4', title: 'Four men, one aim - to end 102-year wait for curling gold', subtitle: 'The British curling team has its eyes on history in the final.' },
-  { id: '5', title: '\'I\'m on right side\': Kenworthy on death threats after ICE post', subtitle: 'The US skier speaks out after receiving abuse for supporting immigration enforcement.' },
-  { id: '6', title: 'Eileen Gu: The \'snow princess\' who divides opinion', subtitle: 'The freestyle skier has become one of the most talked-about figures at the Winter Games.' },
-])
+  const idsBelow = new Set(tagSectionItems.value.flat().map((x) => x.id))
+  recTopLoading.value = true
+  try {
+    const topRes = await getContentsList({ page: 1, pageSize: 50, sortBy: 'time', order: 'desc' })
+    const topFiltered = topRes.list.filter((c) => !idsBelow.has(String(c.id))).map(toRecItem)
+    leftArticles.value = topFiltered.slice(0, 2)
+    featureArticle.value = topFiltered[2] ?? null
+    rightArticles.value = topFiltered.slice(3, 7)
+    relatedLinks.value = topFiltered.slice(7, 9).map((c) => ({ title: c.title, to: `/article/${c.id}` }))
+  } finally {
+    recTopLoading.value = false
+  }
+}
 
-// 第三次：多条，可按钮滚动
-const bestAudioItems = ref<BbcItem[]>([
-  { id: '7', title: 'The Global Story', subtitle: 'What \'looksmaxxing\' tells us about modern masculinity', meta: '27 mins', label: 'Podcast' },
-  { id: '8', title: 'The Interview', subtitle: 'Gisèle Pelicot: Shame must be carried by the accused, not the victims', meta: '23 mins', label: 'Podcast' },
-  { id: '9', title: 'The Documentary Podcast', subtitle: 'Bridgerton: Behind the scenes', meta: '58 mins', label: 'Podcast' },
-  { id: '10', title: 'You\'re Dead to Me', subtitle: 'Philippe, Duc d\'Orléans: in the shadow of the Sun King', meta: '18 mins', label: 'Podcast' },
-  { id: '11', title: 'Business Daily', subtitle: 'Is AI about to transform food production?', meta: '28 mins', label: 'Podcast' },
-  { id: '12', title: 'Lady Killers with Lucy Worsley', subtitle: '59. Kitty Newton - Killer Daughter', meta: '34 mins', label: 'Podcast' },
-  { id: '13', title: 'The Global News Podcast', subtitle: 'Former Prince Andrew released as investigations continue', meta: '29 mins', label: 'Podcast' },
-  { id: '14', title: 'World of Secrets', subtitle: '1. Meeting a monster', meta: '45 mins', label: 'Podcast' },
-])
-
-// 第四栏：MORE NEWS，4 条
-const moreNewsItems = ref<BbcItem[]>([
-  { id: '15', title: 'Welcome to Australia\'s hottest beach event - nowhere near the sea', subtitle: 'Sand, tourists and volleyball for a tournament that has become a fixture of the summer calendar.' },
-  { id: '16', title: 'The best looks at London Fashion Week 2026', subtitle: 'More than 90 designers are showcasing their collections across the capital.' },
-  { id: '17', title: 'How photography helped the British empire classify India', subtitle: 'A new exhibition explores the role of the camera in colonial rule.' },
-  { id: '18', title: 'Fixing fashion\'s erratic sizing problem', subtitle: 'A startup is using algorithms to help shoppers find clothes that actually fit.' },
-])
-
-// 第五栏：ARTS IN MOTION，2 条
-const artsInMotionItems = ref<BbcItem[]>([
-  { id: '19', title: 'Jia Zhang-Ke: Nothing brings more freedom than filmmaking', subtitle: 'For acclaimed Chinese filmmaker Jia Zhang-Ke, filmmaking is not just an art - it\'s a space to innovate and redefine cinematic conventions.' },
-  { id: '20', title: 'Mother and infant burnt to death in Indian state over witchcraft allegations', subtitle: 'A mob attacked the family after rumours spread in their village in the eastern state of Jharkhand.' },
-])
-
-// 第六栏：IN CASE YOU MISSED IT，3 条
-const inCaseYouMissedItems = ref<BbcItem[]>([
-  { id: '21', title: 'The Russian village that lost its men to war', subtitle: 'In the remote village of Sedanka in Russia\'s Far East, almost all of its fighting-age men have left to join the Ukraine war.' },
-  { id: '22', title: 'How Eric Dane gave his final months to \'moving the needle\' on ALS', subtitle: 'The Grey\'s Anatomy star spent his last months campaigning towards a cure for the rare, incurable condition.' },
-  { id: '23', title: 'As Trump retreats from climate goals, China is becoming a green superpower', subtitle: 'China, the world\'s top carbon emitter, is also at the helm of a renewables revolution.' },
-])
-
-// 第七栏：TRAVEL，单条大头条（左图右文）
-const travelFeatureItems = ref<BbcItem[]>([
-  { id: '29', title: 'Extreme ways countries are combatting overtourism', subtitle: 'As global travel surges toward 1.8 billion arrivals, destinations are testing controversial new measures to control the crowds.' },
-])
-
-// 第八栏：HEALTH AND WELLNESS，3 条
-const healthWellnessItems = ref<BbcItem[]>([
-  { id: '30', title: 'Some people are just \'born to run\'', subtitle: 'Science is uncovering why certain individuals seem built for endurance—and what the rest of us can learn from them.' },
-  { id: '31', title: 'How male drinking affects babies', subtitle: 'Growing evidence suggests fathers\' alcohol use before conception may have lasting effects on their children\'s health.' },
-  { id: '32', title: 'Is it really possible to \'bank\' sleep?', subtitle: 'We look at the myths and facts behind the idea of storing up rest for later.' },
-])
-
-// 第九栏：CULTURE，单条大头条（左文右图）
-const cultureFeatureItems = ref<BbcItem[]>([
-  { id: '33', title: 'The historic US home that embodied the super-rich', subtitle: 'The largest privately owned home in the US, Biltmore House was an "American chateau built on the scale of a European palace". It reveals much about the dreams of the US\'s one per cent.' },
-])
-
-// 全宽深色栏：EDITOR'S PICKS
-const editorPicksItems = ref<BbcItem[]>([
-  { id: '24', title: 'Breathtaking solar eclipse over glacier in Patagonia', subtitle: 'Thousands gathered to watch the rare celestial event in one of the world\'s most dramatic landscapes.', label: 'Natural wonders' },
-  { id: '25', title: 'The French fortress of a celibate sect', subtitle: 'A remote community in the Pyrenees has fascinated outsiders for decades.', label: 'Travel' },
-  { id: '26', title: 'Inside the search for South America\'s most cryptic bird', subtitle: 'Scientists are racing to find the last remaining individuals of a species thought to be extinct.', label: 'Discover the World' },
-  { id: '27', title: 'How sticky toffee pudding became a British pub classic', subtitle: 'The story behind one of the UK\'s most beloved desserts.', label: 'The Travel Show' },
-  { id: '28', title: 'The Japanese art of finding calm in chaos', subtitle: 'How ancient practices are helping people cope with modern stress.', label: 'The Specialist' },
-])
-
-const recTagBarCenterRef = ref<HTMLElement | null>(null)
+const recTagBarWrapperRef = ref<HTMLElement | null>(null)
 const recTagIndicatorStyle = ref({ left: '0px', width: '0px' })
 
 function updateRecTagIndicator() {
   nextTick(() => {
-    const wrapper = recTagBarCenterRef.value
-    const activeEl = wrapper?.querySelector('.rec-tag-item.active')
+    const wrapper = recTagBarWrapperRef.value
+    const activeEl = wrapper?.querySelector('.rec-tag-item.active') as HTMLElement | null
     if (!wrapper || !activeEl) {
       recTagIndicatorStyle.value = { left: '0px', width: '0px' }
       return
     }
-    const rect = activeEl.getBoundingClientRect()
-    const wrapperRect = wrapper.getBoundingClientRect()
-    recTagIndicatorStyle.value = {
-      left: `${rect.left - wrapperRect.left}px`,
-      width: `${rect.width}px`,
-    }
+    const left = activeEl.offsetLeft
+    const width = activeEl.offsetWidth
+    recTagIndicatorStyle.value = { left: `${left}px`, width: `${width}px` }
   })
 }
 
-watch(currentTagId, updateRecTagIndicator)
-watch(recTags, updateRecTagIndicator, { deep: true })
-onMounted(() => {
-  recTags.value = pickTags(10)
+/** 根据当前选中的 tagId 得到对应栏的 DOM id（全部=顶区，第4主标签=黑栏1，最后主标签=黑栏2，其余=白栏） */
+function getRecSectionId(tagId: string): string {
+  if (!tagId) return 'rec-section-all'
+  const tags = mainTagsForSections.value
+  if (tags.length > FIRST_EDITOR_STRIP_TAG_INDEX && tags[FIRST_EDITOR_STRIP_TAG_INDEX]?.id === tagId) return 'rec-section-black-1'
+  if (lastMainTag.value?.id === tagId) return 'rec-section-black-2'
+  return 'rec-section-tag-' + tagId
+}
+
+function scrollToRecSection() {
+  const id = getRecSectionId(currentTagId.value)
+  nextTick(() => {
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+watch([currentTagId, recDisplayedTags], updateRecTagIndicator, { flush: 'post' })
+watch([currentTagId, recNavTags], () => {
+  recOthersStartIndex.value = 0
+  applyDisplayed()
   updateRecTagIndicator()
+}, { flush: 'post' })
+watch(currentTagId, (newVal, oldVal) => {
+  if (oldVal !== undefined && newVal !== oldVal) scrollToRecSection()
+})
+
+onMounted(() => {
+  getMainTags().then((list) => {
+    if (!Array.isArray(list)) return
+    const filtered = list.filter((t) => t.name !== '其他').map((t) => ({ id: String(t.id), name: stripParentheses(t.name) }))
+    recNavTags.value = filtered
+    mainTagsForSections.value = filtered.slice(0, 11)
+    recDisplayStartIndex.value = 0
+    recOthersStartIndex.value = 0
+    applyDisplayed()
+    updateRecTagIndicator()
+    loadRecData()
+  })
   window.addEventListener('resize', updateRecTagIndicator)
 })
 onBeforeUnmount(() => {
@@ -386,6 +443,14 @@ onBeforeUnmount(() => {
   background: #f5f5f5;
 }
 
+/* 导航栏点击滚动到对应栏时，留出顶栏+导航高度，避免被遮挡 */
+#rec-section-all,
+#rec-section-black-1,
+#rec-section-black-2,
+[id^="rec-section-tag-"] {
+  scroll-margin-top: 116px;
+}
+
 /* 推荐标签栏：不随滚动条滚动 */
 .rec-tag-bar {
   position: sticky;
@@ -396,27 +461,19 @@ onBeforeUnmount(() => {
 }
 
 .rec-tag-bar-inner {
+  position: relative;
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
   min-height: 52px;
 }
 
-.rec-tag-bar-left {
-  width: 40px;
-  flex-shrink: 0;
-}
-
-.rec-tag-bar-center {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  flex-wrap: wrap;
+.rec-tag-all {
+  margin-right: 8px;
 }
 
 .rec-tag-indicator {
@@ -452,23 +509,23 @@ onBeforeUnmount(() => {
 .rec-tag-refresh {
   flex-shrink: 0;
   width: 40px;
+  height: 40px;
   padding: 8px;
+  margin-left: 8px;
   border: none;
-  background: none;
+  background: transparent;
   color: #666;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.2s, background 0.2s;
 }
-
 .rec-tag-refresh:hover {
   color: #000;
   background: rgba(0, 0, 0, 0.06);
 }
-
 .rec-tag-refresh .el-icon {
   font-size: 18px;
 }

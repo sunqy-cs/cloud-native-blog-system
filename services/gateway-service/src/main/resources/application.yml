@@ -107,3 +107,5 @@ gateway:
       - "POST:/api/users"
       # GET 图片流式地址（?stream=1）用于编辑器/文章内展示，不携带 Token 也放行
       - "GET:/api/objects/**"
+      # 推荐页公开列表（已发布博客，按主标签/最新）
+      - "GET:/api/contents/list"

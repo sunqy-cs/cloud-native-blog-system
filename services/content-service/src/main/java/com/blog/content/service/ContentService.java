@@ -105,6 +105,40 @@ public class ContentService {
         return res;
     }
 
+    /**
+     * 公开推荐列表：已发布博客，可选按主标签筛选，按时间/点赞排序。供推荐页等使用，无需登录。
+     */
+    public ContentsMeResponse listPublic(Long mainTagId, int page, int pageSize, String sortBy, String order) {
+        LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
+        q.eq(Content::getType, TYPE_BLOG).eq(Content::getStatus, STATUS_PUBLISHED);
+        if (mainTagId != null) {
+            List<Long> contentIdsWithTag = contentTagMapper.selectList(
+                    new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getTagId, mainTagId))
+                    .stream().map(ContentTag::getContentId).distinct().collect(Collectors.toList());
+            if (contentIdsWithTag.isEmpty()) {
+                ContentsMeResponse empty = new ContentsMeResponse();
+                empty.setList(Collections.emptyList());
+                empty.setTotal(0L);
+                return empty;
+            }
+            q.in(Content::getId, contentIdsWithTag);
+        }
+        boolean asc = "asc".equalsIgnoreCase(order);
+        if ("likes".equalsIgnoreCase(sortBy)) {
+            q.orderBy(true, asc, Content::getLikeCount).orderBy(true, false, Content::getCreatedAt);
+        } else if ("views".equalsIgnoreCase(sortBy)) {
+            q.orderBy(true, asc, Content::getViewCount).orderBy(true, false, Content::getCreatedAt);
+        } else {
+            q.orderBy(true, asc, Content::getCreatedAt);
+        }
+        Page<Content> p = contentMapper.selectPage(new Page<>(page, pageSize), q);
+        List<ContentListItemVO> list = p.getRecords().stream().map(this::toListItemVO).collect(Collectors.toList());
+        ContentsMeResponse res = new ContentsMeResponse();
+        res.setList(list);
+        res.setTotal(p.getTotal());
+        return res;
+    }
+
     /** 按标签名模糊匹配得到的内容 ID 列表（当前用户博客） */
     private List<Long> contentIdsMatchingTagKeyword(String keyword) {
         List<Tag> tags = tagMapper.selectList(new LambdaQueryWrapper<Tag>().like(Tag::getName, keyword));

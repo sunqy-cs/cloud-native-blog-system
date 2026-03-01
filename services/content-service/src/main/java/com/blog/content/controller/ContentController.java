@@ -74,6 +74,20 @@ public class ContentController {
         return ResponseEntity.ok(res);
     }
 
+    /** 公开推荐列表：已发布博客，可选 mainTagId，供推荐页使用（可不传 X-User-Id） */
+    @GetMapping("/list")
+    public ResponseEntity<ContentsMeResponse> list(
+            @RequestParam(required = false) Long mainTagId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int pageSize,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String order) {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 10;
+        ContentsMeResponse res = contentService.listPublic(mainTagId, page, pageSize, sortBy, order);
+        return ResponseEntity.ok(res);
+    }
+
     @GetMapping("/by-ids")
     public ResponseEntity<List<ContentListItemVO>> byIds(@RequestParam String ids) {
         if (ids == null || ids.isBlank()) {

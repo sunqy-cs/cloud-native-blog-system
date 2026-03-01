@@ -58,6 +58,22 @@ export function getContentsMe(params?: ContentsMeParams): Promise<ContentsMeResp
   return request.get('contents/me', { params }).then((data) => data as unknown as ContentsMeResponse)
 }
 
+/** 公开推荐列表参数（推荐页顶区与各主标签栏） */
+export interface ContentsListParams {
+  mainTagId?: number
+  page?: number
+  pageSize?: number
+  sortBy?: 'time' | 'likes' | 'views'
+  order?: 'asc' | 'desc'
+}
+
+/**
+ * 公开推荐列表：已发布博客，可选按主标签筛选
+ */
+export function getContentsList(params?: ContentsListParams): Promise<ContentsMeResponse> {
+  return request.get('contents/list', { params }).then((data) => data as unknown as ContentsMeResponse)
+}
+
 /**
  * 按 ID 批量获取内容摘要（用于动态里展示赞同内容的标题等）
  */

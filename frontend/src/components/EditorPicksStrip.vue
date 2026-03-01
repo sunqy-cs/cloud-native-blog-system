@@ -28,7 +28,7 @@
         </div>
         <h3 class="editor-picks-card-title">{{ item.title }}</h3>
         <p class="editor-picks-card-desc">{{ item.subtitle || item.summary }}</p>
-        <span class="editor-picks-card-label">{{ item.label || 'Featured' }}</span>
+        <span class="editor-picks-card-label">{{ item.meta || item.label || '' }}</span>
       </router-link>
     </div>
   </section>
@@ -46,6 +46,8 @@ export interface EditorPicksItem {
   cover?: string
   link?: string
   label?: string
+  /** 博客时间（如 2026年2月28日），优先显示 */
+  meta?: string
 }
 
 const props = withDefaults(

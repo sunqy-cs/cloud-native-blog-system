@@ -32,10 +32,11 @@
         </div>
         <h3 class="rec-two-card-headline">{{ item.title }}</h3>
         <p class="rec-two-card-desc">{{ item.subtitle || item.summary }}</p>
+        <p v-if="item.meta" class="rec-block-card-meta">{{ item.meta }}</p>
       </router-link>
     </div>
 
-    <!-- variant: three - 3 张中卡（如 IN CASE YOU MISSED IT）-->
+    <!-- variant: three - 3 张中卡 -->
     <div v-if="variant === 'three'" class="rec-block-three">
       <router-link
         v-for="item in items"
@@ -49,6 +50,7 @@
         </div>
         <h3 class="rec-three-card-headline">{{ item.title }}</h3>
         <p class="rec-three-card-desc">{{ item.subtitle || item.summary }}</p>
+        <p v-if="item.meta" class="rec-block-card-meta">{{ item.meta }}</p>
       </router-link>
     </div>
 
@@ -66,6 +68,7 @@
         </div>
         <h3 class="rec-four-card-headline">{{ item.title }}</h3>
         <p class="rec-four-card-desc">{{ item.subtitle || item.summary }}</p>
+        <p v-if="item.meta" class="rec-block-card-meta">{{ item.meta }}</p>
       </router-link>
     </div>
 
@@ -79,6 +82,7 @@
         <div class="rec-feature-text">
           <h3 class="rec-feature-headline">{{ items[0].title }}</h3>
           <p class="rec-feature-desc">{{ items[0].subtitle || items[0].summary }}</p>
+          <p v-if="items[0].meta" class="rec-block-card-meta">{{ items[0].meta }}</p>
           <span class="rec-feature-more">See more</span>
         </div>
       </router-link>
@@ -97,12 +101,11 @@
             <img v-if="item.cover" :src="item.cover" :alt="item.title" />
             <span v-else class="rec-img-placeholder">{{ item.title.charAt(0) }}</span>
           </div>
-          <span class="rec-strip-card-label">{{ item.label || '推荐' }}</span>
           <h4 class="rec-strip-card-title">{{ item.title }}</h4>
           <p class="rec-strip-card-subtitle">{{ item.subtitle || item.summary }}</p>
           <div class="rec-strip-card-meta">
             <el-icon class="rec-strip-card-icon"><Collection /></el-icon>
-            {{ item.meta || '' }}
+            {{ item.meta || item.label || '' }}
           </div>
         </router-link>
       </div>
@@ -253,6 +256,12 @@ a.rec-block-title:hover {
   line-height: 1.5;
   color: #444;
   margin: 0;
+}
+
+.rec-block-card-meta {
+  font-size: 13px;
+  color: #888;
+  margin: 6px 0 0;
 }
 
 /* three: 3 张中卡并排 */
