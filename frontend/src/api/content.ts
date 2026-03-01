@@ -2,6 +2,7 @@ import request from './request'
 
 export interface ContentListItem {
   id: number
+  userId?: number
   title: string
   summary?: string
   cover?: string | null
@@ -14,6 +15,8 @@ export interface ContentListItem {
   createdAt: string
   /** 标签名称列表；搜索（带 q）时可能返回，用于高亮 */
   tagNames?: string[]
+  /** 热榜热度分（仅热榜接口返回） */
+  hotScore?: number
 }
 
 export interface ContentsMeResponse {
@@ -58,10 +61,12 @@ export function getContentsMe(params?: ContentsMeParams): Promise<ContentsMeResp
   return request.get('contents/me', { params }).then((data) => data as unknown as ContentsMeResponse)
 }
 
-/** 公开推荐列表参数（推荐页顶区与各主标签栏；传 userId 即「TA的博客」，可带 columnId 按专栏筛） */
+/** 公开推荐列表参数（推荐页顶区与各主标签栏；传 userId 即「TA的博客」，userIds 即「关注流」） */
 export interface ContentsListParams {
   mainTagId?: number
   userId?: number
+  /** 多用户 ID，用于关注页动态流（关注的人发布的文章） */
+  userIds?: number[]
   columnId?: number
   page?: number
   pageSize?: number
@@ -74,6 +79,13 @@ export interface ContentsListParams {
  */
 export function getContentsList(params?: ContentsListParams): Promise<ContentsMeResponse> {
   return request.get('contents/list', { params }).then((data) => data as unknown as ContentsMeResponse)
+}
+
+/**
+ * 热榜：按 engagement * time_decay 排序，分页
+ */
+export function getHotList(params?: { page?: number; pageSize?: number }): Promise<ContentsMeResponse> {
+  return request.get('contents/hot', { params }).then((data) => data as unknown as ContentsMeResponse)
 }
 
 /**

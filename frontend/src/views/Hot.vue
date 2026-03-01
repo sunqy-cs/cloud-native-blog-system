@@ -14,6 +14,8 @@
           </router-link>
         </div>
         <section class="hot-list">
+          <div v-if="hotLoading" class="hot-loading">加载中…</div>
+          <template v-else>
           <router-link
             v-for="(item, index) in hotList"
             :key="item.id"
@@ -38,7 +40,10 @@
               <div class="hot-item-meta">
                 <span class="hot-heat">
                   <span class="hot-heat-icon"></span>
-                  {{ item.heat }}万热度
+                  {{ item.heatDisplay }}
+                </span>
+                <span class="hot-stats">
+                  阅读 {{ item.viewDisplay }} · 点赞 {{ item.likeDisplay }} · 收藏 {{ item.collectionDisplay }} · 评论 {{ item.commentDisplay }}
                 </span>
                 <span class="hot-share" @click.prevent="onShare(item)">
                   <el-icon><Share /></el-icon>
@@ -51,8 +56,10 @@
               <span v-else class="hot-item-cover-ph">{{ item.title.charAt(0) }}</span>
             </div>
           </router-link>
+          <p v-if="!hotLoading && hotList.length === 0" class="hot-empty">暂无热榜内容</p>
+          </template>
         </section>
-        <p class="hot-no-more">没有更多内容</p>
+        <p v-if="!hotLoading && hotList.length > 0" class="hot-no-more">没有更多内容</p>
       </main>
       <aside class="hot-sidebar-wrap">
         <div class="hot-sidebar-inner">
@@ -66,8 +73,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Share } from '@element-plus/icons-vue'
+import { getHotList } from '@/api/content'
 import CreationCenter from '@/components/CreationCenter.vue'
 import HotSearch from '@/components/HotSearch.vue'
 import RecommendedFollows from '@/components/RecommendedFollows.vue'
@@ -76,58 +84,88 @@ interface HotListItem {
   id: string
   title: string
   summary?: string
-  heat: number
+  /** 主标签（博客第一个标签，用于顶部条展示） */
+  mainTag: string
+  heatDisplay: string
+  viewDisplay: string
+  likeDisplay: string
+  collectionDisplay: string
+  commentDisplay: string
   cover?: string
   isNew?: boolean
 }
 
-/** 顶部切换条用的数据：从 hotList 取前几条并加 tag */
-const topBarList = ref<{ id: string; tag: string; title: string; cover?: string }[]>([
-  { id: '1', tag: '热点', title: '如何评价国产刑侦剧《重案六组》?', cover: '' },
-  { id: '2', tag: '思维', title: '像战略家一样思考（五维思考）', cover: '' },
-  { id: '3', tag: '写作', title: 'This prompt will change how you write', cover: '' },
-  { id: '4', tag: '技术', title: '云原生入门：从零到部署', cover: '' },
-  { id: '5', tag: '文化', title: '美国最高法院裁定特朗普政府大规模关税政策违法', cover: '' },
-])
+function formatHeatDisplay(hotScore: number | undefined): string {
+  if (hotScore == null || Number.isNaN(hotScore)) return '0 热度'
+  if (hotScore >= 10000) return (hotScore / 10000).toFixed(1).replace(/\.0$/, '') + '万热度'
+  return hotScore.toFixed(0) + ' 热度'
+}
+
+function formatCount(n: number | undefined): string {
+  if (n == null || Number.isNaN(n)) return '0'
+  if (n >= 10000) return (n / 10000).toFixed(1).replace(/\.0$/, '') + '万'
+  return String(n)
+}
+
+/** 去掉标签名中括号及括号内内容（与推荐页导航一致） */
+function stripParentheses(name: string): string {
+  if (!name || typeof name !== 'string') return name
+  return name
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*（[^）]*）/g, '')
+    .trim() || name
+}
+
+function isNewArticle(createdAt: string | undefined): boolean {
+  if (!createdAt) return false
+  const d = new Date(createdAt)
+  const now = Date.now()
+  const days = (now - d.getTime()) / (24 * 60 * 60 * 1000)
+  return days <= 7
+}
+
+const hotList = ref<HotListItem[]>([])
+const hotLoading = ref(false)
+
+/** 顶部切换条：取热榜前 5 条，tag 用该条目的主标签 */
+const topBarList = computed(() =>
+  hotList.value.slice(0, 5).map((item) => ({
+    id: item.id,
+    tag: item.mainTag || '热',
+    title: item.title,
+    cover: item.cover,
+  }))
+)
 
 const topBarIndex = ref(0)
-const topBarItem = ref(topBarList.value[0] ?? null)
+const topBarItem = computed(() => topBarList.value[topBarIndex.value] ?? null)
 
-const hotList = ref<HotListItem[]>([
-  { id: '1', title: '如何评价国产刑侦剧《重案六组》?', summary: '从剧本、表演到时代背景，多角度解读这部经典刑侦剧。', heat: 1155, isNew: false },
-  { id: '2', title: '像战略家一样思考（五维思考）', summary: '当所有人把思考外包给机器时，思考本身就是你的竞争优势。', heat: 892, isNew: false },
-  { id: '3', title: 'This prompt will change how you write', summary: 'A practical guide to communication and logic.', heat: 756, isNew: false },
-  { id: '4', title: '云原生入门：从零到部署', summary: '容器、编排与可观测性。', heat: 634, isNew: true },
-  { id: '5', title: 'Purpose & Profit – 发现你一生的事业', summary: '全书免费阅读。', heat: 521, isNew: false },
-  { id: '6', title: '一天内理顺生活的办法', summary: '极简行动清单。', heat: 448, isNew: true },
-  { id: '7', title: '多兴趣者如何不浪费你的天赋', summary: '跨领域成长的地图。', heat: 387, isNew: false },
-  { id: '8', title: '如何清晰而有深度地表达自己', summary: '沟通与逻辑的实践指南。', heat: 312, isNew: false },
-  { id: '9', title: 'Kubernetes 生产实践中的常见坑', summary: '从部署到可观测性，避坑指南。', heat: 286, isNew: false },
-  { id: '10', title: '写作与表达：从想法到成稿', summary: '结构化写作与清晰表达的方法。', heat: 254, isNew: true },
-  { id: '11', title: 'AI 辅助创作的真实体验', summary: '工具、边界与人的角色。', heat: 228, isNew: false },
-  { id: '12', title: '开源项目参与入门', summary: '从提 issue 到第一次 PR。', heat: 205, isNew: false },
-  { id: '13', title: '开发者效率工具推荐', summary: '终端、编辑器与协作工具。', heat: 188, isNew: false },
-  { id: '14', title: '春节档票房与观影指南', summary: '今年春节档有哪些值得看。', heat: 172, isNew: true },
-  { id: '15', title: '健康作息与高效工作', summary: '睡眠、运动与专注力。', heat: 156, isNew: false },
-  { id: '16', title: '产品思维：从需求到方案', summary: '如何把问题拆解成可执行方案。', heat: 142, isNew: false },
-  { id: '17', title: '远程协作的沟通技巧', summary: '异步沟通与会议效率。', heat: 128, isNew: false },
-  { id: '18', title: '读书笔记的系统化方法', summary: '从划线到输出。', heat: 115, isNew: true },
-  { id: '19', title: '个人知识管理实践', summary: '笔记、标签与检索。', heat: 103, isNew: false },
-  { id: '20', title: '从零开始学 TypeScript', summary: '类型系统与工程实践。', heat: 92, isNew: false },
-  { id: '21', title: '前端性能优化清单', summary: '首屏、交互与监控。', heat: 82, isNew: false },
-  { id: '22', title: '后端 API 设计原则', summary: 'RESTful、版本与错误码。', heat: 73, isNew: true },
-  { id: '23', title: '数据库索引与查询优化', summary: '何时建索引、如何看执行计划。', heat: 65, isNew: false },
-  { id: '24', title: '微服务拆分的边界', summary: '领域驱动与团队边界。', heat: 58, isNew: false },
-  { id: '25', title: '日志与链路追踪实践', summary: '可观测性入门。', heat: 52, isNew: false },
-  { id: '26', title: '安全开发：常见漏洞与防护', summary: '注入、越权与敏感信息。', heat: 46, isNew: false },
-  { id: '27', title: '技术选型的权衡', summary: '成熟度、生态与团队能力。', heat: 41, isNew: true },
-  { id: '28', title: '技术博客的写作与传播', summary: '选题、结构与平台。', heat: 36, isNew: false },
-  { id: '29', title: '面试准备与复盘', summary: '简历、项目与算法。', heat: 32, isNew: false },
-  { id: '30', title: '职业发展中的几个关键选择', summary: '赛道、团队与成长。', heat: 28, isNew: false },
-])
+async function loadHot() {
+  hotLoading.value = true
+  try {
+    const res = await getHotList({ page: 1, pageSize: 50 })
+    const list = res.list ?? []
+    hotList.value = list.map((c) => ({
+      id: String(c.id),
+      title: c.title || '无标题',
+      summary: c.summary ?? '',
+      mainTag: stripParentheses((c.tagNames && c.tagNames[0]) ? c.tagNames[0] : '') || '热',
+      heatDisplay: formatHeatDisplay(c.hotScore),
+      viewDisplay: formatCount(c.viewCount),
+      likeDisplay: formatCount(c.likeCount),
+      collectionDisplay: formatCount(c.collectionCount),
+      commentDisplay: formatCount(c.commentCount ?? 0),
+      cover: c.cover ?? undefined,
+      isNew: isNewArticle(c.createdAt),
+    }))
+  } catch {
+    hotList.value = []
+  } finally {
+    hotLoading.value = false
+  }
+}
 
 function onShare(item: HotListItem) {
-  // 后续对接分享
   console.log('share', item.id)
 }
 
@@ -135,10 +173,10 @@ const TOP_BAR_INTERVAL = 4000
 let topBarTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(() => {
-  topBarItem.value = topBarList.value[0]
+  loadHot()
   topBarTimer = setInterval(() => {
+    if (topBarList.value.length === 0) return
     topBarIndex.value = (topBarIndex.value + 1) % topBarList.value.length
-    topBarItem.value = topBarList.value[topBarIndex.value]
   }, TOP_BAR_INTERVAL)
 })
 
@@ -197,10 +235,13 @@ onUnmounted(() => {
 }
 
 .hot-top-bar-tag {
-  font-size: 14px;
+  font-size: 16px;
+  font-weight: 500;
   color: #BB1919;
-  font-weight: 600;
   flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background-color: rgba(187, 25, 25, 0.1);
 }
 
 .hot-top-bar-title {
@@ -314,6 +355,13 @@ onUnmounted(() => {
   color: #888;
 }
 
+.hot-stats {
+  flex: 1;
+  font-size: 13px;
+  color: #888;
+  margin: 0 8px;
+}
+
 .hot-heat {
   display: inline-flex;
   align-items: center;
@@ -371,6 +419,14 @@ onUnmounted(() => {
   font-size: 28px;
   font-weight: 700;
   color: #bbb;
+}
+
+.hot-loading,
+.hot-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
 }
 
 .hot-no-more {

@@ -37,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -136,13 +137,16 @@ public class ContentService {
     }
 
     /**
-     * 公开推荐列表：已发布博客，可选按主标签、按用户筛选，按时间/点赞排序。
-     * 当按用户筛选（他人博客）时根据 visibility 与 currentUserId 过滤：ALL 所有人可见，SELF 仅作者，FANS 仅作者与粉丝。
+     * 公开推荐列表：已发布博客，可选按主标签、按用户/多用户筛选，按时间/点赞排序。
+     * userId 单用户即「TA的博客」；userIds 多用户即「关注流」。
+     * 当按用户筛选时根据 visibility 与 currentUserId 过滤：ALL 所有人可见，SELF 仅作者，FANS 仅作者与粉丝。
      */
-    public ContentsMeResponse listPublic(Long mainTagId, Long userId, Long columnId, int page, int pageSize, String sortBy, String order, Long currentUserId) {
+    public ContentsMeResponse listPublic(Long mainTagId, Long userId, List<Long> userIds, Long columnId, int page, int pageSize, String sortBy, String order, Long currentUserId) {
         LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
         q.eq(Content::getType, TYPE_BLOG).eq(Content::getStatus, STATUS_PUBLISHED);
-        if (userId != null) {
+        if (userIds != null && !userIds.isEmpty()) {
+            q.in(Content::getUserId, userIds);
+        } else if (userId != null) {
             q.eq(Content::getUserId, userId);
             if (currentUserId == null) {
                 q.eq(Content::getVisibility, VISIBILITY_ALL);
@@ -175,7 +179,11 @@ public class ContentService {
         }
         Page<Content> p = contentMapper.selectPage(new Page<>(page, pageSize), q);
         List<Content> records = p.getRecords();
-        if (userId != null && currentUserId != null && !currentUserId.equals(userId)) {
+        if (userIds != null && !userIds.isEmpty() && !records.isEmpty()) {
+            records = records.stream()
+                    .filter(c -> filterVisibilityForCurrentUser(c, currentUserId))
+                    .collect(Collectors.toList());
+        } else if (userId != null && currentUserId != null && !currentUserId.equals(userId)) {
             boolean following = isFollowingRemote(currentUserId, userId);
             records = records.stream()
                     .filter(c -> VISIBILITY_ALL.equals(c.getVisibility()) || (VISIBILITY_FANS.equals(c.getVisibility()) && following))
@@ -186,6 +194,13 @@ public class ContentService {
         res.setList(list);
         res.setTotal(p.getTotal());
         return res;
+    }
+
+    /** 多用户列表时按 visibility 过滤：未登录仅 ALL；本人内容可见；他人内容 ALL 或（FANS 且已关注） */
+    private boolean filterVisibilityForCurrentUser(Content c, Long currentUserId) {
+        if (currentUserId == null) return VISIBILITY_ALL.equals(c.getVisibility());
+        if (currentUserId.equals(c.getUserId())) return true;
+        return VISIBILITY_ALL.equals(c.getVisibility()) || (VISIBILITY_FANS.equals(c.getVisibility()) && isFollowingRemote(currentUserId, c.getUserId()));
     }
 
     /** 按标签名模糊匹配得到的内容 ID 列表（当前用户博客） */
@@ -231,6 +246,76 @@ public class ContentService {
             voList.stream().filter(vo -> id.equals(vo.getId())).findFirst().ifPresent(ordered::add);
         }
         return ordered;
+    }
+
+    private static final int HOT_POOL_SIZE = 2000;
+
+    /**
+     * 热榜：engagement = 1*log(阅读+1)+3*点赞+5*收藏+8*评论，time_decay = 1/(1+小时/12)，hot_score = engagement * time_decay，按 hot_score 降序分页。
+     */
+    public ContentsMeResponse listHot(int page, int pageSize) {
+        LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
+        q.eq(Content::getType, TYPE_BLOG).eq(Content::getStatus, STATUS_PUBLISHED)
+                .orderByDesc(Content::getCreatedAt);
+        Page<Content> pool = contentMapper.selectPage(new Page<>(1, HOT_POOL_SIZE), q);
+        List<Content> list = pool.getRecords();
+        if (list.isEmpty()) {
+            ContentsMeResponse res = new ContentsMeResponse();
+            res.setList(Collections.emptyList());
+            res.setTotal(0L);
+            return res;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<ContentWithScore> withScores = list.stream()
+                .map(c -> {
+                    int views = c.getViewCount() != null ? c.getViewCount() : 0;
+                    int likes = c.getLikeCount() != null ? c.getLikeCount() : 0;
+                    int collections = c.getCollectionCount() != null ? c.getCollectionCount() : 0;
+                    int comments = c.getCommentCount() != null ? c.getCommentCount() : 0;
+                    double engagement = 1.0 * Math.log(views + 1) + 3.0 * likes + 5.0 * collections + 8.0 * comments;
+                    long hours = c.getCreatedAt() != null && !c.getCreatedAt().isAfter(now)
+                            ? ChronoUnit.HOURS.between(c.getCreatedAt(), now)
+                            : 0;
+                    double timeDecay = 1.0 / (1.0 + hours / 12.0);
+                    double hotScore = engagement * timeDecay;
+                    return new ContentWithScore(c, hotScore);
+                })
+                .sorted((a, b) -> Double.compare(b.hotScore, a.hotScore))
+                .collect(Collectors.toList());
+        int total = withScores.size();
+        int from = (page - 1) * pageSize;
+        if (from >= total) {
+            ContentsMeResponse res = new ContentsMeResponse();
+            res.setList(Collections.emptyList());
+            res.setTotal((long) total);
+            return res;
+        }
+        int to = Math.min(from + pageSize, total);
+        List<Content> pageContents = withScores.subList(from, to).stream().map(ws -> ws.content).collect(Collectors.toList());
+        List<Long> contentIds = pageContents.stream().map(Content::getId).collect(Collectors.toList());
+        Map<Long, List<String>> tagNamesMap = getTagNamesByContentIds(contentIds);
+        List<ContentListItemVO> voList = withScores.subList(from, to).stream()
+                .map(ws -> {
+                    ContentListItemVO vo = toListItemVO(ws.content);
+                    vo.setHotScore(ws.hotScore);
+                    vo.setTagNames(tagNamesMap.get(ws.content.getId()));
+                    return vo;
+                })
+                .collect(Collectors.toList());
+        ContentsMeResponse res = new ContentsMeResponse();
+        res.setList(voList);
+        res.setTotal((long) total);
+        return res;
+    }
+
+    private static class ContentWithScore {
+        final Content content;
+        final double hotScore;
+
+        ContentWithScore(Content content, double hotScore) {
+            this.content = content;
+            this.hotScore = hotScore;
+        }
     }
 
     /**
@@ -516,6 +601,7 @@ public class ContentService {
     private ContentListItemVO toListItemVO(Content c) {
         ContentListItemVO vo = new ContentListItemVO();
         vo.setId(c.getId());
+        vo.setUserId(c.getUserId());
         vo.setTitle(c.getTitle());
         vo.setSummary(c.getSummary());
         vo.setCover(c.getCover());

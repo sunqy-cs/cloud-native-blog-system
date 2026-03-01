@@ -4,13 +4,14 @@
       <el-icon class="rec-follows-icon"><UserFilled /></el-icon>
       <span class="rec-follows-title">推荐关注</span>
     </div>
-    <ul class="rec-follows-list">
+    <div v-if="loading" class="rec-follows-loading">加载中…</div>
+    <ul v-else class="rec-follows-list">
       <li
         v-for="user in currentPageList"
         :key="user.id"
         class="rec-follows-item"
       >
-        <router-link :to="user.link" class="rec-follows-avatar-wrap">
+        <router-link :to="user.link || '/profile'" class="rec-follows-avatar-wrap">
           <img
             v-if="user.avatar"
             :src="user.avatar"
@@ -18,14 +19,15 @@
             class="rec-follows-avatar"
           />
           <span v-else class="rec-follows-avatar rec-follows-avatar-placeholder">
-            {{ user.name.charAt(0) }}
+            {{ (user.name || ' ').charAt(0) }}
           </span>
         </router-link>
         <div class="rec-follows-info">
-          <router-link :to="user.link" class="rec-follows-name">{{ user.name }}</router-link>
+          <router-link :to="user.link || '/profile'" class="rec-follows-name">{{ user.name }}</router-link>
           <p class="rec-follows-desc">{{ user.description }}</p>
         </div>
         <el-button
+          v-if="!user.following"
           type="primary"
           link
           class="rec-follows-btn"
@@ -34,6 +36,7 @@
           <el-icon class="btn-icon"><Plus /></el-icon>
           关注
         </el-button>
+        <span v-else class="rec-follows-followed">已关注</span>
       </li>
     </ul>
     <div class="rec-follows-pagination">
@@ -60,8 +63,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { UserFilled, Plus, ArrowRight } from '@element-plus/icons-vue'
+import { getRecommendedFollows, followUser, checkFollow } from '@/api/follow'
+import { getUsersBatch } from '@/api/user'
+import { useUserStore } from '@/stores/user'
+import { ElMessage } from 'element-plus'
 
 export interface RecommendedUser {
   id: string
@@ -69,33 +76,74 @@ export interface RecommendedUser {
   description: string
   avatar?: string
   link?: string
+  following?: boolean
 }
 
 const pageSize = 4
 const currentPage = ref(1)
+const userList = ref<RecommendedUser[]>([])
+const loading = ref(false)
+const userStore = useUserStore()
 
-const mockUsers: RecommendedUser[] = [
-  { id: '1', name: 'Tammy', description: '「汽车」领域答主', link: '/follow' },
-  { id: '2', name: '水起波澜', description: '你看过 TA', link: '/follow' },
-  { id: '3', name: 'ofo 在逃单车', description: '「科技」领域答主', link: '/follow' },
-  { id: '4', name: '跨境小码农', description: '你看过 TA', link: '/follow' },
-  { id: '5', name: '云原生实践者', description: '「技术」领域答主', link: '/follow' },
-  { id: '6', name: '写作与表达', description: '你看过 TA', link: '/follow' },
-  { id: '7', name: '开源爱好者', description: '「开源」领域答主', link: '/follow' },
-  { id: '8', name: '产品思考', description: '你看过 TA', link: '/follow' },
-]
-
-const totalPages = computed(() => Math.ceil(mockUsers.length / pageSize) || 1)
+const totalPages = computed(() => Math.ceil(userList.value.length / pageSize) || 1)
 
 const currentPageList = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return mockUsers.slice(start, start + pageSize)
+  return userList.value.slice(start, start + pageSize)
 })
 
-function follow(user: RecommendedUser) {
-  // 后续对接关注接口
-  console.log('follow', user.id)
+async function loadRecommended() {
+  loading.value = true
+  try {
+    const ids = await getRecommendedFollows(20)
+    if (!ids.length) {
+      userList.value = []
+      return
+    }
+    const users = await getUsersBatch(ids)
+    const myId = userStore.userInfo?.id
+    const list: RecommendedUser[] = users
+      .filter((u) => u.id !== myId)
+      .map((u) => ({
+        id: String(u.id),
+        name: u.nickname || u.username || '用户',
+        description: u.intro || '暂无简介',
+        avatar: u.avatar,
+        link: `/profile?userId=${u.id}`,
+        following: false,
+      }))
+    if (userStore.token && list.length > 0) {
+      const checks = await Promise.all(list.map((u) => checkFollow(Number(u.id))))
+      list.forEach((u, i) => {
+        u.following = checks[i]?.following ?? false
+      })
+    }
+    userList.value = list
+  } catch {
+    userList.value = []
+  } finally {
+    loading.value = false
+  }
 }
+
+async function follow(user: RecommendedUser) {
+  if (!userStore.token) {
+    ElMessage.warning('请先登录')
+    return
+  }
+  if (user.following) return
+  try {
+    await followUser(Number(user.id))
+    user.following = true
+    ElMessage.success('关注成功')
+  } catch {
+    // 拦截器已提示
+  }
+}
+
+onMounted(() => {
+  loadRecommended()
+})
 </script>
 
 <style scoped>
@@ -131,10 +179,23 @@ function follow(user: RecommendedUser) {
   letter-spacing: 0.02em;
 }
 
+.rec-follows-loading {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 14px;
+  color: #888;
+}
+
 .rec-follows-list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.rec-follows-followed {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #999;
 }
 
 .rec-follows-item {

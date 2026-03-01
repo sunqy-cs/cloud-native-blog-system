@@ -15,6 +15,22 @@ export function getFollowMe(): Promise<FollowStats> {
 }
 
 /**
+ * 当前用户关注的用户 ID 列表（按关注时间倒序），用于关注页横向列表
+ */
+export function getFollowList(): Promise<number[]> {
+  return request.get<number[]>('follow/list').then((data) => (Array.isArray(data) ? data : []))
+}
+
+/**
+ * 推荐关注：按粉丝数降序返回用户 ID 列表（排除当前用户），用于侧栏推荐关注
+ */
+export function getRecommendedFollows(limit?: number): Promise<number[]> {
+  return request
+    .get<number[]>('follow/recommended', { params: limit != null ? { limit } : {} })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
+/**
  * 获取指定用户的关注统计（公开），用于他人个人主页展示
  */
 export function getFollowStatsByUserId(userId: number): Promise<FollowStats> {

@@ -12,6 +12,9 @@ import com.blog.user.exception.BusinessException;
 import com.blog.user.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
+import java.util.List;
+
 import at.favre.lib.crypto.bcrypt.BCrypt;
 
 @Service
@@ -60,6 +63,21 @@ public class UserService {
     public UserVO getById(Long id) {
         User user = userMapper.selectById(id);
         if (user == null) return null;
+        return toVO(user);
+    }
+
+    /** 批量获取用户（仅返回非 null），用于关注列表等 */
+    public List<UserVO> getByIds(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<UserVO> result = new ArrayList<>();
+        for (Long id : ids) {
+            UserVO vo = getById(id);
+            if (vo != null) result.add(vo);
+        }
+        return result;
+    }
+
+    private static UserVO toVO(User user) {
         UserVO vo = new UserVO();
         vo.setId(user.getId());
         vo.setUsername(user.getUsername());

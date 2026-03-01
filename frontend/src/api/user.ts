@@ -37,6 +37,14 @@ export function getUserById(id: number): Promise<UserMe> {
   return request.get<any>(`users/${id}`).then((data) => data as UserMe)
 }
 
+/** 批量获取用户公开资料，用于关注页列表等；无需登录 */
+export function getUsersBatch(ids: number[]): Promise<UserMe[]> {
+  if (!ids?.length) return Promise.resolve([])
+  return request
+    .get<any>('users/batch', { params: { ids } })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
 export function updateMe(payload: UpdateProfilePayload): Promise<UserMe> {
   return request.patch<any>('users/me', payload).then((data) => data as UserMe)
 }

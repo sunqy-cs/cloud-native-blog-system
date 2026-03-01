@@ -59,6 +59,17 @@ public class ContentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
+    /** 热榜：按 engagement * time_decay 排序，engagement = 1*log(阅读+1)+3*点赞+5*收藏+8*评论，time_decay = 1/(1+小时/12) */
+    @GetMapping("/hot")
+    public ResponseEntity<ContentsMeResponse> hot(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize) {
+        if (page < 1) page = 1;
+        if (pageSize < 1 || pageSize > 100) pageSize = 50;
+        ContentsMeResponse res = contentService.listHot(page, pageSize);
+        return ResponseEntity.ok(res);
+    }
+
     /** 公开阅读：已发布博客，无需登录；路径 /api/contents/view/{id} 便于网关放行。传 X-User-Id 时按用户去重，仅首次阅读增加阅读量 */
     @GetMapping("/view/{id}")
     public ResponseEntity<ContentViewVO> getForView(
@@ -84,11 +95,12 @@ public class ContentController {
         return ResponseEntity.ok(res);
     }
 
-    /** 公开推荐列表：已发布博客，可选 mainTagId、userId（按用户筛即「TA的博客」）；传 X-User-Id 时按 visibility 过滤他人博客 */
+    /** 公开推荐列表：已发布博客，可选 mainTagId、userId（按用户筛即「TA的博客」）、userIds（多用户即「关注流」）；传 X-User-Id 时按 visibility 过滤他人博客 */
     @GetMapping("/list")
     public ResponseEntity<ContentsMeResponse> list(
             @RequestParam(required = false) Long mainTagId,
             @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) List<Long> userIds,
             @RequestParam(required = false) Long columnId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int pageSize,
@@ -97,7 +109,7 @@ public class ContentController {
             @RequestHeader(value = HEADER_USER_ID, required = false) Long currentUserId) {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
-        ContentsMeResponse res = contentService.listPublic(mainTagId, userId, columnId, page, pageSize, sortBy, order, currentUserId);
+        ContentsMeResponse res = contentService.listPublic(mainTagId, userId, userIds, columnId, page, pageSize, sortBy, order, currentUserId);
         return ResponseEntity.ok(res);
     }
 

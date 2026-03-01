@@ -10,6 +10,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -32,6 +34,15 @@ public class UserController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(vo);
+    }
+
+    /** 批量获取用户公开资料（昵称、头像等），用于关注列表等；无需认证 */
+    @GetMapping("/batch")
+    public ResponseEntity<List<UserVO>> batch(@RequestParam List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return ResponseEntity.ok(List.of());
+        }
+        return ResponseEntity.ok(userService.getByIds(ids));
     }
 
     /** 按 ID 获取公开资料（昵称、头像），用于评论等展示；无需认证 */

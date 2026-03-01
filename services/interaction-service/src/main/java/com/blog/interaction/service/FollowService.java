@@ -9,6 +9,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -40,6 +43,26 @@ public class FollowService {
         vo.setFollowerCount(followers != null ? followers : 0L);
         vo.setYesterdayFollowerDelta(yesterdayFollowers != null ? yesterdayFollowers : 0L);
         return vo;
+    }
+
+    /** 当前用户关注的用户 ID 列表（按关注时间倒序），用于关注页横向列表 */
+    public List<Long> listFolloweeIds(Long followerId) {
+        if (followerId == null) return List.of();
+        List<Follow> list = followMapper.selectList(
+                new LambdaQueryWrapper<Follow>()
+                        .eq(Follow::getFollowerId, followerId)
+                        .orderByDesc(Follow::getCreatedAt));
+        return list.stream().map(Follow::getFolloweeId).collect(Collectors.toList());
+    }
+
+    /** 推荐关注：按粉丝数降序返回用户 ID，排除当前用户，用于侧栏推荐关注列表 */
+    public List<Long> listRecommendedUserIds(int limit, Long excludeUserId) {
+        if (limit <= 0) return List.of();
+        List<Long> ids = followMapper.selectFolloweeIdsByFollowerCountDesc(limit + (excludeUserId != null ? 1 : 0));
+        if (excludeUserId != null) {
+            ids = ids.stream().filter(id -> !excludeUserId.equals(id)).limit(limit).collect(Collectors.toList());
+        }
+        return ids;
     }
 
     /** 当前用户是否已关注指定用户（用于 visibility=FANS 的博客可见性校验） */
