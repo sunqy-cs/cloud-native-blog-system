@@ -5,7 +5,9 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.blog.interaction.dto.CommentedArticleVO;
 import com.blog.interaction.dto.CommentVO;
 import com.blog.interaction.entity.Comment;
+import com.blog.interaction.entity.CommentLike;
 import com.blog.interaction.entity.Content;
+import com.blog.interaction.mapper.CommentLikeMapper;
 import com.blog.interaction.mapper.CommentMapper;
 import com.blog.interaction.mapper.ContentMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.blog.interaction.dto.CreateCommentRequest;
@@ -36,6 +39,7 @@ public class CommentService {
 
     private final CommentMapper commentMapper;
     private final ContentMapper contentMapper;
+    private final CommentLikeMapper commentLikeMapper;
 
     @Autowired
     @Qualifier("plainRestTemplate")
@@ -85,8 +89,12 @@ public class CommentService {
                 .orderByDesc(Comment::getIsHot)
                 .orderByDesc(Comment::getCreatedAt);
         List<Comment> list = commentMapper.selectList(q);
+        List<Long> commentIds = list.stream().map(Comment::getId).collect(Collectors.toList());
+        java.util.Map<Long, Long> likeCountMap = countLikesByCommentIds(commentIds);
+        Set<Long> likedByMeIds = currentUserId != null ? findLikedCommentIdsByUser(currentUserId, commentIds) : Set.of();
         return list.stream()
-                .map(c -> toCommentVO(c, contentOwnerId, getNicknameAndAvatar(c.getUserId())))
+                .map(c -> toCommentVO(c, contentOwnerId, getNicknameAndAvatar(c.getUserId()),
+                        likeCountMap.getOrDefault(c.getId(), 0L), likedByMeIds.contains(c.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -127,7 +135,43 @@ public class CommentService {
         updateContent.eq(Content::getId, req.getContentId())
                 .setSql("comment_count = comment_count + 1");
         contentMapper.update(null, updateContent);
-        return toCommentVO(comment, content.getUserId(), getNicknameAndAvatar(currentUserId));
+        return toCommentVO(comment, content.getUserId(), getNicknameAndAvatar(currentUserId), 0L, false);
+    }
+
+    /** 点赞评论（幂等） */
+    @Transactional
+    public void likeComment(Long commentId, Long userId) {
+        Comment comment = commentMapper.selectById(commentId);
+        if (comment == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "评论不存在");
+        LambdaQueryWrapper<CommentLike> q = new LambdaQueryWrapper<>();
+        q.eq(CommentLike::getUserId, userId).eq(CommentLike::getCommentId, commentId);
+        if (commentLikeMapper.selectCount(q) > 0) return;
+        CommentLike like = new CommentLike();
+        like.setUserId(userId);
+        like.setCommentId(commentId);
+        commentLikeMapper.insert(like);
+    }
+
+    /** 取消点赞评论 */
+    @Transactional
+    public void unlikeComment(Long commentId, Long userId) {
+        LambdaQueryWrapper<CommentLike> q = new LambdaQueryWrapper<>();
+        q.eq(CommentLike::getUserId, userId).eq(CommentLike::getCommentId, commentId);
+        commentLikeMapper.delete(q);
+    }
+
+    private java.util.Map<Long, Long> countLikesByCommentIds(List<Long> commentIds) {
+        if (commentIds.isEmpty()) return java.util.Map.of();
+        List<CommentLike> all = commentLikeMapper.selectList(
+                new LambdaQueryWrapper<CommentLike>().in(CommentLike::getCommentId, commentIds));
+        return all.stream().collect(Collectors.groupingBy(CommentLike::getCommentId, Collectors.counting()));
+    }
+
+    private Set<Long> findLikedCommentIdsByUser(Long userId, List<Long> commentIds) {
+        if (commentIds.isEmpty()) return Set.of();
+        List<CommentLike> list = commentLikeMapper.selectList(
+                new LambdaQueryWrapper<CommentLike>().eq(CommentLike::getUserId, userId).in(CommentLike::getCommentId, commentIds));
+        return list.stream().map(CommentLike::getCommentId).collect(Collectors.toSet());
     }
 
     /**
@@ -162,7 +206,7 @@ public class CommentService {
         }
     }
 
-    private CommentVO toCommentVO(Comment c, Long contentOwnerId, NicknameAvatar user) {
+    private CommentVO toCommentVO(Comment c, Long contentOwnerId, NicknameAvatar user, long likeCount, boolean likedByMe) {
         CommentVO vo = new CommentVO();
         vo.setId(c.getId());
         vo.setUserId(c.getUserId());
@@ -174,6 +218,8 @@ public class CommentService {
         vo.setIsHot(Boolean.TRUE.equals(c.getIsHot()));
         vo.setCreatedAt(c.getCreatedAt() != null ? c.getCreatedAt().format(DATETIME_FORMAT) : null);
         vo.setIsAuthor(contentOwnerId != null && contentOwnerId.equals(c.getUserId()));
+        vo.setLikeCount(likeCount);
+        vo.setLikedByMe(likedByMe);
         return vo;
     }
 

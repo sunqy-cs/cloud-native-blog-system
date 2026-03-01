@@ -663,11 +663,11 @@
 
 ---
 
-### 14. 获取某篇文章的评论列表（评论管理右侧）
+### 14. 获取某篇文章的评论列表（评论管理右侧 / 文章页评论区）
 
 **`GET /api/comments/list?contentId={contentId}`**（interaction-service）
 
-需要认证。仅允许该文章作者调用。返回该文章下所有评论，热评在前、再按时间倒序。
+返回该文章下所有评论，热评在前、再按时间倒序。已发布的博客对所有人可见；未发布仅作者可见。请求头可带 `X-User-Id`（可选），用于返回当前用户是否已点赞每条评论（`likedByMe`）。
 
 **Query 参数**：`contentId` 内容 ID。
 
@@ -679,12 +679,15 @@
     "id": 1,
     "userId": 2,
     "userNickname": "用户2",
+    "userAvatar": "https://example.com/avatar.jpg",
     "contentId": 1,
     "body": "评论内容",
     "parentId": null,
     "isHot": true,
     "createdAt": "2026-02-26 13:42",
-    "isAuthor": false
+    "isAuthor": false,
+    "likeCount": 3,
+    "likedByMe": false
   }
 ]
 ```
@@ -693,13 +696,16 @@
 |---------------|---------|------------------------------|
 | id            | number  | 评论 ID                      |
 | userId        | number  | 评论者用户 ID                |
-| userNickname  | string  | 评论者昵称（可后续接用户服务） |
+| userNickname  | string  | 评论者昵称                   |
+| userAvatar    | string  | 评论者头像 URL，可选          |
 | contentId     | number  | 所属内容 ID                  |
 | body          | string  | 评论正文                     |
 | parentId      | number  | 父评论 ID，回复时存在        |
 | isHot         | boolean | 是否热评（作者推荐）          |
 | createdAt     | string  | 评论时间                     |
 | isAuthor      | boolean | 是否文章作者本人评论         |
+| likeCount     | number  | 点赞数                       |
+| likedByMe     | boolean | 当前用户是否已点赞该条评论（未登录或未传 X-User-Id 时为 false） |
 
 ---
 
@@ -723,7 +729,7 @@
 |-----------|--------|------|------|
 | contentId | number | 是   | 文章（内容）ID |
 | body      | string | 是   | 评论正文，建议 1～500 字 |
-| parentId  | number | 否   | 父评论 ID；不传或 null 表示顶级评论，传则表示回复该条评论 |
+| parentId  | number | 否   | 父评论 ID；不传或 null 表示顶级评论，传则表示**回复**该条评论（回复评论功能） |
 
 **Response** `201 Created`：
 
@@ -748,6 +754,36 @@
 - `400 Bad Request`：`body` 为空或仅空白；或 `parentId` 对应的评论不存在、不属于本 `contentId`；或该内容未发布（非 PUBLISHED）、非博客（非 BLOG）。
 - `401 Unauthorized`：未登录。
 - `404 Not Found`：`contentId` 对应内容不存在。
+
+---
+
+### 14.2 点赞评论
+
+**`POST /api/comments/{id}/like`**（interaction-service）
+
+需要认证。对指定评论点赞（同一用户重复调用视为已点赞，幂等）。
+
+**路径参数**：`id` 评论 ID。
+
+**Request Body**：无（或 `{}`）。
+
+**Response** `204 No Content`
+
+**错误**：评论不存在返回 `404 Not Found`。
+
+---
+
+### 14.3 取消点赞评论
+
+**`DELETE /api/comments/{id}/like`**（interaction-service）
+
+需要认证。取消对指定评论的点赞。
+
+**路径参数**：`id` 评论 ID。
+
+**Response** `204 No Content`
+
+**错误**：评论不存在返回 `404 Not Found`。
 
 ---
 

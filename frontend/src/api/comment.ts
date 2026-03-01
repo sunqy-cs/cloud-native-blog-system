@@ -20,6 +20,8 @@ export interface CommentItem {
   isHot: boolean
   createdAt: string
   isAuthor: boolean
+  likeCount?: number
+  likedByMe?: boolean
 }
 
 /**
@@ -54,6 +56,20 @@ export function createComment(payload: CreateCommentPayload): Promise<CommentIte
   return request
     .post<CommentItem>('comments', payload)
     .then((data) => data as CommentItem)
+}
+
+/**
+ * 点赞评论
+ */
+export function likeComment(commentId: number): Promise<void> {
+  return request.post(`comments/${commentId}/like`)
+}
+
+/**
+ * 取消点赞评论
+ */
+export function unlikeComment(commentId: number): Promise<void> {
+  return request.delete(`comments/${commentId}/like`)
 }
 
 /**

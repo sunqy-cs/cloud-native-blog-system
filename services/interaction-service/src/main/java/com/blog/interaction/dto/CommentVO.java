@@ -14,4 +14,6 @@ public class CommentVO {
     private Boolean isHot;
     private String createdAt;
     private Boolean isAuthor;
+    private Long likeCount;
+    private Boolean likedByMe;
 }

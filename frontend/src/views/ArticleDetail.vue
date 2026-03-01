@@ -67,11 +67,15 @@
               v-model="commentInput"
               type="textarea"
               :rows="3"
-              placeholder="理性发言, 友善互动"
+              :placeholder="replyingTo ? `回复 @${replyingTo.parentNickname}：` : '理性发言, 友善互动'"
               class="comment-input"
               maxlength="500"
               show-word-limit
             />
+            <p v-if="replyingTo" class="comment-reply-hint">
+              回复 @{{ replyingTo.parentNickname }}
+              <button type="button" class="comment-reply-cancel" @click="cancelReply">取消</button>
+            </p>
             <div class="comment-input-toolbar">
               <el-popover
                 v-model:visible="emojiPickerVisible"
@@ -135,11 +139,16 @@
                 </div>
                 <div class="comment-body">{{ c.body }}</div>
                 <div class="comment-actions">
-                  <button type="button" class="comment-action">
+                  <button type="button" class="comment-action" @click="startReply(c)">
                     <el-icon><ChatDotRound /></el-icon> 回复
                   </button>
-                  <button type="button" class="comment-action">
-                    <el-icon><Star /></el-icon> 喜欢
+                  <button
+                    type="button"
+                    class="comment-action"
+                    :class="{ 'comment-action--active': c.likedByMe }"
+                    @click="toggleLike(c)"
+                  >
+                    <el-icon><Star /></el-icon> 点赞 {{ c.likeCount ?? 0 }}
                   </button>
                 </div>
               </div>
@@ -163,7 +172,7 @@ import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { Loading, Star, Collection, ChatDotRound, MoreFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { getContentComments, createComment, type CommentItem } from '@/api/comment'
+import { getContentComments, createComment, likeComment, unlikeComment, type CommentItem } from '@/api/comment'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 
@@ -182,6 +191,7 @@ const commentInput = ref('')
 const commentSort = ref<'default' | 'latest'>('default')
 const emojiPickerVisible = ref(false)
 const commentSubmitting = ref(false)
+const replyingTo = ref<{ parentId: number; parentNickname: string } | null>(null)
 
 const id = computed(() => {
   const p = route.params.id
@@ -291,15 +301,53 @@ async function submitComment() {
   if (contentId == null) return
   commentSubmitting.value = true
   try {
-    await createComment({ contentId, body })
+    const wasReply = !!replyingTo.value
+    await createComment({
+      contentId,
+      body,
+      parentId: replyingTo.value?.parentId ?? undefined,
+    })
     commentInput.value = ''
-    ElMessage.success('评论发表成功')
+    replyingTo.value = null
+    ElMessage.success(wasReply ? '回复成功' : '评论发表成功')
     await loadComments()
     if (article.value) article.value.commentCount = (article.value.commentCount ?? 0) + 1
   } catch {
     // 错误信息已由 request 拦截器统一提示
   } finally {
     commentSubmitting.value = false
+  }
+}
+
+function startReply(c: CommentItem) {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录后再回复')
+    return
+  }
+  replyingTo.value = { parentId: c.id, parentNickname: c.userNickname || '用户' }
+}
+
+function cancelReply() {
+  replyingTo.value = null
+}
+
+async function toggleLike(c: CommentItem) {
+  if (!userStore.isLoggedIn) {
+    ElMessage.warning('请先登录后再点赞')
+    return
+  }
+  try {
+    if (c.likedByMe) {
+      await unlikeComment(c.id)
+      c.likedByMe = false
+      c.likeCount = Math.max(0, (c.likeCount ?? 0) - 1)
+    } else {
+      await likeComment(c.id)
+      c.likedByMe = true
+      c.likeCount = (c.likeCount ?? 0) + 1
+    }
+  } catch {
+    // 错误已由拦截器提示
   }
 }
 
@@ -684,6 +732,22 @@ watch(
 }
 .comment-action:hover {
   color: #bb1919;
+}
+.comment-action--active {
+  color: #bb1919;
+}
+.comment-reply-hint {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #666;
+}
+.comment-reply-cancel {
+  margin-left: 8px;
+  color: #bb1919;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .loading-wrap {

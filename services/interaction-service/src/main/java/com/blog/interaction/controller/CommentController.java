@@ -44,6 +44,22 @@ public class CommentController {
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED).body(vo);
     }
 
+    @PostMapping("/{id}/like")
+    public ResponseEntity<Void> likeComment(
+            @PathVariable Long id,
+            @RequestHeader(HEADER_USER_ID) Long userId) {
+        commentService.likeComment(id, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}/like")
+    public ResponseEntity<Void> unlikeComment(
+            @PathVariable Long id,
+            @RequestHeader(HEADER_USER_ID) Long userId) {
+        commentService.unlikeComment(id, userId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}/hot")
     public ResponseEntity<Void> setHot(
             @PathVariable Long id,
