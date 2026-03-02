@@ -1,8 +1,8 @@
 <template>
-  <div class="app-root">
+  <div class="app-root" :class="{ 'app-root-knowledge': isKnowledgeRoute }">
     <AppHeader v-if="!isCreatorRoute" :open-login-modal="openLoginModal" />
     <router-view />
-    <AppFooter v-if="!isCreatorRoute" />
+    <AppFooter v-if="!isCreatorRoute && !isKnowledgeRoute" />
     <LoginModal v-model:visible="showLoginModal" :redirect="loginRedirect" />
   </div>
 </template>
@@ -18,6 +18,7 @@ import { pendingLogin } from '@/stores/loginModal'
 const route = useRoute()
 const showLoginModal = ref(false)
 const isCreatorRoute = computed(() => route.path.startsWith('/creator'))
+const isKnowledgeRoute = computed(() => route.path.startsWith('/knowledge'))
 const loginRedirect = ref('')
 
 function openLoginModal(redirect?: string) {
@@ -49,5 +50,19 @@ watch(() => route.query.login, (v) => {
 .app-root {
   min-height: 100vh;
   background-color: var(--el-bg-color-page, #f5f5f5);
+}
+
+/* 知识库页面：整页禁止滚动，仅左侧栏可滚动（同时隐藏页脚避免撑高） */
+.app-root.app-root-knowledge {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-root.app-root-knowledge .knowledge-page {
+  flex: 1;
+  min-height: 0;
 }
 </style>
