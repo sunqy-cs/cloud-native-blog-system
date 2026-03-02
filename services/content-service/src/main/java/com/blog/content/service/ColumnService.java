@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 public class ColumnService {
 
     private static final String TYPE_BLOG = "BLOG";
+    private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final ColumnMapper columnMapper;
@@ -44,6 +45,15 @@ public class ColumnService {
         return list.stream()
                 .map(this::toVOWithUserId)
                 .collect(Collectors.toList());
+    }
+
+    /** 按 ID 获取专栏详情（公开），用于专栏详情页；返回带 userId 便于跳转博客 */
+    public ColumnVO getById(Long id) {
+        Column column = columnMapper.selectById(id);
+        if (column == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "专栏不存在");
+        }
+        return toVOWithUserId(column);
     }
 
     /** 按用户 ID 获取专栏列表（公开），用于他人博客页「全部 / 专栏」导航，无需认证 */
@@ -108,6 +118,43 @@ public class ColumnService {
                 .eq(Content::getColumnId, columnId)
                 .set(Content::getColumnId, null));
         columnMapper.deleteById(columnId);
+    }
+
+    /** 将已发布文章加入专栏（仅本人的文章） */
+    public void addContentToColumn(Long userId, Long columnId, Long contentId) {
+        Column column = columnMapper.selectById(columnId);
+        if (column == null || !userId.equals(column.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "专栏不存在");
+        }
+        Content content = contentMapper.selectById(contentId);
+        if (content == null || !userId.equals(content.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "文章不存在");
+        }
+        if (!TYPE_BLOG.equals(content.getType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅可添加博客文章");
+        }
+        if (!STATUS_PUBLISHED.equals(content.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "仅可添加已发布的文章");
+        }
+        content.setColumnId(columnId);
+        contentMapper.updateById(content);
+    }
+
+    /** 从专栏移除文章（仅本人的专栏与文章） */
+    public void removeContentFromColumn(Long userId, Long columnId, Long contentId) {
+        Column column = columnMapper.selectById(columnId);
+        if (column == null || !userId.equals(column.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "专栏不存在");
+        }
+        Content content = contentMapper.selectById(contentId);
+        if (content == null || !userId.equals(content.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "文章不存在");
+        }
+        if (!columnId.equals(content.getColumnId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该文章不在本专栏中");
+        }
+        content.setColumnId(null);
+        contentMapper.updateById(content);
     }
 
     private ColumnVO toVOWithUserId(Column c) {

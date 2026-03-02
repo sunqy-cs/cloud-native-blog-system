@@ -51,6 +51,27 @@ export function getColumnsByUserId(userId: number): Promise<ColumnItem[]> {
 }
 
 /**
+ * 按 ID 获取专栏详情（公开），用于专栏详情页
+ */
+export function getColumnById(id: number): Promise<ColumnItem> {
+  return request.get<ColumnItem>(`columns/${id}`).then((data) => data as ColumnItem)
+}
+
+/**
+ * 将已发布文章加入专栏（仅本人的文章）
+ */
+export function addContentToColumn(columnId: number, contentId: number): Promise<void> {
+  return request.post(`columns/${columnId}/contents`, { contentId })
+}
+
+/**
+ * 从专栏移除文章（仅本人的专栏与文章）
+ */
+export function removeContentFromColumn(columnId: number, contentId: number): Promise<void> {
+  return request.delete(`columns/${columnId}/contents`, { params: { contentId } })
+}
+
+/**
  * 创建专栏
  */
 export function createColumn(body: CreateColumnBody): Promise<ColumnItem> {

@@ -97,6 +97,18 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '个人主页', requireLogin: true },
   },
   {
+    path: '/column/:id',
+    name: 'column-detail',
+    component: () => import('@/views/ColumnDetail.vue'),
+    meta: { title: '专栏' },
+  },
+  {
+    path: '/collection/:id',
+    name: 'collection-detail',
+    component: () => import('@/views/CollectionFolderDetail.vue'),
+    meta: { title: '收藏夹', requireLogin: true },
+  },
+  {
     path: '/admin',
     name: 'admin',
     component: () => import('@/views/admin/Layout.vue'),

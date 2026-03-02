@@ -268,20 +268,25 @@
             <button type="button" class="btn-new-folder-inline" @click="openCreateFolder">新建收藏夹</button>
           </div>
           <div v-else class="profile-card-list folder-list">
-            <article v-for="folder in folderList" :key="folder.id" class="profile-card-item folder-item">
+            <router-link
+              v-for="folder in folderList"
+              :key="folder.id"
+              :to="`/collection/${folder.id}`"
+              class="profile-card-item folder-item folder-item-link"
+            >
               <div class="folder-main">
                 <span class="folder-name">{{ folder.name }}</span>
                 <el-tag v-if="folder.isDefault" type="info" size="small" class="folder-tag-default">默认</el-tag>
                 <div v-if="!folder.isDefault" class="folder-actions">
-                  <button type="button" class="folder-action-btn" @click="openEditFolder(folder)">编辑</button>
-                  <button type="button" class="folder-action-btn folder-action-btn--danger" @click="confirmDeleteFolder(folder)">删除</button>
+                  <button type="button" class="folder-action-btn" @click.stop="openEditFolder(folder)">编辑</button>
+                  <button type="button" class="folder-action-btn folder-action-btn--danger" @click.stop="confirmDeleteFolder(folder)">删除</button>
                 </div>
               </div>
               <p v-if="folder.description" class="profile-card-meta folder-desc">{{ folder.description }}</p>
               <p class="profile-card-meta folder-meta">
                 {{ folder.count }} 条内容 · 创建于 {{ folder.createdAt }}
               </p>
-            </article>
+            </router-link>
           </div>
         </div>
         <!-- 我的专栏：参考收藏布局，右侧新建专栏 + 每条右侧显示专栏封面 -->
@@ -2681,6 +2686,14 @@ async function onUnfollowClick() {
 .btn-new-folder-inline:hover {
   background: #BB1919;
   color: #fff;
+}
+.folder-list .folder-item-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.folder-list .folder-item-link:hover {
+  background: #fafafa;
 }
 .folder-list .folder-item .folder-main {
   display: flex;

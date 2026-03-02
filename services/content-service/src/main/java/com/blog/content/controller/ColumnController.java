@@ -1,5 +1,6 @@
 package com.blog.content.controller;
 
+import com.blog.content.dto.AddColumnContentRequest;
 import com.blog.content.dto.ColumnVO;
 import com.blog.content.dto.CreateColumnRequest;
 import com.blog.content.dto.UpdateColumnRequest;
@@ -39,6 +40,34 @@ public class ColumnController {
         if (userId == null) return ResponseEntity.ok(List.of());
         List<ColumnVO> list = columnService.listColumnsByUserId(userId);
         return ResponseEntity.ok(list);
+    }
+
+    /** 按 ID 获取专栏详情（公开），用于专栏详情页 */
+    @GetMapping("/{id}")
+    public ResponseEntity<ColumnVO> getById(@PathVariable Long id) {
+        ColumnVO vo = columnService.getById(id);
+        return ResponseEntity.ok(vo);
+    }
+
+    @PostMapping("/{id}/contents")
+    public ResponseEntity<Void> addContent(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody AddColumnContentRequest request) {
+        if (request == null || request.getContentId() == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        columnService.addContentToColumn(userId, id, request.getContentId());
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @DeleteMapping("/{id}/contents")
+    public ResponseEntity<Void> removeContent(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestParam Long contentId) {
+        columnService.removeContentFromColumn(userId, id, contentId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping

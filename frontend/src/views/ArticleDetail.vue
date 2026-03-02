@@ -64,7 +64,7 @@
         >
           点赞 {{ article.likeCount }}
         </el-button>
-        <el-button class="action-btn" :icon="Collection">收藏</el-button>
+        <el-button class="action-btn" :icon="Collection" @click="openCollectionDialog">收藏 {{ article.collectionCount }}</el-button>
         <el-button class="action-btn" :icon="ChatDotRound">评论 {{ article.commentCount }}</el-button>
       </div>
 
@@ -182,6 +182,38 @@
     </el-card>
     <el-empty v-else-if="!loading" description="文章不存在或加载失败" />
     <div v-else class="loading-wrap"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
+
+    <el-dialog
+      v-model="collectionDialogVisible"
+      title="添加到收藏夹"
+      width="540px"
+      class="add-blog-dialog collection-choose-dialog"
+      @opened="onCollectionDialogOpened"
+    >
+      <p v-if="!userStore.isLoggedIn" class="collection-dialog-hint">请先登录后再收藏文章</p>
+      <template v-else>
+        <div v-if="collectionDialogLoading" class="add-blog-loading">加载中…</div>
+        <ul v-else-if="collectionFolders.length === 0" class="add-blog-empty">暂无收藏夹，请先在个人主页创建</ul>
+        <ul v-else class="add-blog-list">
+          <li v-for="f in collectionFolders" :key="f.id" class="add-blog-item">
+            <span class="add-blog-title">{{ f.name }}</span>
+            <template v-if="folderIdsContainingArticle.has(f.id)">
+              <span class="add-blog-tag">已添加</span>
+            </template>
+            <el-button
+              v-else
+              type="primary"
+              size="small"
+              class="add-blog-btn"
+              :loading="addingToFolderId === f.id"
+              @click="addArticleToFolder(f.id)"
+            >
+              加入
+            </el-button>
+          </li>
+        </ul>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -197,6 +229,7 @@ import { Loading, Star, StarFilled, Collection, ChatDotRound, MoreFilled } from 
 import { ElMessage } from 'element-plus'
 import { getContentComments, createComment, likeComment, unlikeComment, deleteComment as apiDeleteComment, type CommentItem } from '@/api/comment'
 import { checkContentLiked, likeContent, unlikeContent } from '@/api/contentLike'
+import { getCollectionFoldersMe, addContentToCollectionFolder, getFolderIdsContainingContent, type CollectionFolderItem } from '@/api/collectionFolder'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 
@@ -218,6 +251,50 @@ const commentSubmitting = ref(false)
 const replyingTo = ref<{ parentId: number; parentNickname: string } | null>(null)
 const articleLikedByMe = ref(false)
 const likeSubmitting = ref(false)
+
+const collectionDialogVisible = ref(false)
+const collectionFolders = ref<CollectionFolderItem[]>([])
+const folderIdsContainingArticle = ref<Set<number>>(new Set())
+const collectionDialogLoading = ref(false)
+const addingToFolderId = ref<number | null>(null)
+
+function openCollectionDialog() {
+  collectionDialogVisible.value = true
+}
+function onCollectionDialogOpened() {
+  if (!userStore.isLoggedIn) return
+  const contentId = article.value?.id ?? Number(route.params.id)
+  if (!contentId) return
+  collectionDialogLoading.value = true
+  Promise.all([
+    getCollectionFoldersMe(),
+    getFolderIdsContainingContent(Number(contentId)),
+  ])
+    .then(([folders, ids]) => {
+      collectionFolders.value = folders ?? []
+      folderIdsContainingArticle.value = new Set(ids ?? [])
+    })
+    .finally(() => {
+      collectionDialogLoading.value = false
+    })
+}
+function addArticleToFolder(folderId: number) {
+  const contentId = article.value?.id ?? Number(route.params.id)
+  if (!contentId) return
+  addingToFolderId.value = folderId
+  addContentToCollectionFolder(folderId, contentId)
+    .then(() => {
+      ElMessage.success('已添加到收藏夹')
+      folderIdsContainingArticle.value = new Set([...folderIdsContainingArticle.value, folderId])
+      if (article.value) article.value.collectionCount = (article.value.collectionCount ?? 0) + 1
+    })
+    .catch((e: { message?: string }) => {
+      ElMessage.warning(e?.message ?? '添加失败')
+    })
+    .finally(() => {
+      addingToFolderId.value = null
+    })
+}
 
 const id = computed(() => {
   const p = route.params.id
@@ -860,5 +937,65 @@ watch(
   padding: 2rem;
   text-align: center;
   color: #555;
+}
+
+/* 收藏弹窗：与专栏/收藏夹添加弹窗风格一致 */
+.collection-dialog-hint {
+  padding: 24px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+.add-blog-dialog.collection-choose-dialog :deep(.el-dialog__header) {
+  border-bottom: 1px solid #eee;
+  padding: 16px 20px;
+}
+.add-blog-dialog.collection-choose-dialog :deep(.el-dialog__body) {
+  padding: 16px 20px 20px;
+}
+.add-blog-dialog .add-blog-loading,
+.add-blog-dialog .add-blog-empty {
+  padding: 24px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+.add-blog-dialog .add-blog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.add-blog-dialog .add-blog-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.add-blog-dialog .add-blog-item:last-child {
+  border-bottom: none;
+}
+.add-blog-dialog .add-blog-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.add-blog-dialog .add-blog-tag {
+  font-size: 12px;
+  color: #999;
+}
+.add-blog-dialog .add-blog-btn {
+  background: #BB1919 !important;
+  border-color: #BB1919 !important;
+}
+.add-blog-dialog .add-blog-btn:hover {
+  background: #9e1515 !important;
+  border-color: #9e1515 !important;
 }
 </style>

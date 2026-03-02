@@ -268,6 +268,28 @@ public class ContentService {
         return result;
     }
 
+    /** 文章被收藏时增加收藏数（收藏夹添加内容时调用） */
+    public void incrementCollectionCount(Long contentId) {
+        if (contentId == null) return;
+        Content c = contentMapper.selectById(contentId);
+        if (c == null) return;
+        int count = c.getCollectionCount() != null ? c.getCollectionCount() : 0;
+        c.setCollectionCount(count + 1);
+        contentMapper.updateById(c);
+    }
+
+    /** 从收藏夹移除时减少收藏数 */
+    public void decrementCollectionCount(Long contentId) {
+        if (contentId == null) return;
+        Content c = contentMapper.selectById(contentId);
+        if (c == null) return;
+        int count = c.getCollectionCount() != null ? c.getCollectionCount() : 0;
+        if (count > 0) {
+            c.setCollectionCount(count - 1);
+            contentMapper.updateById(c);
+        }
+    }
+
     /**
      * 按 ID 列表批量返回内容摘要，顺序与请求 ids 一致；不存在的 ID 不返回。
      */

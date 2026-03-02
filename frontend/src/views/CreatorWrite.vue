@@ -648,6 +648,11 @@ onMounted(async () => {
   ])
   let initialBody = ''
   const idParam = route.query.id
+  const columnIdQuery = route.query.columnId
+  if (!idParam && columnIdQuery != null) {
+    const cid = typeof columnIdQuery === 'string' ? parseInt(columnIdQuery, 10) : Number(columnIdQuery)
+    if (!Number.isNaN(cid)) columnId.value = cid
+  }
   if (idParam) {
     const id = typeof idParam === 'string' ? parseInt(idParam, 10) : Number(idParam)
     if (!Number.isNaN(id)) {
