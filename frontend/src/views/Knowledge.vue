@@ -809,12 +809,12 @@
               <span class="knowledge-tool-icon">🔗</span>
               <span class="knowledge-tool-label">链接</span>
             </button>
+            <button type="button" class="knowledge-editor-close" title="关闭" @click="selectedContentId = null">
+              <el-icon><Close /></el-icon>
+            </button>
             </div>
-            <div class="knowledge-editor-paper">
-              <button type="button" class="knowledge-main-close knowledge-editor-close" title="关闭" @click="selectedContentId = null">
-                <el-icon><Close /></el-icon>
-              </button>
-              <div ref="kbVditorRef" class="knowledge-vditor-wrap"></div>
+            <div class="knowledge-editor-paper" @mousedown="onKbPaperMouseDown">
+              <div ref="kbVditorRef" class="vditor-wrap"></div>
             </div>
           </div>
         </template>
@@ -1071,7 +1071,7 @@ const selectedDetailItem = computed(() =>
 /** 是否为知识库类型：显示工具栏 + 纯 Markdown 编辑区 */
 const isKnowledgeEditor = computed(() => selectedContentId.value != null && selectedDetailItem.value?.type === 'KNOWLEDGE')
 
-/** 知识库文件编辑：加载态、编辑用标题（保存草稿时带上传）、vditor 容器 */
+/** 知识库文件编辑：加载态、标题（保存用）、Vditor 实例（所见即所得，与创作中心一致） */
 const knowledgeEditLoading = ref(false)
 const knowledgeEditTitle = ref('')
 const kbVditorRef = ref<HTMLElement | null>(null)
@@ -1393,13 +1393,49 @@ function destroyKbVditor() {
   kbVditor = null
 }
 
+/** 让 Vditor 编辑区获得焦点并显示光标，多次重试以兼容异步渲染 */
+function focusKbVditor() {
+  const tryFocus = (attempt: number) => {
+    if (!kbVditorRef.value || !kbVditor) return
+    try {
+      const inner = kbVditor.vditor as unknown as Record<string, { element?: HTMLElement } | undefined>
+      const wysiwyg = inner?.wysiwyg
+      const el = wysiwyg?.element
+      if (el && typeof el.focus === 'function') {
+        el.setAttribute?.('tabindex', '0')
+        el.focus()
+        return
+      }
+      const editable = kbVditorRef.value.querySelector('[contenteditable="true"]') as HTMLElement | null
+      if (editable?.focus) {
+        editable.setAttribute?.('tabindex', '0')
+        editable.focus()
+      }
+    } catch {}
+    if (attempt < 6) setTimeout(() => tryFocus(attempt + 1), 60 + attempt * 40)
+  }
+  nextTick(() => setTimeout(() => tryFocus(0), 100))
+}
+
+/** 点击白纸区域时若未点在编辑元素上则主动聚焦，便于显示光标 */
+function onKbPaperMouseDown(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest?.('[contenteditable="true"]')) return
+  focusKbVditor()
+}
+
 function saveKnowledgeBody() {
   const id = selectedContentId.value
   if (id == null || !kbVditor) return
-  const body = kbVditor.getValue() ?? ''
+  const body = (kbVditor.getValue() ?? '').trim()
+  // 后端要求正文不能为空，否则返回 400
+  if (!body) return
   saveDraft({ id, body, title: knowledgeEditTitle.value || undefined })
     .then(() => ElMessage.success('已保存'))
-    .catch(() => {})
+    .catch((err: { response?: { data?: { message?: string } }; message?: string }) => {
+      const msg = err?.response?.data?.message || err?.message || '保存失败'
+      ElMessage.warning(msg)
+    })
 }
 
 async function loadKnowledgeForEdit(contentId: number) {
@@ -1408,6 +1444,8 @@ async function loadKnowledgeForEdit(contentId: number) {
   try {
     const data = await getContentForEdit(contentId)
     knowledgeEditTitle.value = data.title ?? ''
+    // 必须先关闭 loading，模板才会渲染出 vditor-wrap，ref 才会挂上
+    knowledgeEditLoading.value = false
     await nextTick()
     if (!kbVditorRef.value) return
     kbVditor = new Vditor(kbVditorRef.value, {
@@ -1426,44 +1464,16 @@ async function loadKnowledgeForEdit(contentId: number) {
         kbSaveTimer = setTimeout(saveKnowledgeBody, 800)
       },
       after() {
-        nextTick(() => {
-          setTimeout(() => {
-            try {
-              if (typeof (kbVditor as { focus?: () => void })?.focus === 'function') {
-                (kbVditor as { focus: () => void }).focus()
-              } else {
-                const el = kbVditor?.vditor?.wysiwyg?.element as HTMLElement | undefined
-                if (el?.focus) {
-                  el.focus()
-                } else if (kbVditorRef.value) {
-                  const editable = kbVditorRef.value.querySelector('[contenteditable="true"]') as HTMLElement | null
-                  if (editable?.focus) editable.focus()
-                }
-              }
-            } catch {}
-          }, 0)
-        })
+        focusKbVditor()
       },
     })
   } catch {
-    ElMessage.warning('加载失败')
-  } finally {
     knowledgeEditLoading.value = false
+    ElMessage.warning('加载失败')
   }
 }
 
-/** 知识库编辑器工具栏：与 CreatorWrite 一致，操作 kbVditor */
-function kbWrapSelection(prefix: string, suffix?: string) {
-  if (!kbVditor) return
-  const sel = kbVditor.getSelection()
-  const end = suffix ?? prefix
-  if (sel) kbVditor.updateValue(`${prefix}${sel}${end}`)
-  else kbVditor.insertValue(`${prefix}${end}`, true)
-}
-function kbInsertAtCursor(text: string) {
-  if (!kbVditor) return
-  kbVditor.insertValue(text, true)
-}
+/** 知识库编辑器工具栏：与创作中心一致，操作 Vditor（所见即所得） */
 function kbInsertMD(md: string) {
   if (!kbVditor) return
   kbVditor.insertMD(md)
@@ -1479,7 +1489,7 @@ function kbGetSelectionInlineFormat(): { bold: boolean; italic: boolean; strike:
   if (!editorEl?.contains(range.startContainer)) return { bold: false, italic: false, strike: false }
   let node: Node | null = range.startContainer
   if (node.nodeType === Node.TEXT_NODE) node = (node as Text).parentElement
-  const el = (node as HTMLElement | null)
+  const el = node as HTMLElement
   if (!el?.closest) return { bold: false, italic: false, strike: false }
   return {
     bold: !!(el.closest('strong') || el.closest('b') || el.closest('[data-type="strong"]')),
@@ -3529,7 +3539,7 @@ async function submitCreateKb() {
   color: #999;
 }
 
-/* 知识库文件编辑：工具栏 + 白纸正文（与博客创作一致，工具栏已接入下方 Vditor） */
+/* 知识库文件编辑：外围灰底 + 卡片（圆角、阴影），中间正文区白底 */
 .knowledge-main-editor {
   display: flex;
   flex-direction: column;
@@ -3539,7 +3549,7 @@ async function submitCreateKb() {
   padding: 16px 0 24px;
 }
 
-/* 整张编辑卡片：工具栏 + 白纸一体，居中 */
+/* 整张编辑卡片：工具栏 + 白纸一体，居中，保留卡片样式 */
 .knowledge-editor-card {
   flex: 1;
   min-height: 0;
@@ -3556,89 +3566,77 @@ async function submitCreateKb() {
 
 .knowledge-editor-toolbar {
   flex-shrink: 0;
-  height: 36px;
-  padding: 0 16px;
+  height: 34px;
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  font-size: 11px;
-  color: #555;
-  background: #f8f9fa;
-  border-bottom: 1px solid #eaecef;
+  gap: 2px;
+  font-size: 12px;
+  color: #666;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  position: relative;
 }
 
-.knowledge-tool-btn {
-  padding: 4px 6px;
-  min-width: 26px;
-  height: 28px;
-  color: #555;
+.knowledge-editor-toolbar .knowledge-tool-btn {
+  padding: 2px 4px;
+  min-width: 28px;
+  height: auto;
+  color: #666;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0;
   border: none;
-  border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
 
-.knowledge-tool-btn:hover {
-  color: #111;
-  background: #e9ecef;
+.knowledge-editor-toolbar .knowledge-tool-btn:hover {
+  color: #111 !important;
 }
 
-.knowledge-tool-btn:disabled {
+.knowledge-editor-toolbar .knowledge-tool-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.knowledge-tool-btn .el-icon {
-  font-size: 13px;
+.knowledge-editor-toolbar .knowledge-tool-btn .el-icon {
+  font-size: 14px;
 }
 
-.knowledge-tool-label {
-  font-size: 9px;
+.knowledge-editor-toolbar .knowledge-tool-label {
+  font-size: 10px;
   line-height: 1.1;
 }
 
-.knowledge-tool-icon {
-  font-size: 11px;
+.knowledge-editor-toolbar .knowledge-tool-icon {
+  font-size: 12px;
 }
 
 .knowledge-tool-icon-strike { text-decoration: line-through; }
-.knowledge-tool-icon-hr { font-weight: 700; }
+.knowledge-tool-icon-hr { font-weight: 600; letter-spacing: 0.02em; }
 .knowledge-tool-icon-inline-code { font-size: 10px; }
 
 .knowledge-editor-toolbar :deep(.el-divider--vertical) {
-  height: 14px;
+  height: 12px;
   margin: 0 2px;
-  background-color: #dee2e6;
 }
 
 .knowledge-editor-paper {
   flex: 1;
   min-height: 0;
-  padding: 20px 28px 32px;
+  padding: 24px 32px 40px;
   background: #fff;
   position: relative;
   display: flex;
   flex-direction: column;
+  overflow: auto;
 }
 
-.knowledge-editor-close {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 10;
-  margin: 8px;
-}
-
-.knowledge-vditor-wrap {
-  flex: 1;
-  min-height: 0;
+.knowledge-editor-paper .vditor-wrap {
   margin-top: 0;
 }
 
@@ -3656,16 +3654,38 @@ async function submitCreateKb() {
 
 .knowledge-editor-paper :deep(.vditor-content) {
   background: #fff !important;
-  caret-color: #111;
-}
-
-.knowledge-editor-paper :deep(.vditor-content[contenteditable="true"]:focus) {
-  outline: none;
+  caret-color: #111 !important;
+  min-height: 200px !important;
 }
 
 .knowledge-editor-paper ::selection {
   background: #e0e7eb;
   color: #111;
+}
+
+.knowledge-editor-close {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 16px;
+  color: #666;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.knowledge-editor-close:hover {
+  color: #BB1919;
+  background: #e9ecef;
 }
 
 .hidden-input {
