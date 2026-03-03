@@ -21,6 +21,10 @@ export interface KnowledgeBaseContentItem {
   title: string
   summary?: string | null
   cover?: string | null
+  /** BLOG-博客 / KNOWLEDGE-知识库文件 */
+  type?: string
+  /** 作者用户 ID */
+  userId?: number
 }
 
 export interface KnowledgeBaseContentsResponse {
@@ -107,6 +111,16 @@ export function deleteKnowledgeBase(id: number): Promise<void> {
 /** 添加文章到知识库 */
 export function addContentToKnowledgeBase(kbId: number, contentId: number): Promise<void> {
   return request.post(`knowledge-bases/${kbId}/contents`, { contentId })
+}
+
+/** 在知识库中新建文件（草稿），可选 title，不传则「未命名」 */
+export function createKnowledgeBaseFile(
+  kbId: number,
+  title?: string
+): Promise<KnowledgeBaseContentItem> {
+  return request
+    .post<KnowledgeBaseContentItem>(`knowledge-bases/${kbId}/contents/new-file`, title != null ? { title } : {})
+    .then((data) => (data as unknown) as KnowledgeBaseContentItem)
 }
 
 /** 从知识库移除文章 */

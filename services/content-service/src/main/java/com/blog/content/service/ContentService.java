@@ -50,6 +50,7 @@ import java.util.stream.Collectors;
 public class ContentService {
 
     private static final String TYPE_BLOG = "BLOG";
+    private static final String TYPE_KNOWLEDGE = "KNOWLEDGE";
     private static final String STATUS_DRAFT = "DRAFT";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
     private static final String VISIBILITY_ALL = "ALL";
@@ -450,7 +451,8 @@ public class ContentService {
     public ContentDetailVO getForEdit(Long userId, Long id) {
         if (id == null) return null;
         Content c = contentMapper.selectById(id);
-        if (c == null || !userId.equals(c.getUserId()) || !TYPE_BLOG.equals(c.getType())) {
+        boolean allowedType = TYPE_BLOG.equals(c.getType()) || TYPE_KNOWLEDGE.equals(c.getType());
+        if (c == null || !userId.equals(c.getUserId()) || !allowedType) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
         }
         ContentDetailVO vo = new ContentDetailVO();
@@ -479,6 +481,22 @@ public class ContentService {
         }
         vo.setTagNames(tagNames);
         return vo;
+    }
+
+    /** 仅更新内容标题（用于知识库内文件重命名等）；支持 BLOG 与 KNOWLEDGE 类型 */
+    public void updateTitle(Long userId, Long id, String title) {
+        if (id == null) return;
+        Content c = contentMapper.selectById(id);
+        if (c == null || !userId.equals(c.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
+        }
+        if (!TYPE_BLOG.equals(c.getType()) && !"KNOWLEDGE".equals(c.getType())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
+        }
+        String t = title != null ? title.trim() : "";
+        if (t.isEmpty()) t = "[无标题]";
+        c.setTitle(t);
+        contentMapper.updateById(c);
     }
 
     /**
@@ -575,7 +593,8 @@ public class ContentService {
         Content c;
         if (requestId != null) {
             c = contentMapper.selectById(requestId);
-            if (c == null || !userId.equals(c.getUserId()) || !TYPE_BLOG.equals(c.getType())) {
+            boolean allowedType = TYPE_BLOG.equals(c.getType()) || TYPE_KNOWLEDGE.equals(c.getType());
+            if (c == null || !userId.equals(c.getUserId()) || !allowedType) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
             }
             c.setTitle(title);

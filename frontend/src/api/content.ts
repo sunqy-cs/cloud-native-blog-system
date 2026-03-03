@@ -211,3 +211,10 @@ export interface PublishResponse {
 export function publishContent(id: number): Promise<PublishResponse> {
   return request.post(`contents/${id}/publish`).then((data) => data as unknown as PublishResponse)
 }
+
+/**
+ * 仅更新内容标题（如知识库内文件重命名）
+ */
+export function updateContentTitle(id: number, title: string): Promise<void> {
+  return request.patch(`contents/${id}`, { title })
+}

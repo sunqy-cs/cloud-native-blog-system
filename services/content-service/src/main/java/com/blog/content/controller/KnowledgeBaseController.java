@@ -98,6 +98,16 @@ public class KnowledgeBaseController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    /** 在知识库中新建文件（草稿），请求体可传 title，不传则「未命名」 */
+    @PostMapping("/{id}/contents/new-file")
+    public ResponseEntity<KnowledgeBaseContentItemVO> createNewFile(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody(required = false) CreateKnowledgeBaseFileRequest request) {
+        KnowledgeBaseContentItemVO vo = knowledgeBaseService.createNewFile(userId, id, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(vo);
+    }
+
     @DeleteMapping("/{id}/contents")
     public ResponseEntity<Void> removeContent(
             @RequestHeader(HEADER_USER_ID) Long userId,

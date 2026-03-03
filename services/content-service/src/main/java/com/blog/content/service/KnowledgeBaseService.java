@@ -21,7 +21,9 @@ import java.util.stream.Collectors;
 public class KnowledgeBaseService {
 
     private static final String TYPE_BLOG = "BLOG";
+    private static final String TYPE_KNOWLEDGE = "KNOWLEDGE";
     private static final String STATUS_PUBLISHED = "PUBLISHED";
+    private static final String STATUS_DRAFT = "DRAFT";
     private static final String VISIBILITY_PRIVATE = "PRIVATE";
     private static final String VISIBILITY_PUBLIC = "PUBLIC";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
@@ -242,6 +244,38 @@ public class KnowledgeBaseService {
         knowledgeBaseFavoriteMapper.insert(fav);
     }
 
+    /** 在知识库中新建文件（创建草稿内容并收录到该知识库） */
+    @Transactional
+    public KnowledgeBaseContentItemVO createNewFile(Long userId, Long kbId, CreateKnowledgeBaseFileRequest request) {
+        KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+        if (kb == null || !kb.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "知识库不存在");
+        }
+        String title = request != null && request.getTitle() != null && !request.getTitle().trim().isEmpty()
+                ? request.getTitle().trim() : "未命名";
+        Content c = new Content();
+        c.setUserId(userId);
+        c.setType(TYPE_KNOWLEDGE);
+        c.setTitle(title);
+        c.setBody("\n");
+        c.setSummary(null);
+        c.setCover(null);
+        c.setStatus(STATUS_DRAFT);
+        c.setArticleType("ORIGINAL");
+        c.setCreationStatement("none");
+        c.setVisibility("ALL");
+        c.setLikeCount(0);
+        c.setCollectionCount(0);
+        c.setViewCount(0);
+        c.setCommentCount(0);
+        contentMapper.insert(c);
+        KnowledgeBaseContent kbc = new KnowledgeBaseContent();
+        kbc.setKnowledgeBaseId(kbId);
+        kbc.setContentId(c.getId());
+        knowledgeBaseContentMapper.insert(kbc);
+        return toContentItemVO(c);
+    }
+
     @Transactional
     public void unsubscribe(Long userId, Long kbId) {
         knowledgeBaseFavoriteMapper.delete(
@@ -295,6 +329,8 @@ public class KnowledgeBaseService {
         vo.setTitle(c.getTitle());
         vo.setSummary(c.getSummary());
         vo.setCover(c.getCover());
+        vo.setType(c.getType());
+        vo.setUserId(c.getUserId());
         return vo;
     }
 }

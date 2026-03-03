@@ -8,6 +8,7 @@ import com.blog.content.dto.ContentViewVO;
 import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
+import com.blog.content.dto.UpdateContentTitleRequest;
 import com.blog.content.service.ContentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -92,6 +93,16 @@ public class ContentController {
             @PathVariable Long id) {
         ContentDetailVO vo = contentService.getForEdit(userId, id);
         return ResponseEntity.ok(vo);
+    }
+
+    @PatchMapping("/{id}")
+    public ResponseEntity<Void> updateTitle(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody UpdateContentTitleRequest request) {
+        String title = request != null ? request.getTitle() : null;
+        contentService.updateTitle(userId, id, title);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{id}/publish")

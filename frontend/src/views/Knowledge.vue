@@ -19,93 +19,135 @@
           </span>
         </button>
 
-        <!-- 1. 知识库（当前选中） -->
-        <router-link to="/knowledge" class="knowledge-nav-item active" title="知识库">
+        <!-- 1. 知识库：点击与「返回知识库」同效，退出问答模式 -->
+        <router-link
+          to="/knowledge"
+          class="knowledge-nav-item"
+          :class="{ active: !showQAMode }"
+          title="知识库"
+          @click="exitQAMode"
+        >
           <el-icon><FolderOpened /></el-icon>
           <span v-if="sidebarExpanded" class="knowledge-nav-text">知识库</span>
         </router-link>
-        <!-- 2. 搜索 -->
-        <router-link to="/knowledge" class="knowledge-nav-item" title="搜索">
+        <!-- 2. 搜索：点击进入问答模式（右侧 GPT 问答 + 左侧历史记录） -->
+        <button
+          type="button"
+          class="knowledge-nav-item"
+          :class="{ active: showQAMode }"
+          title="搜索"
+          @click="enterQAMode"
+        >
           <el-icon><Search /></el-icon>
           <span v-if="sidebarExpanded" class="knowledge-nav-text">搜索</span>
-        </router-link>
-        <!-- 3. 收藏 -->
-        <a href="#" class="knowledge-nav-item" title="收藏">
-          <el-icon><Star /></el-icon>
-          <span v-if="sidebarExpanded" class="knowledge-nav-text">收藏</span>
-        </a>
+        </button>
+        <!-- 3. 知识图谱 -->
+        <button type="button" class="knowledge-nav-item" title="知识图谱">
+          <el-icon><Connection /></el-icon>
+          <span v-if="sidebarExpanded" class="knowledge-nav-text">知识图谱</span>
+        </button>
 
         <div class="knowledge-nav-spacer"></div>
       </div>
     </aside>
 
-    <!-- 中间偏左：知识库内容边栏（标题、热门、搜索、我的知识库、我的订阅） -->
+    <!-- 中间偏左：知识库内容边栏（问答模式下显示历史记录，否则为热门/搜索/我的知识库/订阅） -->
     <aside class="knowledge-library-sidebar" :class="{ expanded: sidebarExpanded }">
       <div class="knowledge-library-inner">
         <h1 class="knowledge-page-title">知识库</h1>
-        <button type="button" class="knowledge-hot-tab" @click="openPopularList">
-          <el-icon class="knowledge-hot-tab-icon"><FolderOpened /></el-icon>
-          <span>热门知识库</span>
-        </button>
-        <div class="knowledge-main-divider" />
-        <div class="knowledge-search-row">
-          <div class="knowledge-search-inner">
-            <el-icon class="knowledge-search-icon"><Search /></el-icon>
-            <input
-              v-model="searchKeyword"
-              type="text"
-              class="knowledge-search-input"
-              placeholder="搜索知识库/文件"
-              autocomplete="off"
-            />
+        <template v-if="showQAMode">
+          <button type="button" class="knowledge-hot-tab knowledge-qa-back" @click="exitQAMode">
+            <el-icon class="knowledge-hot-tab-icon"><ArrowLeft /></el-icon>
+            <span>返回知识库</span>
+          </button>
+          <div class="knowledge-main-divider" />
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">历史记录</h2>
+            <p v-if="qaHistory.length === 0" class="knowledge-search-no-result">暂无搜索记录</p>
+            <ul v-else class="knowledge-my-list">
+              <li
+                v-for="item in qaHistory"
+                :key="item.id"
+                class="knowledge-my-item knowledge-qa-history-item"
+                @click="applyHistoryQuery(item)"
+              >
+                <el-icon class="knowledge-my-icon"><Search /></el-icon>
+                <span class="knowledge-my-name knowledge-qa-history-query">{{ item.query }}</span>
+              </li>
+            </ul>
+          </section>
+        </template>
+        <template v-else>
+          <button type="button" class="knowledge-hot-tab" @click="openPopularList">
+            <el-icon class="knowledge-hot-tab-icon"><FolderOpened /></el-icon>
+            <span>热门知识库</span>
+          </button>
+          <div class="knowledge-main-divider" />
+          <div class="knowledge-search-row">
+            <div class="knowledge-search-inner">
+              <el-icon class="knowledge-search-icon"><Search /></el-icon>
+              <input
+                v-model="leftSearchQuery"
+                type="text"
+                class="knowledge-search-input"
+                placeholder="搜索知识库/文件"
+                autocomplete="off"
+              />
+            </div>
+            <el-dropdown trigger="click" placement="bottom-end" popper-class="knowledge-add-dropdown-bbc" @command="onAddDropdownCommand">
+              <button type="button" class="knowledge-add-btn" title="添加">
+                <el-icon><Plus /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="newKb">新建知识库</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
-          <el-dropdown trigger="click" placement="bottom-end" popper-class="knowledge-add-dropdown-bbc" @command="onAddDropdownCommand">
-            <button type="button" class="knowledge-add-btn" title="添加">
-              <el-icon><Plus /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="newKb">新建知识库</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-        <section class="knowledge-section">
-          <h2 class="knowledge-section-title">我的知识库</h2>
-          <ul class="knowledge-my-list">
-            <li
-              v-for="kb in myKnowledgeBasesWithDefaultFiltered"
-              :key="kb.id"
-              class="knowledge-my-item"
-              :class="{ active: selectedKb?.id === kb.id && selectedKbSource === 'mine' }"
-              @click="selectedKb = { ...kb }; selectedKbSource = 'mine'"
-            >
-              <el-icon class="knowledge-my-icon"><Reading /></el-icon>
-              <span class="knowledge-my-name">{{ kb.name || '未命名' }}</span>
-            </li>
-          </ul>
-        </section>
-        <section class="knowledge-section">
-          <h2 class="knowledge-section-title">我的订阅</h2>
-          <ul class="knowledge-my-list">
-            <li
-              v-for="sub in mySubscriptionsFiltered"
-              :key="sub.id"
-              class="knowledge-my-item"
-              :class="{ active: selectedKb?.id === sub.id && selectedKbSource === 'sub' }"
-              @click="selectedKb = { ...sub }; selectedKbSource = 'sub'"
-            >
-              <el-icon class="knowledge-my-icon"><Reading /></el-icon>
-              <span class="knowledge-my-name">{{ sub.name || '未命名' }}</span>
-            </li>
-          </ul>
-        </section>
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">我的知识库</h2>
+            <p v-if="leftSearchQuery.trim() && myKnowledgeBasesWithDefaultFiltered.length === 0" class="knowledge-search-no-result">
+              无匹配的知识库
+            </p>
+            <ul v-else class="knowledge-my-list">
+              <li
+                v-for="kb in myKnowledgeBasesWithDefaultFiltered"
+                :key="kb.id"
+                class="knowledge-my-item"
+                :class="{ active: selectedKb?.id === kb.id && selectedKbSource === 'mine' }"
+                @click="selectedKb = { ...kb }; selectedKbSource = 'mine'"
+              >
+                <el-icon class="knowledge-my-icon"><Reading /></el-icon>
+                <span class="knowledge-my-name">{{ kb.name || '未命名' }}</span>
+              </li>
+            </ul>
+          </section>
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">我的订阅</h2>
+            <p v-if="leftSearchQuery.trim() && mySubscriptionsFiltered.length === 0" class="knowledge-search-no-result">
+              无匹配的订阅
+            </p>
+            <ul v-else class="knowledge-my-list">
+              <li
+                v-for="sub in mySubscriptionsFiltered"
+                :key="sub.id"
+                class="knowledge-my-item"
+                :class="{ active: selectedKb?.id === sub.id && selectedKbSource === 'sub' }"
+                @click="selectedKb = { ...sub }; selectedKbSource = 'sub'"
+              >
+                <el-icon class="knowledge-my-icon"><Reading /></el-icon>
+                <span class="knowledge-my-name">{{ sub.name || '未命名' }}</span>
+              </li>
+            </ul>
+          </section>
+        </template>
       </div>
     </aside>
 
-    <!-- 右侧：知识库详情边栏（点击某个知识库时显示） -->
+    <!-- 右侧：知识库详情边栏（问答模式下不显示） -->
     <aside
-      v-show="selectedKb"
+      v-show="selectedKb && !showQAMode"
       class="knowledge-detail-sidebar"
       :class="{ expanded: sidebarExpanded }"
     >
@@ -154,10 +196,21 @@
           <dd>{{ selectedKb.description }}</dd>
         </dl>
 
-        <!-- 操作：自己的显示添加/批量删除，别人的显示订阅 -->
+        <!-- 操作：自己的显示添加下拉/批量删除，别人的显示订阅 -->
         <div class="knowledge-detail-actions">
           <template v-if="isOwnDetail">
-            <button type="button" class="knowledge-detail-btn primary" @click="openAddContentDialog">添加</button>
+            <el-dropdown trigger="click" placement="bottom-start" popper-class="knowledge-add-dropdown-bbc" @command="onAddContentCommand">
+              <button type="button" class="knowledge-detail-btn primary">
+                添加
+                <el-icon class="knowledge-detail-btn-arrow"><ArrowDown /></el-icon>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="fromBlog">从博客添加</el-dropdown-item>
+                  <el-dropdown-item command="newFile">添加文件</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <template v-if="detailContents.length > 0">
               <template v-if="!detailBatchMode">
                 <button type="button" class="knowledge-detail-btn" @click="detailBatchMode = true">批量删除</button>
@@ -199,7 +252,18 @@
               @update:model-value="(v: boolean) => toggleDetailSelect(art.id, v)"
               @click.stop
             />
+            <template v-if="editingContentId === art.id">
+              <input
+                ref="editingTitleInputRef"
+                v-model="editingTitle"
+                type="text"
+                class="knowledge-detail-article-edit-input"
+                @blur="saveEditingTitle"
+                @keydown.enter.exact.prevent="saveEditingTitle"
+              />
+            </template>
             <button
+              v-else
               type="button"
               class="knowledge-detail-article-link"
               :class="{ active: selectedContentId === art.id }"
@@ -208,17 +272,18 @@
               {{ art.title }}
             </button>
             <el-dropdown
-              v-if="isOwnDetail && !detailBatchMode"
+              v-if="isOwnDetail && !detailBatchMode && editingContentId !== art.id"
               trigger="click"
               placement="bottom-end"
               popper-class="knowledge-article-dropdown-bbc"
-              @command="(cmd: string) => removeContentFromKb(Number(cmd))"
+              @command="onDetailArticleDropdownCommand"
             >
               <button type="button" class="knowledge-detail-article-more" title="更多" @click.stop>
                 <el-icon><MoreFilled /></el-icon>
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item :command="'rename:' + art.id">重命名</el-dropdown-item>
                   <el-dropdown-item :command="String(art.id)" class="knowledge-article-dropdown-danger">删除这篇博客</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -572,10 +637,190 @@
       </template>
     </el-dialog>
 
-    <!-- 中间：主内容区（文章阅读优先，其次热门/搜索列表，再占位） -->
+    <!-- 中间：主内容区（问答模式 > 文章阅读 > 热门/搜索列表 > 占位） -->
     <main class="knowledge-main" :class="{ expanded: sidebarExpanded }">
-      <!-- 文章阅读区：有选中文章时优先显示 -->
-      <div v-if="selectedContentId != null" class="knowledge-main-reader">
+      <!-- 问答模式：GPT 风格对话 -->
+      <div v-if="showQAMode" class="knowledge-qa-panel">
+        <div class="knowledge-qa-header">
+          <h2 class="knowledge-qa-title">知识库问答</h2>
+          <p class="knowledge-qa-desc">基于你的知识库与订阅进行智能问答</p>
+        </div>
+        <div ref="qaListRef" class="knowledge-qa-messages">
+          <template v-if="qaMessages.length === 0">
+            <div class="knowledge-qa-welcome">
+              <p>输入你的问题，我会基于知识库内容为你解答。</p>
+              <p class="knowledge-qa-welcome-hint">左侧将显示历史提问记录</p>
+            </div>
+          </template>
+          <template v-else>
+            <div
+              v-for="(msg, i) in qaMessages"
+              :key="i"
+              class="knowledge-qa-msg-wrap"
+              :class="msg.role === 'user' ? 'is-user' : 'is-assistant'"
+            >
+              <div class="knowledge-qa-msg">
+                <template v-if="msg.role === 'assistant'">
+                  <div class="knowledge-qa-avatar knowledge-qa-avatar-bot">AI</div>
+                  <div class="knowledge-qa-bubble knowledge-qa-bubble-assistant">{{ msg.content }}</div>
+                </template>
+                <template v-else>
+                  <div class="knowledge-qa-bubble knowledge-qa-bubble-user">{{ msg.content }}</div>
+                  <div class="knowledge-qa-avatar knowledge-qa-avatar-user">我</div>
+                </template>
+              </div>
+            </div>
+            <div v-if="qaLoading" class="knowledge-qa-msg-wrap is-assistant">
+              <div class="knowledge-qa-msg">
+                <div class="knowledge-qa-avatar knowledge-qa-avatar-bot">AI</div>
+                <div class="knowledge-qa-bubble knowledge-qa-bubble-assistant knowledge-qa-typing">
+                  <span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="knowledge-qa-input-row">
+          <button
+            type="button"
+            class="knowledge-qa-add-kb"
+            title="添加知识库"
+            @click="onAddDropdownCommand('newKb')"
+          >
+            <el-icon><Plus /></el-icon>
+          </button>
+          <textarea
+            v-model="qaInput"
+            class="knowledge-qa-input"
+            placeholder="输入问题，按 Enter 发送"
+            rows="1"
+            @keydown.enter.exact.prevent="sendQAMessage()"
+          />
+          <button
+            type="button"
+            class="knowledge-qa-send"
+            :disabled="!qaInput.trim() || qaLoading"
+            @click="sendQAMessage"
+          >
+            发送
+          </button>
+        </div>
+      </div>
+      <!-- 知识库文件编辑：与博客创作相同的工具栏 + 纯 Markdown 正文（无标题） -->
+      <div v-else-if="selectedContentId != null && isKnowledgeEditor" class="knowledge-main-editor">
+        <div v-if="knowledgeEditLoading" class="knowledge-main-loading">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>加载中…</span>
+        </div>
+        <template v-else>
+          <div class="knowledge-editor-card">
+            <div class="knowledge-editor-toolbar">
+              <button type="button" class="knowledge-tool-btn" @click="kbOnUndo">
+              <el-icon><RefreshLeft /></el-icon>
+              <span class="knowledge-tool-label">撤销</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnRedo">
+              <el-icon><RefreshRight /></el-icon>
+              <span class="knowledge-tool-label">重做</span>
+            </button>
+            <el-divider direction="vertical" />
+            <el-dropdown @command="kbOnHeadingCommand">
+              <button type="button" class="knowledge-tool-btn">
+                <span class="knowledge-tool-icon">H</span>
+                <span class="knowledge-tool-label">标题</span>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="1">一级标题</el-dropdown-item>
+                  <el-dropdown-item command="2">二级标题</el-dropdown-item>
+                  <el-dropdown-item command="3">三级标题</el-dropdown-item>
+                  <el-dropdown-item command="4">四级标题</el-dropdown-item>
+                  <el-dropdown-item command="5">五级标题</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnBold">
+              <span class="knowledge-tool-icon">B</span>
+              <span class="knowledge-tool-label">加粗</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnItalic">
+              <span class="knowledge-tool-icon">I</span>
+              <span class="knowledge-tool-label">斜体</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnStrikethrough">
+              <span class="knowledge-tool-icon knowledge-tool-icon-strike">S</span>
+              <span class="knowledge-tool-label">删除线</span>
+            </button>
+            <el-divider direction="vertical" />
+            <button type="button" class="knowledge-tool-btn" @click="kbOnBulletList">
+              <el-icon><List /></el-icon>
+              <span class="knowledge-tool-label">无序列表</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnOrderedList">
+              <el-icon><Rank /></el-icon>
+              <span class="knowledge-tool-label">有序列表</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnTaskList">
+              <el-icon><CircleCheck /></el-icon>
+              <span class="knowledge-tool-label">任务列表</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnInsertBefore">
+              <el-icon><Top /></el-icon>
+              <span class="knowledge-tool-label">前插入行</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnInsertAfter">
+              <el-icon><Bottom /></el-icon>
+              <span class="knowledge-tool-label">后插入行</span>
+            </button>
+            <el-divider direction="vertical" />
+            <button type="button" class="knowledge-tool-btn" @click="kbOnQuote">
+              <span class="knowledge-tool-icon">″</span>
+              <span class="knowledge-tool-label">引用</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnHorizontalRule">
+              <span class="knowledge-tool-icon knowledge-tool-icon-hr">—</span>
+              <span class="knowledge-tool-label">分隔线</span>
+            </button>
+            <el-divider direction="vertical" />
+            <button type="button" class="knowledge-tool-btn" @click="kbOnCode">
+              <span class="knowledge-tool-icon">&lt;/&gt;</span>
+              <span class="knowledge-tool-label">代码</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnInlineCode">
+              <span class="knowledge-tool-icon knowledge-tool-icon-inline-code">&lt;&nbsp;&gt;</span>
+              <span class="knowledge-tool-label">行内代码</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnTable">
+              <span class="knowledge-tool-icon">▦</span>
+              <span class="knowledge-tool-label">表格</span>
+            </button>
+            <input
+              ref="kbImageInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              class="hidden-input"
+              @change="kbOnImageFileChange"
+            />
+            <button type="button" class="knowledge-tool-btn" :disabled="kbImageUploading" @click="kbTriggerImageSelect">
+              <span class="knowledge-tool-icon">🖼</span>
+              <span class="knowledge-tool-label">{{ kbImageUploading ? '上传中…' : '图片' }}</span>
+            </button>
+            <button type="button" class="knowledge-tool-btn" @click="kbOnLink">
+              <span class="knowledge-tool-icon">🔗</span>
+              <span class="knowledge-tool-label">链接</span>
+            </button>
+            </div>
+            <div class="knowledge-editor-paper">
+              <button type="button" class="knowledge-main-close knowledge-editor-close" title="关闭" @click="selectedContentId = null">
+                <el-icon><Close /></el-icon>
+              </button>
+              <div ref="kbVditorRef" class="knowledge-vditor-wrap"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <!-- 文章阅读区：选中博客时显示 -->
+      <div v-else-if="selectedContentId != null" class="knowledge-main-reader">
         <div v-if="mainArticleLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>加载中…</span>
@@ -695,13 +940,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick, reactive } from 'vue'
-import { Search, FolderOpened, Star, Plus, Reading, Close, Delete, Loading, MoreFilled } from '@element-plus/icons-vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { Search, FolderOpened, Connection, Plus, Reading, Close, Delete, Loading, MoreFilled, ArrowLeft, ArrowDown, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { uploadImage } from '@/api/upload'
 import * as knowledgeApi from '@/api/knowledge'
-import { getContentsMe, getContentView, type ContentView } from '@/api/content'
+import { getContentsMe, getContentView, getContentForEdit, updateContentTitle, saveDraft, type ContentView } from '@/api/content'
 import { getMe, getUserById, type UserMe } from '@/api/user'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
@@ -714,6 +960,7 @@ import {
 import type { ColumnItem } from '@/api/column'
 
 const userStore = useUserStore()
+const router = useRouter()
 
 interface KnowledgeBaseItem {
   id: string
@@ -734,33 +981,38 @@ interface DetailContentItem {
   title: string
   summary?: string
   cover?: string
+  /** BLOG-博客 / KNOWLEDGE-知识库文件，用于重命名时分支 */
+  type?: string
+  userId?: number
 }
 
 const sidebarExpanded = ref(false)
-const searchKeyword = ref('')
 const myKnowledgeBases = ref<KnowledgeBaseItem[]>([])
 const mySubscriptions = ref<KnowledgeBaseItem[]>([])
 const knowledgeLoading = ref(false)
+
+/** 左侧搜索关键词（用于「我的知识库」「我的订阅」本地过滤） */
+const leftSearchQuery = ref('')
 
 /** 按关键词过滤「我的知识库」和「我的订阅」（名称、简介匹配） */
 function matchKbKeyword(kb: KnowledgeBaseItem, q: string): boolean {
   if (!q || !q.trim()) return true
   const k = q.trim().toLowerCase()
-  const name = (kb.name ?? '').toLowerCase()
-  const desc = (kb.description ?? '').toLowerCase()
+  const name = String(kb.name ?? '').toLowerCase()
+  const desc = String(kb.description ?? '').toLowerCase()
   return name.includes(k) || desc.includes(k)
 }
 
 const myKnowledgeBasesFiltered = computed(() => {
   const list = myKnowledgeBases.value
-  const q = searchKeyword.value
+  const q = leftSearchQuery.value
   if (!q || !q.trim()) return list
   return list.filter((kb) => matchKbKeyword(kb, q))
 })
 
 const mySubscriptionsFiltered = computed(() => {
   const list = mySubscriptions.value
-  const q = searchKeyword.value
+  const q = leftSearchQuery.value
   if (!q || !q.trim()) return list
   return list.filter((kb) => matchKbKeyword(kb, q))
 })
@@ -801,13 +1053,111 @@ const detailOwnerName = computed(() => {
 const detailContents = ref<DetailContentItem[]>([])
 const detailBatchMode = ref(false)
 const detailSelectedIds = ref<number[]>([])
+/** 行内编辑标题（VSCode 风格：新建文件后自动进入编辑，回车或失焦保存） */
+const editingContentId = ref<number | null>(null)
+const editingTitle = ref('')
+const editingTitleInputRef = ref<HTMLInputElement | null>(null)
 
 const selectedContentId = ref<number | null>(null)
 const mainArticle = ref<ContentView | null>(null)
 const mainArticleLoading = ref(false)
 const mainArticleAuthor = ref<UserMe | null>(null)
 const mainPreviewRef = ref<HTMLDivElement | null>(null)
+
+/** 当前选中的收录项（用于区分知识库文件 vs 博客） */
+const selectedDetailItem = computed(() =>
+  selectedContentId.value == null ? undefined : detailContents.value.find((c) => c.id === selectedContentId.value!)
+)
+/** 是否为知识库类型：显示工具栏 + 纯 Markdown 编辑区 */
+const isKnowledgeEditor = computed(() => selectedContentId.value != null && selectedDetailItem.value?.type === 'KNOWLEDGE')
+
+/** 知识库文件编辑：加载态、编辑用标题（保存草稿时带上传）、vditor 容器 */
+const knowledgeEditLoading = ref(false)
+const knowledgeEditTitle = ref('')
+const kbVditorRef = ref<HTMLElement | null>(null)
+const kbImageInputRef = ref<HTMLInputElement | null>(null)
+const kbImageUploading = ref(false)
+let kbVditor: Vditor | null = null
+let kbSaveTimer: ReturnType<typeof setTimeout> | null = null
+
 const isDetailSubscribed = computed(() => selectedKb.value != null && selectedKb.value.subscribed === true)
+
+/** 问答模式：点击左侧搜索后右侧为 GPT 风格问答，左侧为历史记录 */
+const showQAMode = ref(false)
+const qaMessages = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
+const qaInput = ref('')
+const qaLoading = ref(false)
+const qaListRef = ref<HTMLElement | null>(null)
+
+const QA_HISTORY_KEY = 'knowledge-qa-history'
+const QA_HISTORY_MAX = 50
+interface QAHistoryItem {
+  id: string
+  query: string
+  createdAt: number
+}
+const qaHistory = ref<QAHistoryItem[]>([])
+
+function loadQAHistory() {
+  try {
+    const raw = localStorage.getItem(QA_HISTORY_KEY)
+    const list = raw ? (JSON.parse(raw) as QAHistoryItem[]) : []
+    qaHistory.value = Array.isArray(list) ? list.slice(0, QA_HISTORY_MAX) : []
+  } catch {
+    qaHistory.value = []
+  }
+}
+
+function saveQAHistory() {
+  try {
+    localStorage.setItem(QA_HISTORY_KEY, JSON.stringify(qaHistory.value.slice(0, QA_HISTORY_MAX)))
+  } catch {}
+}
+
+function addQAHistoryItem(query: string) {
+  const q = query.trim()
+  if (!q) return
+  const item: QAHistoryItem = { id: String(Date.now()), query: q, createdAt: Date.now() }
+  qaHistory.value = [item, ...qaHistory.value.filter((h) => h.query !== q)].slice(0, QA_HISTORY_MAX)
+  saveQAHistory()
+}
+
+function enterQAMode() {
+  showQAMode.value = true
+}
+
+function exitQAMode() {
+  showQAMode.value = false
+}
+
+async function sendQAMessage() {
+  const text = qaInput.value.trim()
+  if (!text || qaLoading.value) return
+  qaInput.value = ''
+  qaMessages.value.push({ role: 'user', content: text })
+  addQAHistoryItem(text)
+  qaLoading.value = true
+  nextTick(() => scrollQAToBottom())
+  // 占位回复（后续可接真实 RAG 接口）
+  await new Promise((r) => setTimeout(r, 600))
+  qaMessages.value.push({
+    role: 'assistant',
+    content: '基于知识库的智能问答功能即将上线，敬请期待。您刚才的问题是：「' + text + '」',
+  })
+  qaLoading.value = false
+  nextTick(() => scrollQAToBottom())
+}
+
+function scrollQAToBottom() {
+  nextTick(() => {
+    const el = qaListRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
+}
+
+function applyHistoryQuery(item: QAHistoryItem) {
+  qaInput.value = item.query
+}
 
 /** 右侧「热门知识库/搜索结果」列表面板 */
 const showListPanel = ref(false)
@@ -874,9 +1224,19 @@ watch(selectedContentId, (id) => {
   if (id == null) {
     mainArticle.value = null
     mainArticleAuthor.value = null
+    destroyKbVditor()
     return
   }
-  loadMainArticle(id)
+  const item = detailContents.value.find((c) => c.id === id)
+  if (item?.type === 'KNOWLEDGE') {
+    loadKnowledgeForEdit(id)
+  } else {
+    loadMainArticle(id)
+  }
+})
+
+onBeforeUnmount(() => {
+  destroyKbVditor()
 })
 
 watch(
@@ -922,6 +1282,8 @@ async function loadDetailContents(kbId: string) {
       title: c.title,
       summary: c.summary ?? undefined,
       cover: c.cover ?? undefined,
+      type: c.type,
+      userId: c.userId,
     }))
   } catch {
     detailContents.value = []
@@ -1022,6 +1384,236 @@ async function renderMainMarkdown() {
   }
 }
 
+function destroyKbVditor() {
+  if (kbSaveTimer) {
+    clearTimeout(kbSaveTimer)
+    kbSaveTimer = null
+  }
+  kbVditor?.destroy()
+  kbVditor = null
+}
+
+function saveKnowledgeBody() {
+  const id = selectedContentId.value
+  if (id == null || !kbVditor) return
+  const body = kbVditor.getValue() ?? ''
+  saveDraft({ id, body, title: knowledgeEditTitle.value || undefined })
+    .then(() => ElMessage.success('已保存'))
+    .catch(() => {})
+}
+
+async function loadKnowledgeForEdit(contentId: number) {
+  knowledgeEditLoading.value = true
+  destroyKbVditor()
+  try {
+    const data = await getContentForEdit(contentId)
+    knowledgeEditTitle.value = data.title ?? ''
+    await nextTick()
+    if (!kbVditorRef.value) return
+    kbVditor = new Vditor(kbVditorRef.value, {
+      height: 420,
+      value: data.body ?? '',
+      placeholder: '在此编写知识库文件内容…',
+      lang: 'zh_CN',
+      mode: 'wysiwyg',
+      theme: 'classic',
+      cache: { enable: false },
+      toolbarConfig: { hide: true },
+      customWysiwygToolbar: () => [],
+      counter: { enable: true, type: 'markdown' },
+      input() {
+        if (kbSaveTimer) clearTimeout(kbSaveTimer)
+        kbSaveTimer = setTimeout(saveKnowledgeBody, 800)
+      },
+      after() {
+        nextTick(() => {
+          setTimeout(() => {
+            try {
+              if (typeof (kbVditor as { focus?: () => void })?.focus === 'function') {
+                (kbVditor as { focus: () => void }).focus()
+              } else {
+                const el = kbVditor?.vditor?.wysiwyg?.element as HTMLElement | undefined
+                if (el?.focus) {
+                  el.focus()
+                } else if (kbVditorRef.value) {
+                  const editable = kbVditorRef.value.querySelector('[contenteditable="true"]') as HTMLElement | null
+                  if (editable?.focus) editable.focus()
+                }
+              }
+            } catch {}
+          }, 0)
+        })
+      },
+    })
+  } catch {
+    ElMessage.warning('加载失败')
+  } finally {
+    knowledgeEditLoading.value = false
+  }
+}
+
+/** 知识库编辑器工具栏：与 CreatorWrite 一致，操作 kbVditor */
+function kbWrapSelection(prefix: string, suffix?: string) {
+  if (!kbVditor) return
+  const sel = kbVditor.getSelection()
+  const end = suffix ?? prefix
+  if (sel) kbVditor.updateValue(`${prefix}${sel}${end}`)
+  else kbVditor.insertValue(`${prefix}${end}`, true)
+}
+function kbInsertAtCursor(text: string) {
+  if (!kbVditor) return
+  kbVditor.insertValue(text, true)
+}
+function kbInsertMD(md: string) {
+  if (!kbVditor) return
+  kbVditor.insertMD(md)
+}
+function kbGetSelectionInlineFormat(): { bold: boolean; italic: boolean; strike: boolean } {
+  const v = kbVditor?.vditor
+  if (!v) return { bold: false, italic: false, strike: false }
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return { bold: false, italic: false, strike: false }
+  const range = sel.getRangeAt(0)
+  const modeEl = v[v.currentMode]
+  const editorEl = modeEl?.element
+  if (!editorEl?.contains(range.startContainer)) return { bold: false, italic: false, strike: false }
+  let node: Node | null = range.startContainer
+  if (node.nodeType === Node.TEXT_NODE) node = (node as Text).parentElement
+  const el = (node as HTMLElement | null)
+  if (!el?.closest) return { bold: false, italic: false, strike: false }
+  return {
+    bold: !!(el.closest('strong') || el.closest('b') || el.closest('[data-type="strong"]')),
+    italic: !!(el.closest('em') || el.closest('i') || el.closest('[data-type="em"]')),
+    strike: !!(el.closest('s') || el.closest('strike') || el.closest('[data-type="s"]')),
+  }
+}
+function kbTriggerVditorToolbar(name: 'list' | 'ordered-list' | 'check' | 'insert-before' | 'insert-after' | 'table' | 'inline-code' | 'quote' | 'line'): boolean {
+  const btn = kbVditor?.vditor?.toolbar?.elements?.[name]?.firstElementChild as HTMLElement | undefined
+  if (btn) {
+    btn.click()
+    return true
+  }
+  return false
+}
+function kbOnUndo() {
+  if (!kbVditor?.vditor?.undo) return
+  kbVditor.vditor.undo.undo(kbVditor.vditor)
+}
+function kbOnRedo() {
+  if (!kbVditor?.vditor?.undo) return
+  kbVditor.vditor.undo.redo(kbVditor.vditor)
+}
+function kbOnBold() {
+  if (!kbVditor) return
+  const sel = kbVditor.getSelection() || '加粗文本'
+  const fmt = kbVditor.getSelection() ? kbGetSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  if (fmt.bold) {
+    kbInsertMD(fmt.italic ? `*${sel}*` : sel)
+    return
+  }
+  kbInsertMD(fmt.italic ? `***${sel}***` : `**${sel}**`)
+}
+function kbOnItalic() {
+  if (!kbVditor) return
+  const sel = kbVditor.getSelection() || '斜体文本'
+  const fmt = kbVditor.getSelection() ? kbGetSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  if (fmt.italic) {
+    kbInsertMD(fmt.bold ? `**${sel}**` : sel)
+    return
+  }
+  kbInsertMD(fmt.bold ? `***${sel}***` : `*${sel}*`)
+}
+function kbOnStrikethrough() {
+  if (!kbVditor) return
+  const sel = kbVditor.getSelection() || '删除线文本'
+  const fmt = kbVditor.getSelection() ? kbGetSelectionInlineFormat() : { bold: false, italic: false, strike: false }
+  if (fmt.strike) {
+    kbInsertMD(sel)
+    return
+  }
+  kbInsertMD(`~~${sel}~~`)
+}
+function kbOnBulletList() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('list')) kbInsertMD('\n- 列表项\n')
+}
+function kbOnOrderedList() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('ordered-list')) kbInsertMD('\n1. 列表项 1\n2. 列表项 2\n')
+}
+function kbOnTaskList() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('check')) kbInsertMD('\n- [ ] 待办事项\n')
+}
+function kbOnInsertBefore() {
+  kbTriggerVditorToolbar('insert-before')
+}
+function kbOnInsertAfter() {
+  kbTriggerVditorToolbar('insert-after')
+}
+function kbOnQuote() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('quote')) {
+    const sel = kbVditor.getSelection()
+    kbInsertMD(sel ? `\n> ${sel.split(/\r?\n/).join('\n> ')}\n` : '\n> 引用内容\n')
+  }
+}
+function kbOnHorizontalRule() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('line')) kbInsertMD('\n---\n')
+}
+function kbOnCode() {
+  kbInsertMD('\n```lang\n代码块\n```\n')
+}
+function kbOnInlineCode() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('inline-code')) {
+    const sel = kbVditor.getSelection() || '行内代码'
+    kbInsertMD(`\`${sel}\``)
+  }
+}
+function kbOnTable() {
+  if (!kbVditor) return
+  if (!kbTriggerVditorToolbar('table')) kbInsertMD('\n| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n')
+}
+function kbTriggerImageSelect() {
+  if (kbImageUploading.value) return
+  kbImageInputRef.value?.click()
+}
+async function kbOnImageFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !kbVditor) return
+  kbImageUploading.value = true
+  try {
+    const res = await uploadImage(file, 'images')
+    const url = (res.url || '').replace(/\s/g, '%20')
+    kbInsertMD(`\n![image](${url})\n`)
+    ElMessage.success('图片已插入')
+  } finally {
+    kbImageUploading.value = false
+  }
+}
+function kbOnLink() {
+  if (!kbVditor) return
+  const sel = kbVditor.getSelection() || '链接文本'
+  kbInsertMD(`[${sel}](https://example.com)\n`)
+}
+function kbOnHeadingCommand(level: string | number) {
+  const n = Number(level)
+  if (!kbVditor) return
+  const hashes = '#'.repeat(n >= 1 && n <= 6 ? n : 1)
+  const sel = kbVditor.getSelection()
+  if (sel) {
+    const lines = sel.split(/\r?\n/)
+    const md = lines.map((line) => `${hashes} ${line.replace(/^(#{1,6})\s+/, '').trim() || '标题'}`).join('\n')
+    kbInsertMD(md)
+  } else {
+    kbInsertMD(`\n${hashes} 标题\n`)
+  }
+}
+
 async function loadMyKnowledgeBases() {
   if (!userStore.isLoggedIn) return
   knowledgeLoading.value = true
@@ -1048,7 +1640,78 @@ async function loadMySubscriptions() {
 onMounted(() => {
   loadMyKnowledgeBases()
   loadMySubscriptions()
+  loadQAHistory()
 })
+
+/** 根据当前列表计算下一个「未命名」标题：未命名、未命名 (1)、未命名 (2)... */
+function computeNextUntitledTitle(): string {
+  const titles = new Set(detailContents.value.map((c) => c.title))
+  if (!titles.has('未命名')) return '未命名'
+  let n = 1
+  while (titles.has(`未命名 (${n})`)) n++
+  return `未命名 (${n})`
+}
+
+async function addFileInKb() {
+  const kb = selectedKb.value
+  if (!kb || kb.id === 'default') return
+  const kbId = Number(kb.id)
+  if (Number.isNaN(kbId)) return
+  const title = computeNextUntitledTitle()
+  try {
+    const item = await knowledgeApi.createKnowledgeBaseFile(kbId, title)
+    const currentUserId = userStore.userInfo?.id
+    detailContents.value = [
+      ...detailContents.value,
+      {
+        id: item.id,
+        title: item.title,
+        summary: item.summary ?? undefined,
+        cover: item.cover ?? undefined,
+        type: item.type ?? 'KNOWLEDGE',
+        userId: item.userId ?? currentUserId,
+      },
+    ]
+    if (selectedKb.value) {
+      selectedKb.value = { ...selectedKb.value, contentCount: (selectedKb.value.contentCount ?? 0) + 1 }
+    }
+    editingContentId.value = item.id
+    editingTitle.value = item.title
+    nextTick(() => {
+      const el = Array.isArray(editingTitleInputRef.value) ? editingTitleInputRef.value[0] : editingTitleInputRef.value
+      ;(el as HTMLInputElement | undefined)?.focus()
+    })
+  } catch (e) {
+    ElMessage.error('新建文件失败')
+  }
+}
+
+async function saveEditingTitle() {
+  const id = editingContentId.value
+  if (id == null) return
+  const title = editingTitle.value.trim() || '未命名'
+  try {
+    await updateContentTitle(id, title)
+    const idx = detailContents.value.findIndex((c) => c.id === id)
+    if (idx >= 0) {
+      const next = [...detailContents.value]
+      next[idx] = { ...next[idx], title }
+      detailContents.value = next
+    }
+  } catch {
+    ElMessage.error('更新标题失败')
+  }
+  editingContentId.value = null
+  editingTitle.value = ''
+}
+
+function onAddContentCommand(command: string) {
+  if (command === 'fromBlog') {
+    openAddContentDialog()
+  } else if (command === 'newFile') {
+    addFileInKb()
+  }
+}
 
 async function openAddContentDialog() {
   addContentDialogVisible.value = true
@@ -1223,6 +1886,38 @@ async function batchRemoveFromKb() {
     ElMessage.success('已移除')
   } catch {
     // ElMessage 已在 request 拦截器处理
+  }
+}
+
+function onDetailArticleDropdownCommand(cmd: string) {
+  if (cmd.startsWith('rename:')) {
+    const id = Number(cmd.slice(7))
+    if (!Number.isNaN(id)) handleRenameInDetail(id)
+    return
+  }
+  removeContentFromKb(Number(cmd))
+}
+
+function handleRenameInDetail(contentId: number) {
+  const art = detailContents.value.find((c) => c.id === contentId)
+  if (!art) return
+  const type = art.type ?? 'BLOG'
+  const currentUserId = userStore.userInfo?.id
+  if (type === 'KNOWLEDGE') {
+    editingContentId.value = contentId
+    editingTitle.value = art.title
+    nextTick(() => {
+      const el = Array.isArray(editingTitleInputRef.value) ? editingTitleInputRef.value[0] : editingTitleInputRef.value
+      ;(el as HTMLInputElement | undefined)?.focus()
+    })
+    return
+  }
+  if (type === 'BLOG') {
+    if (art.userId != null && art.userId === currentUserId) {
+      router.push({ path: '/creator/write', query: { id: String(contentId) } })
+      return
+    }
+    ElMessage.info('他人的博客不可编辑')
   }
 }
 
@@ -1457,7 +2152,7 @@ async function submitCreateKb() {
   top: 64px;
   left: 0;
   bottom: 0;
-  width: 72px;
+  width: 56px;
   background: #fff;
   border-right: 1px solid #eee;
   z-index: 100;
@@ -1465,7 +2160,7 @@ async function submitCreateKb() {
 }
 
 .knowledge-sidebar.expanded {
-  width: 200px;
+  width: 176px;
 }
 
 .knowledge-sidebar-inner {
@@ -1473,14 +2168,14 @@ async function submitCreateKb() {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  padding: 12px 14px 12px 14px;
-  min-width: 72px;
+  padding: 12px 10px 12px 10px;
+  min-width: 56px;
   box-sizing: border-box;
 }
 
 .knowledge-sidebar:not(.expanded) .knowledge-sidebar-inner {
-  padding-left: 14px;
-  padding-right: 14px;
+  padding-left: 10px;
+  padding-right: 10px;
   align-items: center;
 }
 
@@ -1504,6 +2199,12 @@ async function submitCreateKb() {
   transition: color 0.2s, background 0.2s;
   margin-bottom: 2px;
   box-sizing: border-box;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+  text-align: left;
 }
 
 .knowledge-sidebar:not(.expanded) .knowledge-nav-item {
@@ -1646,20 +2347,20 @@ async function submitCreateKb() {
 
 /* 知识库内容边栏（仅此栏内容多时可内部滚动） */
 .knowledge-library-sidebar {
-  width: 260px;
+  width: 220px;
   flex-shrink: 0;
-  margin-left: 72px;
+  margin-left: 56px;
   height: calc(100vh - 64px);
   max-height: calc(100vh - 64px);
   background: #fff;
   border-right: 1px solid #eee;
   overflow-y: auto;
   overflow-x: hidden;
-  transition: margin-left 0.2s ease;
+  transition: margin-left 0.2s ease, width 0.2s ease;
 }
 
 .knowledge-library-sidebar.expanded {
-  margin-left: 200px;
+  margin-left: 176px;
 }
 
 .knowledge-library-inner {
@@ -1929,6 +2630,12 @@ async function submitCreateKb() {
   border-color: #9e1515;
 }
 
+.knowledge-detail-btn .knowledge-detail-btn-arrow {
+  margin-left: 4px;
+  font-size: 12px;
+  vertical-align: middle;
+}
+
 .knowledge-detail-btn.primary.subscribed {
   background: #f0f0f0;
   border-color: #ddd;
@@ -1959,14 +2666,14 @@ async function submitCreateKb() {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
 .knowledge-detail-article-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 5px 8px;
   border-radius: 6px;
   transition: background 0.2s;
 }
@@ -1982,7 +2689,7 @@ async function submitCreateKb() {
 .knowledge-detail-article-link {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #333;
   text-decoration: none;
   overflow: hidden;
@@ -1992,6 +2699,22 @@ async function submitCreateKb() {
 
 .knowledge-detail-article-link:hover {
   color: #BB1919;
+}
+
+.knowledge-detail-article-edit-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid #BB1919;
+  border-radius: 4px;
+  outline: none;
+  background: #fff;
+}
+
+.knowledge-detail-article-edit-input:focus {
+  border-color: #BB1919;
+  box-shadow: 0 0 0 1px #BB1919;
 }
 
 .knowledge-detail-article-remove {
@@ -2391,6 +3114,228 @@ async function submitCreateKb() {
   overflow-y: auto;
 }
 
+/* 问答模式：GPT 风格面板 */
+.knowledge-qa-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.knowledge-qa-header {
+  flex-shrink: 0;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.knowledge-qa-title {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111;
+}
+
+.knowledge-qa-desc {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.knowledge-qa-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.knowledge-qa-welcome {
+  padding: 40px 0;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+
+.knowledge-qa-welcome-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #999;
+}
+
+.knowledge-qa-msg-wrap {
+  display: flex;
+  width: 100%;
+}
+.knowledge-qa-msg-wrap.is-user {
+  justify-content: flex-end;
+}
+.knowledge-qa-msg-wrap.is-assistant {
+  justify-content: flex-start;
+}
+
+.knowledge-qa-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 85%;
+}
+.knowledge-qa-msg-wrap.is-user .knowledge-qa-msg {
+  flex-direction: row-reverse;
+}
+
+.knowledge-qa-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+.knowledge-qa-avatar-bot {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+}
+.knowledge-qa-avatar-user {
+  background: #e8e8e8;
+  color: #333;
+}
+
+.knowledge-qa-bubble {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.knowledge-qa-bubble-user {
+  background: #BB1919;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.knowledge-qa-bubble-assistant {
+  background: #f0f0f0;
+  color: #333;
+  border-bottom-left-radius: 4px;
+}
+
+.knowledge-qa-typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.knowledge-qa-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #999;
+  animation: knowledge-qa-dot 1.4s ease-in-out infinite both;
+}
+.knowledge-qa-dot:nth-child(2) { animation-delay: 0.2s; }
+.knowledge-qa-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes knowledge-qa-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.knowledge-qa-input-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px 24px 24px;
+  border-top: 1px solid #eee;
+  background: #fff;
+}
+
+.knowledge-qa-add-kb {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  color: #666;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.knowledge-qa-add-kb:hover {
+  border-color: #BB1919;
+  color: #BB1919;
+}
+
+.knowledge-qa-add-kb .el-icon {
+  font-size: 20px;
+}
+
+.knowledge-qa-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  font-family: inherit;
+}
+.knowledge-qa-input:focus {
+  outline: none;
+  border-color: #BB1919;
+}
+
+.knowledge-qa-send {
+  flex-shrink: 0;
+  padding: 10px 20px;
+  font-size: 14px;
+  color: #fff;
+  background: #BB1919;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.knowledge-qa-send:hover:not(:disabled) {
+  background: #9e1515;
+}
+.knowledge-qa-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 问答模式左侧：返回 + 历史记录 */
+.knowledge-qa-back {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.knowledge-qa-history-item {
+  cursor: pointer;
+}
+.knowledge-qa-history-item:hover {
+  background: #f0eef5;
+}
+.knowledge-qa-history-query {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  max-width: 100%;
+}
+
 /* 热门知识库/搜索结果列表面板 */
 .knowledge-main-list-panel {
   padding: 20px 24px 40px;
@@ -2584,6 +3529,153 @@ async function submitCreateKb() {
   color: #999;
 }
 
+/* 知识库文件编辑：工具栏 + 白纸正文（与博客创作一致，工具栏已接入下方 Vditor） */
+.knowledge-main-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: #e8ecf0;
+  padding: 16px 0 24px;
+}
+
+/* 整张编辑卡片：工具栏 + 白纸一体，居中 */
+.knowledge-editor-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.knowledge-editor-toolbar {
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #555;
+  background: #f8f9fa;
+  border-bottom: 1px solid #eaecef;
+}
+
+.knowledge-tool-btn {
+  padding: 4px 6px;
+  min-width: 26px;
+  height: 28px;
+  color: #555;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.knowledge-tool-btn:hover {
+  color: #111;
+  background: #e9ecef;
+}
+
+.knowledge-tool-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.knowledge-tool-btn .el-icon {
+  font-size: 13px;
+}
+
+.knowledge-tool-label {
+  font-size: 9px;
+  line-height: 1.1;
+}
+
+.knowledge-tool-icon {
+  font-size: 11px;
+}
+
+.knowledge-tool-icon-strike { text-decoration: line-through; }
+.knowledge-tool-icon-hr { font-weight: 700; }
+.knowledge-tool-icon-inline-code { font-size: 10px; }
+
+.knowledge-editor-toolbar :deep(.el-divider--vertical) {
+  height: 14px;
+  margin: 0 2px;
+  background-color: #dee2e6;
+}
+
+.knowledge-editor-paper {
+  flex: 1;
+  min-height: 0;
+  padding: 20px 28px 32px;
+  background: #fff;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.knowledge-editor-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  margin: 8px;
+}
+
+.knowledge-vditor-wrap {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.knowledge-editor-paper :deep(.vditor-toolbar) {
+  display: none !important;
+}
+
+.knowledge-editor-paper :deep(.vditor),
+.knowledge-editor-paper :deep(.vditor-content) {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.knowledge-editor-paper :deep(.vditor-content) {
+  background: #fff !important;
+  caret-color: #111;
+}
+
+.knowledge-editor-paper :deep(.vditor-content[contenteditable="true"]:focus) {
+  outline: none;
+}
+
+.knowledge-editor-paper ::selection {
+  background: #e0e7eb;
+  color: #111;
+}
+
+.hidden-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .knowledge-main-reader {
   padding: 20px 24px 40px;
   max-width: 800px;
@@ -2735,7 +3827,7 @@ async function submitCreateKb() {
   padding: 0;
   border: none;
   background: none;
-  font-size: 14px;
+  font-size: 12px;
   color: #333;
   cursor: pointer;
   text-decoration: none;
@@ -2881,6 +3973,13 @@ async function submitCreateKb() {
   font-weight: 600;
   color: #111;
   margin: 0 0 12px;
+}
+
+.knowledge-search-no-result {
+  margin: 0 0 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #999;
 }
 
 .knowledge-my-list {
