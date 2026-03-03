@@ -972,6 +972,295 @@
 
 ---
 
+## 知识库相关（content-service）
+
+知识库用于收录文章，支持私有/公开可见性；用户可创建、编辑、删除自己的知识库，可订阅他人的公开知识库。默认知识库为前端占位（id 固定或由后端标记），逻辑同普通知识库。
+
+**请求头**：需认证的接口均需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+### 知识库 1. 获取当前用户的知识库列表（我的知识库）
+
+**`GET /api/knowledge-bases/me`**
+
+需要认证。获取当前登录用户创建的所有知识库，用于知识库页「我的知识库」列表。不包含默认占位，默认知识库由前端或后端约定（如名称「默认知识库」或 isDefault）。
+
+**Response** `200 OK`：
+
+```json
+[
+  {
+    "id": 1,
+    "name": "默认知识库",
+    "cover": "https://example.com/cover.jpg",
+    "description": "默认创建的知识库，可在此收录文章与文件。",
+    "visibility": "PRIVATE",
+    "ownerId": 1,
+    "ownerName": "用户昵称",
+    "ownerAvatar": "https://example.com/avatar.jpg",
+    "subCount": 0,
+    "contentCount": 2,
+    "createdAt": "2026-02-27",
+    "updatedAt": "2026-02-27"
+  }
+]
+```
+
+| 字段         | 类型   | 说明 |
+|--------------|--------|------|
+| id           | number | 知识库 ID |
+| name         | string | 知识库名称 |
+| cover        | string | 封面图 URL，可选 |
+| description  | string | 简介，可选 |
+| visibility   | string | PRIVATE-私有 / PUBLIC-公开 |
+| ownerId      | number | 创建者用户 ID |
+| ownerName    | string | 创建者昵称，可选 |
+| ownerAvatar  | string | 创建者头像 URL，可选 |
+| subCount     | number | 订阅数 |
+| contentCount | number | 收录文章数 |
+| createdAt    | string | 创建时间，格式 YYYY-MM-DD |
+| updatedAt    | string | 更新时间，格式 YYYY-MM-DD |
+
+---
+
+### 知识库 2. 热门知识库列表（公开，按订阅数排序，可搜索）
+
+**`GET /api/knowledge-bases/popular`**
+
+需要认证。获取公开（PUBLIC）知识库列表，按订阅数（subCount）降序，用于「热门知识库」右侧面板。支持按名称、简介模糊搜索。
+
+**Query 参数**：
+
+| 参数     | 类型   | 必填 | 说明           |
+|----------|--------|------|----------------|
+| page     | number | 否   | 页码，从 1 开始，默认 1 |
+| pageSize | number | 否   | 每页条数，默认 20      |
+| q        | string | 否   | 搜索关键词；对名称、简介模糊匹配，不传则不过滤 |
+
+**Response** `200 OK`：
+
+```json
+{
+  "list": [ { "id": 1, "name": "知识库名", "cover": "", "description": "", "visibility": "PUBLIC", "ownerId": 1, "ownerName": "", "ownerAvatar": "", "subCount": 10, "contentCount": 5, "createdAt": "", "updatedAt": "" } ],
+  "total": 100
+}
+```
+
+返回格式与「知识库 1」单条一致；仅返回 visibility=PUBLIC 的知识库。
+
+---
+
+### 知识库 3. 获取当前用户订阅的知识库列表（我的订阅）
+
+**`GET /api/knowledge-bases/subscribed`**
+
+需要认证。获取当前用户已订阅的知识库列表，用于知识库页「我的订阅」展示。
+
+**Response** `200 OK`：返回格式与「知识库 1」单条一致，为知识库对象数组。按订阅时间倒序。
+
+---
+
+### 知识库 3. 获取知识库详情
+
+**`GET /api/knowledge-bases/{id}`**
+
+需要认证（公开知识库也可对未登录有限展示，具体以网关为准）。获取指定知识库的详情；私有知识库仅创建者可见，公开知识库所有人可见。返回字段同「知识库 1」单条，用于详情边栏展示。
+
+**路径参数**：`id` 知识库 ID。
+
+**Response** `200 OK`：单个知识库对象（含 ownerName、ownerAvatar、subCount、contentCount）。
+
+**错误**：知识库不存在或无权查看（私有且非本人）返回 `404 Not Found`。
+
+---
+
+### 知识库 4. 分页获取知识库收录的文章列表
+
+**`GET /api/knowledge-bases/{id}/contents`**
+
+需要认证。获取指定知识库内收录的文章列表（摘要信息），用于详情边栏「收录的文章」。仅当知识库对当前用户可见时可调用（本人或公开）。
+
+**路径参数**：`id` 知识库 ID。
+
+**Query 参数**：
+
+| 参数     | 类型   | 必填 | 说明           |
+|----------|--------|------|----------------|
+| page     | number | 否   | 页码，从 1 开始，默认 1 |
+| pageSize | number | 否   | 每页条数，默认 10      |
+
+**Response** `200 OK`：
+
+```json
+{
+  "list": [
+    {
+      "id": 1,
+      "title": "文章标题",
+      "summary": "摘要",
+      "cover": "https://example.com/cover.jpg"
+    }
+  ],
+  "total": 5
+}
+```
+
+| 字段        | 类型   | 说明     |
+|-------------|--------|----------|
+| list        | array  | 当前页数据 |
+| list[].id   | number | 内容 ID  |
+| list[].title| string | 标题     |
+| list[].summary | string | 摘要，可选 |
+| list[].cover  | string | 封面 URL，可选 |
+| total      | number | 收录总数 |
+
+---
+
+### 知识库 5. 创建知识库
+
+**`POST /api/knowledge-bases`**
+
+需要认证。创建新知识库。
+
+**Request Body**：
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "cover": "string",
+  "visibility": "PRIVATE"
+}
+```
+
+| 字段        | 类型   | 必填 | 说明 |
+|-------------|--------|------|------|
+| name        | string | 是   | 知识库名称，最长 128 字符 |
+| description | string | 否   | 简介，最长 512 字符 |
+| cover       | string | 否   | 封面图 URL |
+| visibility  | string | 否   | PRIVATE / PUBLIC，默认 PRIVATE |
+
+**Response** `201 Created`：返回新建的知识库对象，格式同「知识库 1」单条（含 id、contentCount 为 0、subCount 为 0）。
+
+**错误**：`name` 为空或仅空白时返回 `400 Bad Request`。
+
+---
+
+### 知识库 6. 更新知识库
+
+**`PATCH /api/knowledge-bases/{id}`**
+
+需要认证。修改知识库的名称、简介、封面、可见性；仅允许修改本人创建的知识库。
+
+**路径参数**：`id` 知识库 ID。
+
+**Request Body**（均为可选，传则更新）：
+
+```json
+{
+  "name": "string",
+  "description": "string",
+  "cover": "string",
+  "visibility": "PRIVATE"
+}
+```
+
+| 字段        | 类型   | 必填 | 说明 |
+|-------------|--------|------|------|
+| name        | string | 否   | 知识库名称，最长 128 字符 |
+| description | string | 否   | 简介 |
+| cover       | string | 否   | 封面图 URL |
+| visibility  | string | 否   | PRIVATE / PUBLIC |
+
+**Response** `200 OK`：返回更新后的知识库对象。
+
+**错误**：知识库不存在或非当前用户创建返回 `404 Not Found`；`name` 传空字符串返回 `400 Bad Request`。
+
+---
+
+### 知识库 7. 删除知识库
+
+**`DELETE /api/knowledge-bases/{id}`**
+
+需要认证。删除指定知识库；仅允许删除本人创建的知识库。删除后，该知识库的收录关系与订阅关系会随表外键一并删除。
+
+**路径参数**：`id` 知识库 ID。
+
+**Response** `204 No Content`
+
+**错误**：知识库不存在或非当前用户创建返回 `404 Not Found`。
+
+---
+
+### 知识库 8. 添加文章到知识库（收录）
+
+**`POST /api/knowledge-bases/{id}/contents`**
+
+需要认证。将指定文章（content）收录到知识库；仅允许对本人创建的知识库操作，且仅可收录本人已发布的博客文章。
+
+**路径参数**：`id` 知识库 ID。
+
+**Request Body**：
+
+```json
+{
+  "contentId": 1
+}
+```
+
+| 字段      | 类型   | 必填 | 说明     |
+|-----------|--------|------|----------|
+| contentId | number | 是   | 内容 ID  |
+
+**Response** `201 Created`：无响应体或返回 `{}`。
+
+**错误**：知识库或文章不存在、非本人、文章未发布或非博客类型返回 `404`/`400`；已收录则幂等或返回 `400`「已收录」。
+
+---
+
+### 知识库 9. 从知识库移除文章
+
+**`DELETE /api/knowledge-bases/{id}/contents?contentId={contentId}`**
+
+需要认证。从知识库中移除指定文章；仅允许对本人创建的知识库操作。
+
+**路径参数**：`id` 知识库 ID。**Query 参数**：`contentId` 内容 ID。
+
+**Response** `204 No Content`
+
+**错误**：知识库不存在或非当前用户返回 `404`；该文章不在本知识库中返回 `400`。
+
+---
+
+### 知识库 10. 订阅知识库
+
+**`POST /api/knowledge-bases/{id}/subscribe`**
+
+需要认证。订阅指定知识库；仅可订阅公开（PUBLIC）知识库，不可订阅本人创建的知识库。重复调用视为已订阅（幂等）。
+
+**路径参数**：`id` 知识库 ID。
+
+**Request Body**：无（或 `{}`）。
+
+**Response** `204 No Content`
+
+**错误**：知识库不存在返回 `404`；私有知识库或本人知识库返回 `400`。
+
+---
+
+### 知识库 11. 取消订阅知识库
+
+**`DELETE /api/knowledge-bases/{id}/subscribe`**
+
+需要认证。取消对指定知识库的订阅。
+
+**路径参数**：`id` 知识库 ID。
+
+**Response** `204 No Content`
+
+**错误**：知识库不存在返回 `404`。
+
+---
+
 ## 博客机器人相关（ai-service）
 
 创作者中心「博客机器人」：当前用户创建的机器人列表，支持新建（名称、头像、发文风格、主标签、默认摘要风格、字数偏好）。

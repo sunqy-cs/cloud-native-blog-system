@@ -64,6 +64,12 @@ spring:
           predicates:
             - Path=/api/tags/**
           order: 3
+        # 内容服务：知识库（我的知识库、订阅、详情、收录、订阅/取消订阅）
+        - id: content-service-knowledge-bases
+          uri: lb://content-service
+          predicates:
+            - Path=/api/knowledge-bases/**
+          order: 3
         # 搜索服务：综合搜索（标题、摘要、正文、标签）
         - id: search-service
           uri: lb://search-service

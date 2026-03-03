@@ -151,6 +151,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Close, User, Lock, View, Hide, UserFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { getMe } from '@/api/user'
 import request from '@/api/request'
 
 const props = defineProps<{ visible: boolean; redirect?: string }>()
@@ -190,7 +191,12 @@ async function handleLogin() {
     const user = data?.user ?? data?.data?.user
     if (token) {
       userStore.setToken(token)
-      userStore.setUserInfo(user ? { id: user.id, username: user.username, nickname: user.nickname } : { username: form.username })
+      try {
+        const fullUser = await getMe()
+        userStore.setUserInfo(fullUser)
+      } catch {
+        userStore.setUserInfo(user ? { id: user.id, username: user.username, nickname: user.nickname } : { username: form.username })
+      }
       ElMessage.success('登录成功')
       close()
       router.push(props.redirect || '/recommend')

@@ -8,14 +8,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
+import { useUserStore } from '@/stores/user'
+import { getMe } from '@/api/user'
 import AppFooter from '@/components/AppFooter.vue'
 import LoginModal from '@/components/LoginModal.vue'
 import { pendingLogin } from '@/stores/loginModal'
 
 const route = useRoute()
+const userStore = useUserStore()
 const showLoginModal = ref(false)
 const isCreatorRoute = computed(() => route.path.startsWith('/creator'))
 const isKnowledgeRoute = computed(() => route.path.startsWith('/knowledge'))
@@ -40,6 +43,13 @@ watch(() => route.query.login, (v) => {
     showLoginModal.value = true
   }
 }, { immediate: true })
+
+// 已登录但 userInfo 无头像时拉取完整资料，保证顶栏头像能显示（无需先访问个人主页）
+onMounted(() => {
+  if (userStore.isLoggedIn && !(userStore.userInfo as { avatar?: string } | null)?.avatar) {
+    getMe().then((u) => userStore.setUserInfo(u)).catch(() => {})
+  }
+})
 </script>
 
 <style>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.blog.content.mapper.KnowledgeBaseMapper">
+
+  <select id="selectPublicPopular" resultType="com.blog.content.entity.KnowledgeBase">
+    SELECT kb.id, kb.user_id, kb.name, kb.cover, kb.description, kb.visibility, kb.created_at, kb.updated_at
+    FROM knowledge_base kb
+    LEFT JOIN (
+      SELECT knowledge_base_id, COUNT(*) AS cnt
+      FROM knowledge_base_favorite
+      GROUP BY knowledge_base_id
+    ) fav ON fav.knowledge_base_id = kb.id
+    WHERE kb.visibility = 'PUBLIC'
+    <if test="q != null and q != ''">
+      AND (kb.name LIKE CONCAT('%', #{q}, '%') OR kb.description LIKE CONCAT('%', #{q}, '%'))
+    </if>
+    ORDER BY COALESCE(fav.cnt, 0) DESC
+  </select>
+</mapper>

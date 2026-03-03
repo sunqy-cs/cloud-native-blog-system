@@ -25,6 +25,7 @@ import { reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { getMe } from '@/api/user'
 import request from '@/api/request'
 
 const router = useRouter()
@@ -46,7 +47,12 @@ async function handleLogin() {
     const user = data?.user ?? data?.data?.user
     if (token) {
       userStore.setToken(token)
-      userStore.setUserInfo(user ? { id: user.id, username: user.username, nickname: user.nickname } : { username: form.username })
+      try {
+        const fullUser = await getMe()
+        userStore.setUserInfo(fullUser)
+      } catch {
+        userStore.setUserInfo(user ? { id: user.id, username: user.username, nickname: user.nickname } : { username: form.username })
+      }
       ElMessage.success('登录成功')
       const redirect = (route.query.redirect as string) || '/'
       router.push(redirect)
