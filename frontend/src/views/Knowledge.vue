@@ -809,6 +809,29 @@
               <span class="knowledge-tool-icon">🔗</span>
               <span class="knowledge-tool-label">链接</span>
             </button>
+            <el-dropdown trigger="click" @command="kbOnWikiLinkCommand">
+              <button type="button" class="knowledge-tool-btn" title="插入笔记链接（双链）">
+                <span class="knowledge-tool-icon">[[ ]]</span>
+                <span class="knowledge-tool-label">笔记链接</span>
+              </button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item
+                    v-for="item in detailContents.filter((c) => c.type === 'KNOWLEDGE' && c.id !== selectedContentId)"
+                    :key="item.id"
+                    :command="{ id: item.id, title: item.title }"
+                  >
+                    {{ item.title || '[无标题]' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="detailContents.filter((c) => c.type === 'KNOWLEDGE' && c.id !== selectedContentId).length === 0"
+                    disabled
+                  >
+                    当前知识库暂无其他笔记
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <button type="button" class="knowledge-editor-close" title="关闭" @click="selectedContentId = null">
               <el-icon><Close /></el-icon>
             </button>
@@ -819,14 +842,15 @@
           </div>
         </template>
       </div>
-      <!-- 文章阅读区：选中博客时显示 -->
+      <!-- 文章阅读区：选中笔记/博客时显示，右侧可折叠入链/出链面板 -->
       <div v-else-if="selectedContentId != null" class="knowledge-main-reader">
         <div v-if="mainArticleLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>加载中…</span>
         </div>
         <template v-else-if="mainArticle">
-          <div class="knowledge-main-card">
+          <div class="knowledge-reader-with-sidebar">
+            <div class="knowledge-main-card">
             <div class="knowledge-article-title-row">
               <h1 class="knowledge-article-title">{{ mainArticle.title }}</h1>
               <button type="button" class="knowledge-main-close" title="关闭" @click="selectedContentId = null">
@@ -864,6 +888,12 @@
               <span class="knowledge-article-date">{{ formatArticleDate(mainArticle.publishedAt ?? mainArticle.createdAt) }}</span>
             </div>
             <div ref="mainPreviewRef" class="knowledge-article-body vditor-reset" />
+            </div>
+            <LinkPanel
+              :content-id="selectedContentId"
+              :show-outlinks="selectedDetailItem?.type === 'KNOWLEDGE'"
+              @open="selectedContentId = $event"
+            />
           </div>
         </template>
       </div>
@@ -952,6 +982,7 @@ import { getMe, getUserById, type UserMe } from '@/api/user'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { getColumnsMe } from '@/api/column'
+import LinkPanel from '@/components/LinkPanel.vue'
 import {
   getCollectionFoldersMe,
   getCollectionFolderContents,
@@ -1366,6 +1397,14 @@ async function loadMainArticle(contentId: number) {
   }
 }
 
+/** 双链笔记：将正文中的 [[id:标题]] 转为 Markdown 链接，便于预览中点击跳转 */
+function processWikiLinksForPreview(body: string): string {
+  return body.replace(/\[\[(\d+):([^\]]*)\]\]/g, (_, id, title) => {
+    const text = (title || id).trim() || '笔记'
+    return `[${text}](knowledge://${id})`
+  })
+}
+
 async function renderMainMarkdown() {
   const a = mainArticle.value
   if (!a?.body) return
@@ -1376,12 +1415,28 @@ async function renderMainMarkdown() {
     return
   }
   el.innerHTML = ''
+  const bodyForPreview = processWikiLinksForPreview(a.body)
   try {
-    await Vditor.preview(el, a.body, { mode: 'light', lang: 'zh_CN' })
+    await Vditor.preview(el, bodyForPreview, { mode: 'light', lang: 'zh_CN' })
+    attachWikiLinkClick(el)
   } catch (e) {
     el.textContent = a.body || '暂无正文'
     console.warn('Vditor.preview error', e)
   }
+}
+
+/** 双链笔记：为 knowledge:// 链接绑定点击，在知识库内跳转到对应笔记 */
+function attachWikiLinkClick(container: HTMLElement) {
+  container.querySelectorAll<HTMLAnchorElement>('a[href^="knowledge://"]').forEach((link) => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault()
+      const href = link.getAttribute('href') || ''
+      const id = href.replace('knowledge://', '').trim()
+      const numId = parseInt(id, 10)
+      if (Number.isNaN(numId)) return
+      selectedContentId.value = numId
+    })
+  })
 }
 
 function destroyKbVditor() {
@@ -1609,6 +1664,14 @@ function kbOnLink() {
   const sel = kbVditor.getSelection() || '链接文本'
   kbInsertMD(`[${sel}](https://example.com)\n`)
 }
+
+/** 双链笔记：插入 [[id:标题]] 语法 */
+function kbOnWikiLinkCommand(payload: { id: number; title: string }) {
+  if (!kbVditor || !payload?.id) return
+  const title = (payload.title || '').trim() || '笔记'
+  kbInsertMD(`[[${payload.id}:${title}]]`)
+}
+
 function kbOnHeadingCommand(level: string | number) {
   const n = Number(level)
   if (!kbVditor) return
@@ -3706,9 +3769,24 @@ async function submitCreateKb() {
 }
 
 .knowledge-main-reader {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
   padding: 20px 24px 40px;
+}
+
+.knowledge-reader-with-sidebar {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.knowledge-reader-with-sidebar > .knowledge-main-card {
+  flex: 1;
+  min-width: 0;
   max-width: 800px;
-  margin: 0 auto;
 }
 
 .knowledge-main-loading {

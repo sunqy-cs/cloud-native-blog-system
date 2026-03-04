@@ -13,13 +13,17 @@ import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.entity.Content;
 import com.blog.content.entity.ContentCollection;
+import com.blog.content.entity.ContentReference;
 import com.blog.content.entity.ContentTag;
 import com.blog.content.entity.ContentView;
+import com.blog.content.entity.KnowledgeBaseContent;
 import com.blog.content.entity.Tag;
 import com.blog.content.mapper.ContentCollectionMapper;
 import com.blog.content.mapper.ContentMapper;
+import com.blog.content.mapper.ContentReferenceMapper;
 import com.blog.content.mapper.ContentTagMapper;
 import com.blog.content.mapper.ContentViewMapper;
+import com.blog.content.mapper.KnowledgeBaseContentMapper;
 import com.blog.content.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,6 +47,9 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -65,8 +72,13 @@ public class ContentService {
     private final ContentTagMapper contentTagMapper;
     private final TagMapper tagMapper;
     private final ContentCollectionMapper contentCollectionMapper;
+    private final ContentReferenceMapper contentReferenceMapper;
     private final ContentViewMapper contentViewMapper;
+    private final KnowledgeBaseContentMapper knowledgeBaseContentMapper;
     private final RestTemplate restTemplate;
+
+    /** 双链笔记：正文中 [[id:标题]] 或 [[标题]] 的匹配 */
+    private static final Pattern WIKILINK_PATTERN = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
 
     @Value("${app.interaction-service-url:http://localhost:8085}")
     private String interactionServiceUrl;
@@ -617,6 +629,9 @@ public class ContentService {
             c.setUpdatedAt(LocalDateTime.now());
             contentMapper.updateById(c);
             contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, c.getId()));
+            if (TYPE_KNOWLEDGE.equals(c.getType())) {
+                syncContentReferences(c.getId(), body);
+            }
         } else {
             // 新建草稿：正文不能为空
             if (body.isEmpty()) {
@@ -671,6 +686,85 @@ public class ContentService {
         res.setStatus(STATUS_DRAFT);
         res.setCreatedAt(saved != null && saved.getCreatedAt() != null ? saved.getCreatedAt().format(ISO_FORMAT) : null);
         return res;
+    }
+
+    /**
+     * 双链笔记：解析正文中的 [[id:标题]] 或 [[标题]]，更新 content_reference 表。
+     * 仅对知识库类型内容生效；[[标题]] 在当前笔记所属的任一知识库内按标题解析。
+     */
+    private void syncContentReferences(Long sourceContentId, String body) {
+        if (body == null || body.isEmpty()) return;
+        Set<Long> targetIds = new java.util.HashSet<>();
+        Long anyKbId = knowledgeBaseContentMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseContent>().eq(KnowledgeBaseContent::getContentId, sourceContentId))
+                .stream()
+                .map(KnowledgeBaseContent::getKnowledgeBaseId)
+                .findFirst()
+                .orElse(null);
+
+        Matcher m = WIKILINK_PATTERN.matcher(body);
+        while (m.find()) {
+            String inner = m.group(1).trim();
+            if (inner.isEmpty()) continue;
+            Long targetId = null;
+            if (inner.contains(":")) {
+                int colon = inner.indexOf(':');
+                String idPart = inner.substring(0, colon).trim();
+                if (idPart.matches("\\d+")) {
+                    targetId = Long.parseLong(idPart);
+                    Content target = contentMapper.selectById(targetId);
+                    if (target == null || !TYPE_KNOWLEDGE.equals(target.getType())) targetId = null;
+                }
+            }
+            if (targetId == null && anyKbId != null && !inner.contains(":")) {
+                String titleToResolve = inner.trim();
+                List<Long> contentIdsInKb = knowledgeBaseContentMapper.selectList(
+                        new LambdaQueryWrapper<KnowledgeBaseContent>().eq(KnowledgeBaseContent::getKnowledgeBaseId, anyKbId))
+                        .stream()
+                        .map(KnowledgeBaseContent::getContentId)
+                        .collect(Collectors.toList());
+                if (!contentIdsInKb.isEmpty()) {
+                    Content byTitle = contentMapper.selectOne(
+                            new LambdaQueryWrapper<Content>()
+                                    .eq(Content::getType, TYPE_KNOWLEDGE)
+                                    .eq(Content::getTitle, titleToResolve)
+                                    .in(Content::getId, contentIdsInKb)
+                                    .last("LIMIT 1"));
+                    if (byTitle != null) targetId = byTitle.getId();
+                }
+            }
+            if (targetId != null && !targetId.equals(sourceContentId)) targetIds.add(targetId);
+        }
+
+        contentReferenceMapper.delete(new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getSourceContentId, sourceContentId));
+        LocalDateTime now = LocalDateTime.now();
+        for (Long targetId : targetIds) {
+            ContentReference ref = new ContentReference();
+            ref.setSourceContentId(sourceContentId);
+            ref.setTargetContentId(targetId);
+            ref.setCreatedAt(now);
+            contentReferenceMapper.insert(ref);
+        }
+    }
+
+    /** 双链笔记：查询引用当前内容的笔记列表（反链/入链） */
+    public List<ContentListItemVO> getBacklinks(Long contentId) {
+        List<ContentReference> refs = contentReferenceMapper.selectList(
+                new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getTargetContentId, contentId));
+        if (refs.isEmpty()) return Collections.emptyList();
+        List<Long> sourceIds = refs.stream().map(ContentReference::getSourceContentId).distinct().collect(Collectors.toList());
+        List<Content> contents = contentMapper.selectBatchIds(sourceIds);
+        return contents.stream().map(this::toListItemVO).collect(Collectors.toList());
+    }
+
+    /** 双链笔记：查询当前内容引出的笔记列表（出链） */
+    public List<ContentListItemVO> getOutlinks(Long contentId) {
+        List<ContentReference> refs = contentReferenceMapper.selectList(
+                new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getSourceContentId, contentId));
+        if (refs.isEmpty()) return Collections.emptyList();
+        List<Long> targetIds = refs.stream().map(ContentReference::getTargetContentId).distinct().collect(Collectors.toList());
+        List<Content> contents = contentMapper.selectBatchIds(targetIds);
+        return contents.stream().map(this::toListItemVO).collect(Collectors.toList());
     }
 
     /** 按名称查询标签，不存在则插入（is_main=0）并返回 id */

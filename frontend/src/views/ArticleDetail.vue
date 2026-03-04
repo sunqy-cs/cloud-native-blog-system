@@ -1,7 +1,9 @@
 <template>
   <div class="article-detail article-detail--bbc">
-    <el-button class="back" text @click="router.push('/')">← 返回首页</el-button>
-    <el-card v-if="article" shadow="never" class="article-card">
+    <div class="article-detail-layout">
+      <div class="article-detail-main">
+        <el-button class="back" text @click="router.push('/')">← 返回首页</el-button>
+        <el-card v-if="article" shadow="never" class="article-card">
       <!-- 标题 -->
       <h1 class="article-title">{{ article.title }}</h1>
 
@@ -180,10 +182,10 @@
         </div>
       </section>
     </el-card>
-    <el-empty v-else-if="!loading" description="文章不存在或加载失败" />
-    <div v-else class="loading-wrap"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
+        <el-empty v-else-if="!loading" description="文章不存在或加载失败" />
+        <div v-else class="loading-wrap"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
 
-    <el-dialog
+        <el-dialog
       v-model="collectionDialogVisible"
       title="添加到收藏夹"
       width="540px"
@@ -214,6 +216,14 @@
         </ul>
       </template>
     </el-dialog>
+      </div>
+      <LinkPanel
+        v-if="article?.id"
+        :content-id="article.id"
+        :show-outlinks="false"
+        @open="router.push(`/article/${$event}`)"
+      />
+    </div>
   </div>
 </template>
 
@@ -230,6 +240,7 @@ import { ElMessage } from 'element-plus'
 import { getContentComments, createComment, likeComment, unlikeComment, deleteComment as apiDeleteComment, type CommentItem } from '@/api/comment'
 import { checkContentLiked, likeContent, unlikeContent } from '@/api/contentLike'
 import { getCollectionFoldersMe, addContentToCollectionFolder, getFolderIdsContainingContent, type CollectionFolderItem } from '@/api/collectionFolder'
+import LinkPanel from '@/components/LinkPanel.vue'
 import EmojiPicker from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 
@@ -593,8 +604,18 @@ watch(
 /* BBC 风格：红色点缀、编辑感 */
 .article-detail {
   padding: 1rem 2rem;
-  max-width: 960px;
+  min-height: 100vh;
+}
+.article-detail-layout {
+  display: flex;
+  gap: 0;
+  max-width: 1280px;
   margin: 0 auto;
+}
+.article-detail-main {
+  flex: 1;
+  min-width: 0;
+  max-width: 960px;
 }
 .article-detail--bbc .back {
   margin-bottom: 1rem;

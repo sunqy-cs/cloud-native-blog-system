@@ -107,8 +107,11 @@ export function searchContents(params: {
   if (params.sort) reqParams.sort = params.sort
   if (params.time) reqParams.time = params.time
   return request
-    .get<{ ids: number[] }>('search', { params: reqParams })
-    .then((data) => (data?.ids && data.ids.length ? getContentsByIds(data.ids) : Promise.resolve([])))
+    .get('search', { params: reqParams })
+    .then((res) => {
+      const data = res as unknown as { ids?: number[] }
+      return data?.ids?.length ? getContentsByIds(data.ids) : Promise.resolve([])
+    })
 }
 
 /**
@@ -217,4 +220,18 @@ export function publishContent(id: number): Promise<PublishResponse> {
  */
 export function updateContentTitle(id: number, title: string): Promise<void> {
   return request.patch(`contents/${id}`, { title })
+}
+
+/**
+ * 双链笔记：获取引用该内容的笔记列表（入链/反链）
+ */
+export function getContentBacklinks(contentId: number): Promise<ContentListItem[]> {
+  return request.get(`contents/${contentId}/backlinks`).then((data) => data as unknown as ContentListItem[])
+}
+
+/**
+ * 双链笔记：获取该内容引出的笔记列表（出链）
+ */
+export function getContentOutlinks(contentId: number): Promise<ContentListItem[]> {
+  return request.get(`contents/${contentId}/outlinks`).then((data) => data as unknown as ContentListItem[])
 }

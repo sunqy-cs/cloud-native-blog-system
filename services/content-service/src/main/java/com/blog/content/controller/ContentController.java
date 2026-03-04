@@ -95,6 +95,20 @@ public class ContentController {
         return ResponseEntity.ok(vo);
     }
 
+    /** 双链笔记：引用该内容的笔记列表（入链/反链） */
+    @GetMapping("/{id}/backlinks")
+    public ResponseEntity<List<ContentListItemVO>> getBacklinks(@PathVariable Long id) {
+        List<ContentListItemVO> list = contentService.getBacklinks(id);
+        return ResponseEntity.ok(list);
+    }
+
+    /** 双链笔记：当前内容引出的笔记列表（出链） */
+    @GetMapping("/{id}/outlinks")
+    public ResponseEntity<List<ContentListItemVO>> getOutlinks(@PathVariable Long id) {
+        List<ContentListItemVO> list = contentService.getOutlinks(id);
+        return ResponseEntity.ok(list);
+    }
+
     @PatchMapping("/{id}")
     public ResponseEntity<Void> updateTitle(
             @RequestHeader(HEADER_USER_ID) Long userId,

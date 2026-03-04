@@ -360,6 +360,24 @@
 
 ---
 
+### 5.2.2 双链笔记：获取反链
+
+**`GET /api/contents/{id}/backlinks`**
+
+无需认证。返回「引用了该内容」的笔记列表（即正文中包含指向该内容的 `[[id:标题]]` 的笔记），用于双链笔记的「被引用」展示。
+
+**Path 参数**：`id` 内容 ID。
+
+**Response** `200 OK`：与「我的博客」列表项格式一致（id、title、userId、viewCount 等）。
+
+**`GET /api/contents/{id}/outlinks`**
+
+无需认证。返回「该内容引出的笔记」列表（正文中的 `[[id:标题]]` 指向的笔记），用于双链右侧栏「出链」列表。
+
+**Response** `200 OK`：与 backlinks 格式一致。
+
+---
+
 ### 5.3 发布博客
 
 **`POST /api/contents/{id}/publish`**
