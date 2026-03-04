@@ -579,13 +579,10 @@ public class ContentService {
     }
 
     /**
-     * 保存草稿：正文不为空才允许保存；标题为空则存为 [无标题]。标签按名称先查询，不存在则创建再关联，最多 5 个。
+     * 保存草稿：博客正文不能为空，知识库允许正文为空；标题为空则存为 [无标题]。标签按名称先查询，不存在则创建再关联，最多 5 个。
      */
     public SaveDraftResponse saveDraft(Long userId, SaveDraftRequest request) {
         String body = request.getBody() != null ? request.getBody().trim() : "";
-        if (body.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "正文不能为空");
-        }
         String title = request.getTitle() != null ? request.getTitle().trim() : "";
         if (title.isEmpty()) title = TITLE_EMPTY;
 
@@ -596,6 +593,10 @@ public class ContentService {
             boolean allowedType = TYPE_BLOG.equals(c.getType()) || TYPE_KNOWLEDGE.equals(c.getType());
             if (c == null || !userId.equals(c.getUserId()) || !allowedType) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权编辑");
+            }
+            // 博客草稿正文不能为空；知识库允许正文为空
+            if (body.isEmpty() && TYPE_BLOG.equals(c.getType())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "正文不能为空");
             }
             c.setTitle(title);
             c.setBody(body);
@@ -617,6 +618,10 @@ public class ContentService {
             contentMapper.updateById(c);
             contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, c.getId()));
         } else {
+            // 新建草稿：正文不能为空
+            if (body.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "正文不能为空");
+            }
             c = new Content();
             c.setUserId(userId);
             c.setType(TYPE_BLOG);

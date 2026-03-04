@@ -1427,9 +1427,8 @@ function onKbPaperMouseDown(e: MouseEvent) {
 function saveKnowledgeBody() {
   const id = selectedContentId.value
   if (id == null || !kbVditor) return
-  const body = (kbVditor.getValue() ?? '').trim()
-  // 后端要求正文不能为空，否则返回 400
-  if (!body) return
+  const body = kbVditor.getValue() ?? ''
+  // 知识库允许正文为空，直接保存
   saveDraft({ id, body, title: knowledgeEditTitle.value || undefined })
     .then(() => ElMessage.success('已保存'))
     .catch((err: { response?: { data?: { message?: string } }; message?: string }) => {
@@ -3649,13 +3648,23 @@ async function submitCreateKb() {
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
-  background: transparent !important;
+  background: #fff !important;
+}
+.knowledge-editor-paper :deep(.vditor) {
+  --textarea-background-color: #fff !important;
 }
 
 .knowledge-editor-paper :deep(.vditor-content) {
   background: #fff !important;
   caret-color: #111 !important;
   min-height: 200px !important;
+}
+
+/* 编辑区内部（wysiwyg/ir 等）纯白，覆盖 Vditor 默认浅灰 */
+.knowledge-editor-paper :deep(.vditor-wysiwyg),
+.knowledge-editor-paper :deep(.vditor-ir),
+.knowledge-editor-paper :deep(.vditor-sv) {
+  background: #fff !important;
 }
 
 .knowledge-editor-paper ::selection {

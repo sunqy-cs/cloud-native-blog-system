@@ -13,6 +13,7 @@ import com.blog.content.mapper.ContentCollectionMapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -167,8 +168,13 @@ public class CollectionFolderService {
         cc.setFolderId(folderId);
         cc.setContentId(contentId);
         cc.setCreatedAt(LocalDateTime.now());
-        contentCollectionMapper.insert(cc);
-        contentService.incrementCollectionCount(contentId);
+        try {
+            contentCollectionMapper.insert(cc);
+            contentService.incrementCollectionCount(contentId);
+        } catch (DuplicateKeyException e) {
+            // 主键冲突（如未执行 17_content_collection_fix_pk 或并发重复添加）时返回友好提示
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该文章已在收藏夹中");
+        }
     }
 
     /** 从收藏夹移除文章 */

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS `content_collection` (
     `content_id` BIGINT   NOT NULL COMMENT '内容 ID',
     `folder_id`  BIGINT   NOT NULL COMMENT '收藏夹 ID（归属哪个收藏夹，默认收藏夹由业务保证存在）',
     `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
-    PRIMARY KEY (`user_id`, `content_id`),
+    PRIMARY KEY (`user_id`, `content_id`, `folder_id`),
     KEY `idx_content_collection_content_id` (`content_id`),
     KEY `idx_content_collection_folder_id` (`folder_id`),
     CONSTRAINT `fk_content_collection_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
