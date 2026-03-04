@@ -638,7 +638,7 @@
     </el-dialog>
 
     <!-- 中间：主内容区（问答模式 > 文章阅读 > 热门/搜索列表 > 占位） -->
-    <main class="knowledge-main" :class="{ expanded: sidebarExpanded }">
+    <main class="knowledge-main" :class="{ expanded: sidebarExpanded, 'knowledge-main--qa': showQAMode }">
       <!-- 问答模式：GPT 风格对话 -->
       <div v-if="showQAMode" class="knowledge-qa-panel">
         <div class="knowledge-qa-header">
@@ -706,14 +706,15 @@
           </button>
         </div>
       </div>
-      <!-- 知识库文件编辑：与博客创作相同的工具栏 + 纯 Markdown 正文（无标题） -->
+      <!-- 知识库文件编辑：工具栏 + 正文 + 右侧入链/出链面板 -->
       <div v-else-if="selectedContentId != null && isKnowledgeEditor" class="knowledge-main-editor">
         <div v-if="knowledgeEditLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>加载中…</span>
         </div>
         <template v-else>
-          <div class="knowledge-editor-card">
+          <div class="knowledge-editor-with-sidebar">
+            <div class="knowledge-editor-card">
             <div class="knowledge-editor-toolbar">
               <button type="button" class="knowledge-tool-btn" @click="kbOnUndo">
               <el-icon><RefreshLeft /></el-icon>
@@ -839,10 +840,17 @@
             <div class="knowledge-editor-paper" @mousedown="onKbPaperMouseDown">
               <div ref="kbVditorRef" class="vditor-wrap"></div>
             </div>
+            </div>
+            <LinkPanel
+              floating
+              :content-id="selectedContentId"
+              :show-outlinks="true"
+              @open="selectedContentId = $event"
+            />
           </div>
         </template>
       </div>
-      <!-- 文章阅读区：选中笔记/博客时显示，右侧可折叠入链/出链面板 -->
+      <!-- 文章阅读区：选中博客时显示，右侧可折叠入链/出链面板（博客仅入链） -->
       <div v-else-if="selectedContentId != null" class="knowledge-main-reader">
         <div v-if="mainArticleLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
@@ -850,7 +858,7 @@
         </div>
         <template v-else-if="mainArticle">
           <div class="knowledge-reader-with-sidebar">
-            <div class="knowledge-main-card">
+            <div class="knowledge-main-card knowledge-reader-main-card">
             <div class="knowledge-article-title-row">
               <h1 class="knowledge-article-title">{{ mainArticle.title }}</h1>
               <button type="button" class="knowledge-main-close" title="关闭" @click="selectedContentId = null">
@@ -890,8 +898,9 @@
             <div ref="mainPreviewRef" class="knowledge-article-body vditor-reset" />
             </div>
             <LinkPanel
+              floating
               :content-id="selectedContentId"
-              :show-outlinks="selectedDetailItem?.type === 'KNOWLEDGE'"
+              :show-outlinks="true"
               @open="selectedContentId = $event"
             />
           </div>
@@ -971,7 +980,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { Search, FolderOpened, Connection, Plus, Reading, Close, Delete, Loading, MoreFilled, ArrowLeft, ArrowDown, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -992,6 +1001,7 @@ import type { ColumnItem } from '@/api/column'
 
 const userStore = useUserStore()
 const router = useRouter()
+const route = useRoute()
 
 interface KnowledgeBaseItem {
   id: string
@@ -1058,6 +1068,8 @@ const myKnowledgeBasesWithDefaultFiltered = computed(() => {
 })
 const selectedKb = ref<KnowledgeBaseItem | null>(null)
 const selectedKbSource = ref<'mine' | 'sub' | null>(null)
+/** 从路由恢复正文时暂存 contentId，等 detailContents 加载后再选中 */
+const pendingRestoreContentId = ref<number | null>(null)
 
 const isOwnDetail = computed(() => selectedKbSource.value === 'mine')
 const isDefaultKb = computed(() => selectedKb.value?.id === 'default')
@@ -1266,6 +1278,17 @@ watch(selectedContentId, (id) => {
   }
 })
 
+watch([selectedKb, selectedContentId], () => {
+  syncRouteQuery()
+}, { flush: 'post' })
+
+/** 编辑区加载完成后再次尝试聚焦（从问答等界面切过来时光标更可靠） */
+watch(knowledgeEditLoading, (loading, prevLoading) => {
+  if (prevLoading === true && loading === false && isKnowledgeEditor.value) {
+    setTimeout(focusKbVditor, 350)
+  }
+})
+
 onBeforeUnmount(() => {
   destroyKbVditor()
 })
@@ -1318,6 +1341,11 @@ async function loadDetailContents(kbId: string) {
     }))
   } catch {
     detailContents.value = []
+  }
+  const toRestore = pendingRestoreContentId.value
+  if (toRestore != null && detailContents.value.some((c) => c.id === toRestore)) {
+    selectedContentId.value = toRestore
+    pendingRestoreContentId.value = null
   }
 }
 
@@ -1415,7 +1443,8 @@ async function renderMainMarkdown() {
     return
   }
   el.innerHTML = ''
-  const bodyForPreview = processWikiLinksForPreview(a.body)
+  // 仅笔记正文解析 [[...]] 为可点击链接；博客只侧栏显示入链/出链，正文不解析
+  const bodyForPreview = selectedDetailItem.value?.type === 'KNOWLEDGE' ? processWikiLinksForPreview(a.body) : a.body
   try {
     await Vditor.preview(el, bodyForPreview, { mode: 'light', lang: 'zh_CN' })
     attachWikiLinkClick(el)
@@ -1448,7 +1477,7 @@ function destroyKbVditor() {
   kbVditor = null
 }
 
-/** 让 Vditor 编辑区获得焦点并显示光标，多次重试以兼容异步渲染 */
+/** 让 Vditor 编辑区获得焦点并显示光标，多次重试以兼容异步渲染（含从问答等界面切换过来） */
 function focusKbVditor() {
   const tryFocus = (attempt: number) => {
     if (!kbVditorRef.value || !kbVditor) return
@@ -1467,9 +1496,9 @@ function focusKbVditor() {
         editable.focus()
       }
     } catch {}
-    if (attempt < 6) setTimeout(() => tryFocus(attempt + 1), 60 + attempt * 40)
+    if (attempt < 8) setTimeout(() => tryFocus(attempt + 1), 80 + attempt * 50)
   }
-  nextTick(() => setTimeout(() => tryFocus(0), 100))
+  nextTick(() => setTimeout(() => tryFocus(0), 200))
 }
 
 /** 点击白纸区域时若未点在编辑元素上则主动聚焦，便于显示光标 */
@@ -1709,10 +1738,37 @@ async function loadMySubscriptions() {
   }
 }
 
-onMounted(() => {
-  loadMyKnowledgeBases()
-  loadMySubscriptions()
+function syncRouteQuery() {
+  if (route.path !== '/knowledge') return
+  const kbId = selectedKb.value?.id
+  const contentId = selectedContentId.value
+  const q: Record<string, string> = {}
+  if (kbId) q.kb = kbId
+  if (contentId != null) q.contentId = String(contentId)
+  router.replace({ path: '/knowledge', query: q })
+}
+
+onMounted(async () => {
   loadQAHistory()
+  await Promise.all([loadMyKnowledgeBases(), loadMySubscriptions()])
+  const q = route.query
+  const kbId = typeof q.kb === 'string' ? q.kb.trim() : ''
+  const contentIdStr = typeof q.contentId === 'string' ? q.contentId.trim() : ''
+  if (contentIdStr) {
+    const cid = Number(contentIdStr)
+    if (!Number.isNaN(cid)) pendingRestoreContentId.value = cid
+  }
+  if (kbId) {
+    const inMine = myKnowledgeBases.value.find((kb) => String(kb.id) === kbId)
+    const inSub = mySubscriptions.value.find((kb) => String(kb.id) === kbId)
+    if (inMine) {
+      selectedKb.value = { ...inMine }
+      selectedKbSource.value = 'mine'
+    } else if (inSub) {
+      selectedKb.value = { ...inSub }
+      selectedKbSource.value = 'sub'
+    }
+  }
 })
 
 /** 根据当前列表计算下一个「未命名」标题：未命名、未命名 (1)、未命名 (2)... */
@@ -3176,7 +3232,7 @@ async function submitCreateKb() {
   border-color: #9e1515 !important;
 }
 
-/* 中间主内容区 */
+/* 中间主内容区：flex 子项填满，内部区块可占满高度 */
 .knowledge-main {
   flex: 1;
   min-height: 0;
@@ -3184,59 +3240,68 @@ async function submitCreateKb() {
   background: #f8f8f8;
   min-width: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.knowledge-main.knowledge-main--qa {
+  background: #f5f6f8;
 }
 
-/* 问答模式：GPT 风格面板 */
+/* 问答模式：加宽、淡底、高级感 */
 .knowledge-qa-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
   width: 100%;
-  background: #fff;
-  box-shadow: 0 0 1px rgba(0, 0, 0, 0.08);
+  padding: 0 48px;
+  background: #fafbfc;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
 
 .knowledge-qa-header {
   flex-shrink: 0;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #eee;
+  padding: 28px 0 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .knowledge-qa-title {
-  margin: 0 0 4px 0;
-  font-size: 18px;
+  margin: 0 0 6px 0;
+  font-size: 20px;
   font-weight: 600;
-  color: #111;
+  letter-spacing: -0.02em;
+  color: #1d1d1f;
 }
 
 .knowledge-qa-desc {
   margin: 0;
-  font-size: 13px;
-  color: #666;
+  font-size: 14px;
+  color: #6e6e73;
+  font-weight: 400;
 }
 
 .knowledge-qa-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 28px 0 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
 }
 
 .knowledge-qa-welcome {
-  padding: 40px 0;
+  padding: 64px 24px;
   text-align: center;
-  color: #666;
-  font-size: 14px;
+  color: #6e6e73;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 .knowledge-qa-welcome-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #999;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #86868b;
 }
 
 .knowledge-qa-msg-wrap {
@@ -3253,8 +3318,8 @@ async function submitCreateKb() {
 .knowledge-qa-msg {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  max-width: 85%;
+  gap: 12px;
+  max-width: 78%;
 }
 .knowledge-qa-msg-wrap.is-user .knowledge-qa-msg {
   flex-direction: row-reverse;
@@ -3262,9 +3327,9 @@ async function submitCreateKb() {
 
 .knowledge-qa-avatar {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3272,43 +3337,47 @@ async function submitCreateKb() {
   font-weight: 600;
 }
 .knowledge-qa-avatar-bot {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(145deg, #5e5ce6 0%, #7d7af7 100%);
   color: #fff;
+  box-shadow: 0 2px 8px rgba(94, 92, 230, 0.25);
 }
 .knowledge-qa-avatar-user {
-  background: #e8e8e8;
-  color: #333;
+  background: #e5e5ea;
+  color: #1d1d1f;
 }
 
 .knowledge-qa-bubble {
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .knowledge-qa-bubble-user {
-  background: #BB1919;
+  background: #bb1919;
   color: #fff;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 .knowledge-qa-bubble-assistant {
-  background: #f0f0f0;
-  color: #333;
+  background: #fff;
+  color: #1d1d1f;
   border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .knowledge-qa-typing {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 .knowledge-qa-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #999;
+  background: #86868b;
   animation: knowledge-qa-dot 1.4s ease-in-out infinite both;
 }
 .knowledge-qa-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -3322,63 +3391,71 @@ async function submitCreateKb() {
   flex-shrink: 0;
   display: flex;
   align-items: flex-end;
-  gap: 12px;
-  padding: 16px 24px 24px;
-  border-top: 1px solid #eee;
-  background: #fff;
+  gap: 14px;
+  padding: 20px 0 32px;
+  background: transparent;
 }
 
 .knowledge-qa-add-kb {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid #ddd;
-  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
   background: #fff;
-  color: #666;
+  color: #6e6e73;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
 }
 .knowledge-qa-add-kb:hover {
-  border-color: #BB1919;
-  color: #BB1919;
+  border-color: #bb1919;
+  color: #bb1919;
+  background: rgba(187, 25, 25, 0.04);
 }
 
 .knowledge-qa-add-kb .el-icon {
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .knowledge-qa-input {
   flex: 1;
-  min-height: 44px;
-  max-height: 120px;
-  padding: 10px 14px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  font-size: 14px;
+  min-height: 48px;
+  max-height: 140px;
+  padding: 12px 18px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  font-size: 15px;
   line-height: 1.5;
   resize: none;
   font-family: inherit;
+  background: #fff;
+  color: #1d1d1f;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.knowledge-qa-input::placeholder {
+  color: #86868b;
 }
 .knowledge-qa-input:focus {
   outline: none;
-  border-color: #BB1919;
+  border-color: rgba(187, 25, 25, 0.5);
+  box-shadow: 0 0 0 3px rgba(187, 25, 25, 0.08);
 }
 
 .knowledge-qa-send {
   flex-shrink: 0;
-  padding: 10px 20px;
-  font-size: 14px;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 500;
   color: #fff;
-  background: #BB1919;
+  background: #bb1919;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, transform 0.1s;
 }
 .knowledge-qa-send:hover:not(:disabled) {
   background: #9e1515;
@@ -3601,96 +3678,122 @@ async function submitCreateKb() {
   color: #999;
 }
 
-/* 知识库文件编辑：外围灰底 + 卡片（圆角、阴影），中间正文区白底 */
+/* 知识库文件编辑：占满主内容区，无底部灰条，白底 */
 .knowledge-main-editor {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
   min-height: 0;
-  background: #e8ecf0;
-  padding: 16px 0 24px;
+  background: #fff;
+  padding: 0;
 }
 
-/* 整张编辑卡片：工具栏 + 白纸一体，居中，保留卡片样式 */
+.knowledge-editor-with-sidebar {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: block;
+}
+
+.knowledge-editor-with-sidebar > .knowledge-editor-card {
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 编辑区整栏展开；入链/出链为右侧悬浮可拖动卡片 */
 .knowledge-editor-card {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  max-width: 880px;
   width: 100%;
-  margin: 0 auto;
+  margin: 0;
   background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
 }
 
 .knowledge-editor-toolbar {
   flex-shrink: 0;
-  height: 34px;
-  padding: 0 12px;
+  min-height: 42px;
+  padding: 4px 46px 5px 12px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
   font-size: 12px;
-  color: #666;
-  background: #fff;
-  border-bottom: 1px solid #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  color: #424245;
+  background: #fafafa;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   position: relative;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-btn {
-  padding: 2px 4px;
-  min-width: 28px;
+  padding: 4px 4px 2px;
+  min-width: 34px;
   height: auto;
-  color: #666;
+  min-height: 32px;
+  color: #424245;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
+  justify-content: center;
+  gap: 2px;
   border: none;
+  border-radius: 5px;
   background: transparent;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-btn:hover {
-  color: #111 !important;
+  color: #1d1d1f !important;
+  background: rgba(0, 0, 0, 0.05) !important;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-btn .el-icon {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-label {
-  font-size: 10px;
-  line-height: 1.1;
+  font-size: 9px;
+  line-height: 1.15;
+  font-weight: 400;
+  white-space: nowrap;
 }
 
 .knowledge-editor-toolbar .knowledge-tool-icon {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .knowledge-tool-icon-strike { text-decoration: line-through; }
 .knowledge-tool-icon-hr { font-weight: 600; letter-spacing: 0.02em; }
-.knowledge-tool-icon-inline-code { font-size: 10px; }
+.knowledge-tool-icon-inline-code { font-size: 9px; }
 
 .knowledge-editor-toolbar :deep(.el-divider--vertical) {
-  height: 12px;
+  height: 15px;
   margin: 0 2px;
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .knowledge-editor-paper {
   flex: 1;
   min-height: 0;
-  padding: 24px 32px 40px;
+  padding: 28px 40px 48px;
   background: #fff;
   position: relative;
   display: flex;
@@ -3731,33 +3834,33 @@ async function submitCreateKb() {
 }
 
 .knowledge-editor-paper ::selection {
-  background: #e0e7eb;
-  color: #111;
+  background: rgba(0, 122, 255, 0.2);
+  color: #1d1d1f;
 }
 
 .knowledge-editor-close {
   position: absolute;
   top: 50%;
-  right: 8px;
+  right: 12px;
   transform: translateY(-50%);
   z-index: 10;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   padding: 0;
-  font-size: 16px;
-  color: #666;
+  font-size: 18px;
+  color: #86868b;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 .knowledge-editor-close:hover {
-  color: #BB1919;
-  background: #e9ecef;
+  color: #1d1d1f;
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .hidden-input {
@@ -3777,16 +3880,16 @@ async function submitCreateKb() {
 }
 
 .knowledge-reader-with-sidebar {
-  display: flex;
+  position: relative;
   flex: 1;
   min-height: 0;
-  gap: 0;
+  display: block;
 }
 
-.knowledge-reader-with-sidebar > .knowledge-main-card {
-  flex: 1;
-  min-width: 0;
+.knowledge-reader-with-sidebar > .knowledge-reader-main-card {
+  width: 100%;
   max-width: 800px;
+  margin: 0;
 }
 
 .knowledge-main-loading {

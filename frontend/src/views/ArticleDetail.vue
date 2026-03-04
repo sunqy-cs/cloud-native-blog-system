@@ -219,8 +219,9 @@
       </div>
       <LinkPanel
         v-if="article?.id"
+        floating
         :content-id="article.id"
-        :show-outlinks="false"
+        :show-outlinks="true"
         @open="router.push(`/article/${$event}`)"
       />
     </div>
@@ -601,21 +602,19 @@ watch(
 </script>
 
 <style scoped>
-/* BBC 风格：红色点缀、编辑感 */
+/* BBC 风格：红色点缀、编辑感；正文区白底，入链/出链为右侧浮动卡片不占正文宽度 */
 .article-detail {
   padding: 1rem 2rem;
   min-height: 100vh;
+  background: #fff;
 }
 .article-detail-layout {
-  display: flex;
-  gap: 0;
-  max-width: 1280px;
+  position: relative;
+  max-width: 960px;
   margin: 0 auto;
 }
 .article-detail-main {
-  flex: 1;
-  min-width: 0;
-  max-width: 960px;
+  width: 100%;
 }
 .article-detail--bbc .back {
   margin-bottom: 1rem;
@@ -627,6 +626,7 @@ watch(
 }
 .article-card {
   padding: 1.5rem 2rem;
+  background: #fff;
 }
 .article-title {
   margin: 0 0 0.75rem;
