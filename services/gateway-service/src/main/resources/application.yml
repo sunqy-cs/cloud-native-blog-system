@@ -150,3 +150,10 @@ management:
   endpoint:
     health:
       show-details: when_authorized
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      # 宿主机运行时连本机 9411；Jaeger 未启动时会 Connection refused，需先 docker compose up -d jaeger
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
