@@ -1,0 +1,53 @@
+# Prometheus 配置：指标采集
+# 微服务在宿主机运行时使用 host.docker.internal（Windows/Mac）；Linux 无此域名时可改为宿主机 IP 或使用 extra_hosts
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'gateway-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels: { application: 'gateway-service' }
+
+  - job_name: 'user-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels: { application: 'user-service' }
+
+  - job_name: 'file-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8083']
+        labels: { application: 'file-service' }
+
+  - job_name: 'content-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8084']
+        labels: { application: 'content-service' }
+
+  - job_name: 'interaction-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8085']
+        labels: { application: 'interaction-service' }
+
+  - job_name: 'ai-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8086']
+        labels: { application: 'ai-service' }
+
+  - job_name: 'search-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8087']
+        labels: { application: 'search-service' }

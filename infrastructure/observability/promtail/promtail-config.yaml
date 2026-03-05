@@ -1,0 +1,29 @@
+# Promtail 配置：采集日志并推送至 Loki
+# 应用日志写入共享目录 /var/log/app 后会被采集（需与 compose 中 volume 一致）
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: app
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: blog-services
+          __path__: /var/log/app/*.log
+
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*.log

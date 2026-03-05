@@ -139,3 +139,14 @@ gateway:
       - "GET:/api/search"
       # 全量重建搜索索引（开发/首次同步用）
       - "POST:/api/contents/reindex-search"
+      # Actuator 供 Prometheus 拉取指标（内网使用）
+      - "GET:/actuator/**"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized

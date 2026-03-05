@@ -28,3 +28,12 @@ mybatis-plus:
 jwt:
   secret: your-256-bit-secret-key-change-in-production-please
   expiration-ms: 86400000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
