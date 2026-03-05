@@ -1,18 +1,28 @@
 package com.blog.ai.service;
 
+import com.blog.ai.dto.ChatCompletionChunkDto;
 import com.blog.ai.dto.ChatCompletionRequest;
 import com.blog.ai.dto.ChatCompletionResponse;
 import com.blog.ai.dto.ChatMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequest;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.function.Consumer;
 
 @Slf4j
 @Service
@@ -20,6 +30,7 @@ import java.util.List;
 public class DeepSeekService {
 
     private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.deepseek.base-url:https://api.deepseek.com}")
     private String baseUrl;
@@ -57,7 +68,7 @@ public class DeepSeekService {
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
         if (stream) {
-            log.warn("当前未实现流式解析，请使用 stream=false");
+            log.warn("请使用 chatStream() 进行流式调用");
             return null;
         }
         // 控制台输出发往大模型的请求内容，便于排查
@@ -250,5 +261,56 @@ public class DeepSeekService {
             body = body.substring(0, BODY_MAX_LENGTH);
         }
         return body;
+    }
+
+    /**
+     * 流式对话：每收到一段 delta 就调用 onDelta，与 DeepSeek/OpenAI 兼容的 SSE 格式。
+     */
+    public void chatStream(List<ChatMessage> messages, String model, Consumer<String> onDelta) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("DeepSeek API Key 未配置");
+        }
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalArgumentException("messages 不能为空");
+        }
+        String url = baseUrl.replaceAll("/$", "") + CHAT_COMPLETIONS_PATH;
+        ChatCompletionRequest body = ChatCompletionRequest.builder()
+                .model(model != null && !model.isBlank() ? model : defaultModel)
+                .messages(messages)
+                .stream(true)
+                .build();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        HttpEntity<ChatCompletionRequest> entity = new HttpEntity<>(body, headers);
+
+        restTemplate.execute(URI.create(url), HttpMethod.POST, request -> {
+            request.getHeaders().setContentType(MediaType.APPLICATION_JSON);
+            request.getHeaders().setBearerAuth(apiKey);
+            objectMapper.writeValue(request.getBody(), body);
+        }, response -> {
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith("data: ")) {
+                        String data = line.substring(6).trim();
+                        if ("[DONE]".equals(data)) break;
+                        try {
+                            ChatCompletionChunkDto chunk = objectMapper.readValue(data, ChatCompletionChunkDto.class);
+                            if (chunk != null && chunk.getChoices() != null && !chunk.getChoices().isEmpty()) {
+                                ChatCompletionChunkDto.Delta delta = chunk.getChoices().get(0).getDelta();
+                                if (delta != null && delta.getContent() != null && !delta.getContent().isEmpty()) {
+                                    onDelta.accept(delta.getContent());
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.trace("解析流式 chunk 失败: {}", data, e);
+                        }
+                    }
+                }
+            }
+            return null;
+        });
     }
 }

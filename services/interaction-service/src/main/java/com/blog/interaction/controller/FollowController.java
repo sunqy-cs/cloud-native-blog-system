@@ -41,6 +41,26 @@ public class FollowController {
         return ResponseEntity.ok(ids);
     }
 
+    /** 影响力榜：粉丝数排行榜，排除当前用户 */
+    @GetMapping("/leaderboard/influence")
+    public ResponseEntity<List<Long>> leaderboardInfluence(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long currentUserId) {
+        if (limit < 1 || limit > 50) limit = 10;
+        List<Long> ids = followService.listLeaderboardInfluence(limit, currentUserId);
+        return ResponseEntity.ok(ids);
+    }
+
+    /** 成长力榜：近期（7 天）涨粉排行榜，排除当前用户 */
+    @GetMapping("/leaderboard/growth")
+    public ResponseEntity<List<Long>> leaderboardGrowth(
+            @RequestParam(defaultValue = "10") int limit,
+            @RequestHeader(value = HEADER_USER_ID, required = false) Long currentUserId) {
+        if (limit < 1 || limit > 50) limit = 10;
+        List<Long> ids = followService.listLeaderboardGrowth(limit, currentUserId);
+        return ResponseEntity.ok(ids);
+    }
+
     /** 校验当前用户是否已关注指定用户（供 content-service 做 visibility=FANS 可见性判断）；未登录返回 false */
     @GetMapping("/check")
     public ResponseEntity<Map<String, Boolean>> check(

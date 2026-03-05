@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { UserFilled, Plus, ArrowRight } from '@element-plus/icons-vue'
-import { getRecommendedFollows, followUser, checkFollow } from '@/api/follow'
+import { getLeaderboardGrowth, followUser, checkFollow } from '@/api/follow'
 import { getUsersBatch } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
@@ -95,16 +95,13 @@ const currentPageList = computed(() => {
 async function loadRecommended() {
   loading.value = true
   try {
-    const ids = await getRecommendedFollows(20)
+    const ids = await getLeaderboardGrowth(20)
     if (!ids.length) {
       userList.value = []
       return
     }
     const users = await getUsersBatch(ids)
-    const myId = userStore.userInfo?.id
-    const list: RecommendedUser[] = users
-      .filter((u) => u.id !== myId)
-      .map((u) => ({
+    const list: RecommendedUser[] = users.map((u) => ({
         id: String(u.id),
         name: u.nickname || u.username || '用户',
         description: u.intro || '暂无简介',

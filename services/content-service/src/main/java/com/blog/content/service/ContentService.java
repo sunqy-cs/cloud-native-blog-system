@@ -16,7 +16,9 @@ import com.blog.content.entity.ContentCollection;
 import com.blog.content.entity.ContentReference;
 import com.blog.content.entity.ContentTag;
 import com.blog.content.entity.ContentView;
+import com.blog.content.entity.KnowledgeBase;
 import com.blog.content.entity.KnowledgeBaseContent;
+import com.blog.content.entity.KnowledgeBaseFavorite;
 import com.blog.content.entity.Tag;
 import com.blog.content.mapper.ContentCollectionMapper;
 import com.blog.content.mapper.ContentMapper;
@@ -24,6 +26,8 @@ import com.blog.content.mapper.ContentReferenceMapper;
 import com.blog.content.mapper.ContentTagMapper;
 import com.blog.content.mapper.ContentViewMapper;
 import com.blog.content.mapper.KnowledgeBaseContentMapper;
+import com.blog.content.mapper.KnowledgeBaseFavoriteMapper;
+import com.blog.content.mapper.KnowledgeBaseMapper;
 import com.blog.content.mapper.TagMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -63,6 +67,7 @@ public class ContentService {
     private static final String VISIBILITY_ALL = "ALL";
     private static final String VISIBILITY_SELF = "SELF";
     private static final String VISIBILITY_FANS = "FANS";
+    private static final String KB_VISIBILITY_PUBLIC = "PUBLIC";
     private static final String TITLE_EMPTY = "[无标题]";
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter ISO_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
@@ -75,7 +80,10 @@ public class ContentService {
     private final ContentReferenceMapper contentReferenceMapper;
     private final ContentViewMapper contentViewMapper;
     private final KnowledgeBaseContentMapper knowledgeBaseContentMapper;
+    private final KnowledgeBaseMapper knowledgeBaseMapper;
+    private final KnowledgeBaseFavoriteMapper knowledgeBaseFavoriteMapper;
     private final RestTemplate restTemplate;
+    private final KbVectorService kbVectorService;
 
     /** 双链笔记：正文中 [[id:标题]] 或 [[标题]] 的匹配 */
     private static final Pattern WIKILINK_PATTERN = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
@@ -135,11 +143,13 @@ public class ContentService {
         return list.size();
     }
 
+    /** 我的内容列表；contentType 为 null/空/BLOG 时只查博客，KNOWLEDGE 时只查知识库（内容管理页只传 BLOG，不展示知识库文件） */
     public ContentsMeResponse listMyContents(Long userId, int page, int pageSize,
-                                            String visibility, String status, String sortBy, String order, String keyword, Long columnId) {
+                                            String visibility, String status, String sortBy, String order, String keyword, Long columnId, String contentType) {
+        String typeFilter = (contentType != null && "KNOWLEDGE".equalsIgnoreCase(contentType.trim())) ? TYPE_KNOWLEDGE : TYPE_BLOG;
         LambdaQueryWrapper<Content> q = new LambdaQueryWrapper<>();
         q.eq(Content::getUserId, userId)
-                .eq(Content::getType, TYPE_BLOG);
+                .eq(Content::getType, typeFilter);
         if (visibility != null && !visibility.isBlank()) {
             q.eq(Content::getVisibility, visibility.toUpperCase());
         }
@@ -152,7 +162,7 @@ public class ContentService {
         if (keyword != null && !keyword.isBlank()) {
             List<Long> rawIds = contentIdsMatchingTagKeyword(keyword);
             final List<Long> contentIdsByTag = rawIds.isEmpty() ? Collections.emptyList()
-                    : contentMapper.selectList(new LambdaQueryWrapper<Content>().in(Content::getId, rawIds).eq(Content::getUserId, userId).eq(Content::getType, TYPE_BLOG))
+                    : contentMapper.selectList(new LambdaQueryWrapper<Content>().in(Content::getId, rawIds).eq(Content::getUserId, userId).eq(Content::getType, typeFilter))
                             .stream().map(Content::getId).collect(Collectors.toList());
             if (contentIdsByTag.isEmpty()) {
                 q.and(w -> w.like(Content::getTitle, keyword).or().like(Content::getSummary, keyword));
@@ -398,7 +408,17 @@ public class ContentService {
     public ContentViewVO getForView(Long id, Long userId) {
         if (id == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
         Content c = contentMapper.selectById(id);
-        if (c == null || !TYPE_BLOG.equals(c.getType())) {
+        if (c == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
+        }
+        if (TYPE_KNOWLEDGE.equals(c.getType())) {
+            // 知识库文件：仅作者本人，或所在知识库为公开/已订阅时可查看
+            if (!canViewKnowledgeContent(c, userId)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权查看");
+            }
+            return buildContentViewVO(c, id, userId);
+        }
+        if (!TYPE_BLOG.equals(c.getType())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
         }
         // 已发布：所有人（按 visibility）可见；未发布草稿：仅作者本人可见（便于知识库内展示自己的博客）
@@ -417,7 +437,32 @@ public class ContentService {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
             }
         }
-        if (userId != null && STATUS_PUBLISHED.equals(c.getStatus())) {
+        return buildContentViewVO(c, id, userId);
+    }
+
+    /** 知识库文件是否可被该用户查看：作者本人，或内容所在知识库为公开/当前用户已订阅 */
+    private boolean canViewKnowledgeContent(Content c, Long userId) {
+        if (c == null || !TYPE_KNOWLEDGE.equals(c.getType())) return false;
+        if (userId != null && userId.equals(c.getUserId())) return true;
+        List<KnowledgeBaseContent> kbcList = knowledgeBaseContentMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseContent>().eq(KnowledgeBaseContent::getContentId, c.getId()));
+        if (kbcList.isEmpty()) return false;
+        List<Long> kbIds = kbcList.stream().map(KnowledgeBaseContent::getKnowledgeBaseId).distinct().collect(Collectors.toList());
+        for (Long kbId : kbIds) {
+            KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+            if (kb == null) continue;
+            if (KB_VISIBILITY_PUBLIC.equals(kb.getVisibility())) return true;
+            if (userId != null && userId.equals(kb.getUserId())) return true;
+            if (userId != null && knowledgeBaseFavoriteMapper.selectCount(
+                    new LambdaQueryWrapper<KnowledgeBaseFavorite>()
+                            .eq(KnowledgeBaseFavorite::getUserId, userId)
+                            .eq(KnowledgeBaseFavorite::getKnowledgeBaseId, kbId)) > 0) return true;
+        }
+        return false;
+    }
+
+    private ContentViewVO buildContentViewVO(Content c, Long id, Long userId) {
+        if (userId != null && (STATUS_PUBLISHED.equals(c.getStatus()) || TYPE_KNOWLEDGE.equals(c.getType()))) {
             long exists = contentViewMapper.selectCount(
                     new LambdaQueryWrapper<ContentView>()
                             .eq(ContentView::getUserId, userId)
@@ -535,6 +580,11 @@ public class ContentService {
         c.setUpdatedAt(LocalDateTime.now());
         contentMapper.updateById(c);
         notifySearchServiceIndex(c);
+        try {
+            kbVectorService.refreshEmbeddingsForContent(c.getId());
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(ContentService.class).warn("发布后刷新知识库向量失败 contentId={}", c.getId(), e);
+        }
         PublishResponse res = new PublishResponse();
         res.setId(c.getId());
         res.setTitle(c.getTitle());
@@ -637,6 +687,11 @@ public class ContentService {
             contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, c.getId()));
             if (TYPE_KNOWLEDGE.equals(c.getType())) {
                 syncContentReferences(c.getId(), body);
+            }
+            try {
+                kbVectorService.refreshEmbeddingsForContent(c.getId());
+            } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(ContentService.class).warn("保存草稿后刷新知识库向量失败 contentId={}", c.getId(), e);
             }
         } else {
             // 新建草稿：正文不能为空
@@ -856,6 +911,21 @@ public class ContentService {
                 new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getSourceContentId, contentId));
         contentReferenceMapper.delete(
                 new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getTargetContentId, contentId));
+    }
+
+    /** 删除自己的博客/内容：仅本人可删，关联表由 DB CASCADE 清理 */
+    public void deleteContent(Long userId, Long contentId) {
+        if (userId == null || contentId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数不能为空");
+        }
+        Content c = contentMapper.selectById(contentId);
+        if (c == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
+        }
+        if (!userId.equals(c.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权删除该内容");
+        }
+        contentMapper.deleteById(contentId);
     }
 
     /** 按名称查询标签，不存在则插入（is_main=0）并返回 id */

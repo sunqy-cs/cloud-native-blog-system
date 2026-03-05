@@ -37,6 +37,8 @@ export interface ContentsMeParams {
   q?: string
   /** 按专栏 ID 筛选（博客页 HOME=不传，点专栏=传该专栏 id，便于扩展按用户后也可用） */
   columnId?: number
+  /** 内容类型：BLOG-仅博客（内容管理用），KNOWLEDGE-仅知识库；不传默认 BLOG */
+  type?: 'BLOG' | 'KNOWLEDGE'
 }
 
 /** 创作者中心：当前用户内容汇总统计及昨日增长 */
@@ -61,6 +63,11 @@ export function getContentMeStats(): Promise<ContentMeStats> {
  */
 export function getContentsMe(params?: ContentsMeParams): Promise<ContentsMeResponse> {
   return request.get('contents/me', { params }).then((data) => data as unknown as ContentsMeResponse)
+}
+
+/** 删除自己的博客/内容（仅本人可删） */
+export function deleteContent(id: number): Promise<void> {
+  return request.delete(`contents/${id}`) as Promise<void>
 }
 
 /** 公开推荐列表参数（推荐页顶区与各主标签栏；传 userId 即「TA的博客」，userIds 即「关注流」） */

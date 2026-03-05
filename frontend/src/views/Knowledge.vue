@@ -68,17 +68,29 @@
           </button>
           <div class="knowledge-main-divider" />
           <section class="knowledge-section">
-            <h2 class="knowledge-section-title">历史记录</h2>
-            <p v-if="qaHistory.length === 0" class="knowledge-search-no-result">暂无搜索记录</p>
+            <h2 class="knowledge-section-title">历史对话</h2>
+            <button type="button" class="knowledge-qa-new-chat" @click="startNewConversation">
+              + 新对话
+            </button>
+            <p v-if="qaConversations.length === 0" class="knowledge-search-no-result">暂无对话</p>
             <ul v-else class="knowledge-my-list">
               <li
-                v-for="item in qaHistory"
-                :key="item.id"
+                v-for="c in qaConversations"
+                :key="c.id"
                 class="knowledge-my-item knowledge-qa-history-item"
-                @click="applyHistoryQuery(item)"
+                :class="{ active: currentConversationId === c.id }"
+                @click="loadConversation(c.id)"
               >
                 <el-icon class="knowledge-my-icon"><Search /></el-icon>
-                <span class="knowledge-my-name knowledge-qa-history-query">{{ item.query }}</span>
+                <span class="knowledge-my-name knowledge-qa-history-query">{{ c.title || '未命名对话' }}</span>
+                <button
+                  type="button"
+                  class="knowledge-qa-history-delete"
+                  title="删除对话"
+                  @click.stop="deleteConversation(c.id)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </button>
               </li>
             </ul>
           </section>
@@ -135,9 +147,9 @@
           <div class="knowledge-search-row">
             <div class="knowledge-search-inner">
               <el-icon class="knowledge-search-icon"><Search /></el-icon>
-              <input
+            <input
                 v-model="leftSearchQuery"
-                type="text"
+              type="text"
                 class="knowledge-search-input"
                 placeholder="搜索知识库/文件"
                 autocomplete="off"
@@ -711,7 +723,7 @@
         <span class="knowledge-create-footer">
           <el-button @click="editKbDialogVisible = false">取消</el-button>
           <el-button type="primary" class="knowledge-create-submit" @click="submitEditKb">保存</el-button>
-        </span>
+              </span>
       </template>
     </el-dialog>
 
@@ -779,7 +791,7 @@
         <span class="knowledge-create-footer">
           <el-button @click="createKbDialogVisible = false">取消</el-button>
           <el-button type="primary" class="knowledge-create-submit" @click="submitCreateKb">确定</el-button>
-        </span>
+              </span>
       </template>
     </el-dialog>
 
@@ -797,6 +809,18 @@
             <span>加载图谱…</span>
           </div>
           <div ref="graphContainerRef" class="knowledge-graph-container" />
+          <!-- 图谱缩放工具栏：居中与缩放 -->
+          <div v-if="!graphLoading && graphData?.nodes?.length" class="knowledge-graph-toolbar">
+            <button type="button" class="knowledge-graph-toolbar-btn" title="适应画布（居中并缩放以完整显示）" @click="graphFitView">
+              适应画布
+            </button>
+            <button type="button" class="knowledge-graph-toolbar-btn" title="放大" @click="graphZoomIn">
+              放大
+            </button>
+            <button type="button" class="knowledge-graph-toolbar-btn" title="缩小" @click="graphZoomOut">
+              缩小
+            </button>
+          </div>
         </div>
       </div>
       <!-- 问答模式：GPT 风格对话 -->
@@ -809,7 +833,7 @@
           <template v-if="qaMessages.length === 0">
             <div class="knowledge-qa-welcome">
               <p>输入你的问题，我会基于知识库内容为你解答。</p>
-              <p class="knowledge-qa-welcome-hint">左侧将显示历史提问记录</p>
+              <p class="knowledge-qa-welcome-hint">左侧为历史对话，点击可加载；点击「新对话」开始新会话</p>
             </div>
           </template>
           <template v-else>
@@ -821,34 +845,81 @@
             >
               <div class="knowledge-qa-msg">
                 <template v-if="msg.role === 'assistant'">
-                  <div class="knowledge-qa-avatar knowledge-qa-avatar-bot">AI</div>
-                  <div class="knowledge-qa-bubble knowledge-qa-bubble-assistant">{{ msg.content }}</div>
+                  <div class="knowledge-qa-bubble knowledge-qa-bubble-assistant">
+                    <template v-if="qaLoading && i === qaMessages.length - 1 && !qaDisplayContent(i)">
+                      <div class="knowledge-qa-typing">
+                        <span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span>
+                      </div>
+                    </template>
+                    <div v-else-if="qaDisplayContent(i)" class="knowledge-qa-markdown" v-html="renderQAMarkdown(qaDisplayContent(i)!)" />
+                  </div>
                 </template>
                 <template v-else>
                   <div class="knowledge-qa-bubble knowledge-qa-bubble-user">{{ msg.content }}</div>
-                  <div class="knowledge-qa-avatar knowledge-qa-avatar-user">我</div>
+                  <div class="knowledge-qa-avatar knowledge-qa-avatar-user">
+                    <img v-if="qaUserAvatar" :src="qaUserAvatar" alt="" class="knowledge-qa-avatar-img" />
+                    <span v-else class="knowledge-qa-avatar-initial">{{ qaUserInitial }}</span>
+                  </div>
                 </template>
-              </div>
-            </div>
-            <div v-if="qaLoading" class="knowledge-qa-msg-wrap is-assistant">
-              <div class="knowledge-qa-msg">
-                <div class="knowledge-qa-avatar knowledge-qa-avatar-bot">AI</div>
-                <div class="knowledge-qa-bubble knowledge-qa-bubble-assistant knowledge-qa-typing">
-                  <span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span><span class="knowledge-qa-dot"></span>
-                </div>
               </div>
             </div>
           </template>
         </div>
         <div class="knowledge-qa-input-row">
-          <button
-            type="button"
-            class="knowledge-qa-add-kb"
-            title="添加知识库"
-            @click="onAddDropdownCommand('newKb')"
+          <el-popover
+            v-model:visible="qaKbSelectorVisible"
+            placement="top-start"
+            :width="320"
+            trigger="click"
           >
-            <el-icon><Plus /></el-icon>
-          </button>
+            <template #reference>
+              <button
+                type="button"
+                class="knowledge-qa-add-kb"
+                :title="qaRagSummary"
+              >
+                <el-icon><Plus /></el-icon>
+              </button>
+            </template>
+            <div class="knowledge-qa-kb-selector">
+              <p class="knowledge-qa-kb-selector-hint">选择用于检索的知识库（不选则不使用 RAG）</p>
+              <div class="knowledge-qa-kb-selector-option">
+                <el-checkbox v-model="qaUseAllKbs" @change="onQaUseAllChange">
+                  使用我的全部知识库和订阅
+                </el-checkbox>
+              </div>
+              <template v-if="!qaUseAllKbs">
+                <section class="knowledge-qa-kb-selector-section">
+                  <h4>我的知识库</h4>
+                  <ul>
+                    <li v-for="kb in graphMyKbList" :key="kb.id">
+                      <el-checkbox
+                        :model-value="qaSelectedKbIds.includes(Number(kb.id))"
+                        @change="(v: unknown) => toggleQaKb(Number(kb.id), !!v)"
+                      >
+                        {{ kb.name || '未命名' }}
+                      </el-checkbox>
+                    </li>
+                    <li v-if="graphMyKbList.length === 0" class="knowledge-qa-kb-selector-empty">暂无知识库</li>
+                  </ul>
+                </section>
+                <section class="knowledge-qa-kb-selector-section">
+                  <h4>我的订阅</h4>
+                  <ul>
+                    <li v-for="sub in mySubscriptionsFiltered" :key="sub.id">
+                      <el-checkbox
+                        :model-value="qaSelectedKbIds.includes(Number(sub.id))"
+                        @change="(v: unknown) => toggleQaKb(Number(sub.id), !!v)"
+                      >
+                        {{ sub.name || '未命名' }}
+                      </el-checkbox>
+                    </li>
+                    <li v-if="mySubscriptionsFiltered.length === 0" class="knowledge-qa-kb-selector-empty">暂无订阅</li>
+                  </ul>
+                </section>
+              </template>
+            </div>
+          </el-popover>
           <textarea
             v-model="qaInput"
             class="knowledge-qa-input"
@@ -866,8 +937,8 @@
           </button>
         </div>
       </div>
-      <!-- 知识库文件编辑：工具栏 + 正文 + 右侧入链/出链面板 -->
-      <div v-else-if="selectedContentId != null && isKnowledgeEditor" class="knowledge-main-editor">
+      <!-- 知识库文件编辑：仅自己的知识库显示工具栏与编辑，他人知识库走下方阅读器 -->
+      <div v-else-if="selectedContentId != null && showKnowledgeEditor" class="knowledge-main-editor">
         <div v-if="knowledgeEditLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>加载中…</span>
@@ -926,7 +997,7 @@
               <span class="knowledge-tool-label">任务列表</span>
             </button>
             <button type="button" class="knowledge-tool-btn" @click="kbOnInsertBefore">
-              <el-icon><Top /></el-icon>
+                  <el-icon><Top /></el-icon>
               <span class="knowledge-tool-label">前插入行</span>
             </button>
             <button type="button" class="knowledge-tool-btn" @click="kbOnInsertAfter">
@@ -995,12 +1066,12 @@
             </el-dropdown>
             <button type="button" class="knowledge-editor-close" title="关闭" @click="selectedContentId = null">
               <el-icon><Close /></el-icon>
-            </button>
-            </div>
+                </button>
+              </div>
             <div class="knowledge-editor-paper" @mousedown="onKbPaperMouseDown" @click.capture="onKbPaperClick">
               <div ref="kbVditorRef" class="vditor-wrap"></div>
             </div>
-            </div>
+          </div>
             <LinkPanel
               floating
               can-edit-body
@@ -1012,11 +1083,11 @@
               @insert-outlink="onInsertOutlink"
               @remove-outlink="onRemoveOutlink"
             />
-          </div>
+        </div>
         </template>
       </div>
-      <!-- 文章阅读区：选中博客时显示，右侧可折叠入链/出链面板（博客仅入链） -->
-      <div v-else-if="selectedContentId != null" class="knowledge-main-reader">
+      <!-- 文章阅读区：选中博客或他人知识库文件时显示（只读），右侧可折叠入链/出链面板 -->
+      <div v-else-if="selectedContentId != null && !showKnowledgeEditor" class="knowledge-main-reader">
         <div v-if="mainArticleLoading" class="knowledge-main-loading">
           <el-icon class="is-loading"><Loading /></el-icon>
           <span>加载中…</span>
@@ -1105,7 +1176,7 @@
             >
               <div class="knowledge-list-card-cover">
                 <img v-if="kb.cover" :src="kb.cover" :alt="kb.name" />
-              </div>
+                </div>
               <div class="knowledge-list-card-body">
                 <h3 class="knowledge-list-card-title">{{ kb.name }}</h3>
                 <p v-if="kb.description" class="knowledge-list-card-desc">{{ kb.description }}</p>
@@ -1114,12 +1185,12 @@
                   <span>{{ kb.contentCount ?? 0 }} 内容</span>
                   <span v-if="kb.subscribed" class="knowledge-list-card-subscribed">已订阅</span>
                 </div>
-              </div>
+            </div>
             </li>
           </ul>
           <div v-if="listTotal > listPageSize" class="knowledge-list-pagination">
-            <button
-              type="button"
+              <button
+                type="button"
               class="knowledge-list-page-btn"
               :disabled="listQuery.page <= 1"
               @click="listQuery.page = Math.max(1, listQuery.page - 1); loadPopularList()"
@@ -1134,10 +1205,10 @@
               @click="listQuery.page += 1; loadPopularList()"
             >
               下一页
-            </button>
-          </div>
+              </button>
+            </div>
         </template>
-      </div>
+        </div>
       <div v-else class="knowledge-main-placeholder">
         点击左侧收录的文章标题，在此处阅读；或点击「热门知识库」浏览、搜索知识库
       </div>
@@ -1160,6 +1231,8 @@ import { getMe, getUserById, type UserMe } from '@/api/user'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
 import { getColumnsMe } from '@/api/column'
+import { ragChatStream, getRagConversations, getRagConversationMessages, deleteRagConversation, type RagConversationItem, type RagMessageItem } from '@/api/ai'
+import { marked } from 'marked'
 import LinkPanel from '@/components/LinkPanel.vue'
 import {
   getCollectionFoldersMe,
@@ -1232,40 +1305,43 @@ const mySubscriptionsFiltered = computed(() => {
   return list.filter((kb) => matchKbKeyword(kb, q))
 })
 
-/** 我的知识库列表：过滤后若为空且从未创建过知识库则显示占位「默认知识库」 */
-const myKnowledgeBasesWithDefaultFiltered = computed(() => {
-  const list = myKnowledgeBasesFiltered.value
-  if (myKnowledgeBases.value.length === 0 && list.length === 0) {
-    return [{ id: 'default', name: '默认知识库', description: '默认创建的知识库，可在此收录文章与文件。', visibility: 'PRIVATE' as const }]
-  }
-  return list
-})
+/** 我的知识库列表：仅展示接口返回的列表，无数据时不显示占位（数据库无「默认知识库」） */
+const myKnowledgeBasesWithDefaultFiltered = computed(() => myKnowledgeBasesFiltered.value)
 const selectedKb = ref<KnowledgeBaseItem | null>(null)
 const selectedKbSource = ref<'mine' | 'sub' | null>(null)
 /** 从路由恢复正文时暂存 contentId，等 detailContents 加载后再选中 */
 const pendingRestoreContentId = ref<number | null>(null)
 
-const isOwnDetail = computed(() => selectedKbSource.value === 'mine')
+/** 当前选中的知识库是否属于当前用户（用于显示编辑/删除/添加 vs 订阅，以及是否显示笔记编辑工具栏） */
+const isOwnDetail = computed(() => {
+  const kb = selectedKb.value
+  const myId = userStore.userInfo?.id
+  return kb?.ownerId != null && myId != null && kb.ownerId === myId
+})
 const isDefaultKb = computed(() => selectedKb.value?.id === 'default')
 
-/** 详情作者头像：自己的知识库优先用当前用户头像，否则用知识库的 ownerAvatar */
+/** 他人知识库时按 ownerId 拉取的用户信息（用于头像、昵称展示） */
+const detailOwnerUser = ref<UserMe | null>(null)
+
+/** 详情作者头像：自己的用当前用户，他人的用知识库 ownerAvatar 或按 ownerId 拉取的用户 */
 const detailOwnerAvatar = computed(() => {
   const kb = selectedKb.value
   if (!kb) return ''
   if (selectedKbSource.value === 'mine') {
     return kb.ownerAvatar ?? (userStore.userInfo as { avatar?: string } | null)?.avatar ?? ''
   }
-  return kb.ownerAvatar ?? ''
+  return kb.ownerAvatar ?? detailOwnerUser.value?.avatar ?? ''
 })
 
-/** 详情作者昵称：自己的知识库优先用当前用户昵称，否则用知识库的 ownerName */
+/** 详情作者昵称：自己的用当前用户，他人的用知识库 ownerName 或按 ownerId 拉取的用户 */
 const detailOwnerName = computed(() => {
   const kb = selectedKb.value
   if (!kb) return '我'
   if (selectedKbSource.value === 'mine') {
     return kb.ownerName ?? userStore.userInfo?.nickname ?? userStore.userInfo?.username ?? '我'
   }
-  return kb.ownerName ?? '我'
+  const u = detailOwnerUser.value
+  return kb.ownerName ?? (u?.nickname || u?.username || '用户') ?? '用户'
 })
 const detailContents = ref<DetailContentItem[]>([])
 const detailBatchMode = ref(false)
@@ -1289,8 +1365,9 @@ const selectedDetailItem = computed(() =>
 const linkableContentsInKb = computed(() =>
   detailContents.value.filter((c) => c.id !== selectedContentId.value)
 )
-/** 是否为知识库类型：显示工具栏 + 纯 Markdown 编辑区 */
+/** 是否为知识库类型：仅在自己的知识库下显示工具栏与编辑，他人知识库的笔记走只读阅读器 */
 const isKnowledgeEditor = computed(() => selectedContentId.value != null && selectedDetailItem.value?.type === 'KNOWLEDGE')
+const showKnowledgeEditor = computed(() => isKnowledgeEditor.value && isOwnDetail.value)
 
 /** 知识库文件编辑：加载态、标题（保存用）、Vditor 实例（所见即所得，与创作中心一致） */
 const knowledgeEditLoading = ref(false)
@@ -1319,6 +1396,10 @@ const graphNodeRelSize = ref(6)
 /** force-graph 实例（库的 .d.ts 为 class，实际运行时为工厂函数，此处用接口避免类型报错） */
 interface GraphInstance {
   graphData(data: unknown): GraphInstance
+  width(): number
+  width(w: number): GraphInstance
+  height(): number
+  height(h: number): GraphInstance
   nodeRelSize(n: number): GraphInstance
   nodeLabel(accessor: (n: { name?: string }) => string): GraphInstance
   nodeColor(accessor: string | ((n: { name?: string }) => string)): GraphInstance
@@ -1327,6 +1408,9 @@ interface GraphInstance {
   linkDirectionalArrowLength(n: number): GraphInstance
   linkDirectionalArrowColor(accessor: string | (() => string)): GraphInstance
   backgroundColor(color?: string): GraphInstance
+  zoom(): number
+  zoom(scale: number, durationMs?: number): GraphInstance
+  centerAt(x?: number, y?: number, durationMs?: number): GraphInstance
   zoomToFit(durationMs?: number, padding?: number): GraphInstance
   onEngineStop(cb: () => void): GraphInstance
   onNodeClick(cb: (node: { id: number; name?: string }, event: MouseEvent) => void): GraphInstance
@@ -1335,6 +1419,8 @@ interface GraphInstance {
   _destructor(): void
 }
 const graphInstance = ref<GraphInstance | null>(null)
+/** 图谱容器尺寸监听，用于在销毁图谱时 disconnect */
+let graphResizeObserver: ResizeObserver | null = null
 
 /** 图谱外观：苹果风格默认 + 用户可调 */
 const graphBgColor = ref('#f5f5f7')
@@ -1389,42 +1475,145 @@ const qaMessages = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
 const qaInput = ref('')
 const qaLoading = ref(false)
 const qaListRef = ref<HTMLElement | null>(null)
+/** 默认不使用 RAG；+ 里可多选知识库或选「全部」 */
+const qaUseAllKbs = ref(false)
+const qaSelectedKbIds = ref<number[]>([])
+const qaKbSelectorVisible = ref(false)
+/** 当前助手回复的流式追加内容，用于触发 Vue 响应式更新显示 */
+const qaStreamingContent = ref('')
+/** 历史对话列表（从后端加载），点开加载该会话 */
+const qaConversations = ref<RagConversationItem[]>([])
+const currentConversationId = ref<number | null>(null)
+const qaConversationsLoading = ref(false)
 
-const QA_HISTORY_KEY = 'knowledge-qa-history'
-const QA_HISTORY_MAX = 50
-interface QAHistoryItem {
-  id: string
-  query: string
-  createdAt: number
+/** 用户头像 URL（store 中 userInfo 可能含 avatar） */
+const qaUserAvatar = computed(() => (userStore.userInfo as { avatar?: string } | null)?.avatar ?? '')
+/** 用户头像展示用首字 */
+const qaUserInitial = computed(() => {
+  const u = userStore.userInfo
+  if (u?.nickname?.trim()) return (u.nickname as string).trim().slice(0, 1)
+  if (u?.username?.trim()) return (u.username as string).trim().slice(0, 1)
+  return '我'
+})
+
+/** 当前要展示的助手消息正文（含流式追加），用于单气泡 + 实时 Markdown */
+function qaDisplayContent(index: number): string {
+  const list = qaMessages.value
+  if (index < 0 || index >= list.length) return ''
+  const msg = list[index]
+  if (msg.role !== 'assistant') return ''
+  const base = msg.content || ''
+  const isLast = index === list.length - 1
+  const stream = isLast && qaLoading.value ? qaStreamingContent.value : ''
+  return base + stream
 }
-const qaHistory = ref<QAHistoryItem[]>([])
 
-function loadQAHistory() {
+/** AI 回复 Markdown 转 HTML（仅用于自家后端内容）；流式时对不完整标题语法做补全以便实时渲染 */
+function renderQAMarkdown(text: string): string {
+  if (!text?.trim()) return ''
   try {
-    const raw = localStorage.getItem(QA_HISTORY_KEY)
-    const list = raw ? (JSON.parse(raw) as QAHistoryItem[]) : []
-    qaHistory.value = Array.isArray(list) ? list.slice(0, QA_HISTORY_MAX) : []
+    let s = text.trim()
+    // 让流式中的 ###Word、##Word 等能实时渲染为标题（补空格）
+    s = s.replace(/^(#{1,6})(?=[^\s#])/gm, '$1 ')
+    return marked.parse(s, { gfm: true, breaks: true }) as string
   } catch {
-    qaHistory.value = []
+    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
 }
 
-function saveQAHistory() {
+async function loadQAConversations() {
+  const uid = userStore.userInfo?.id
+  if (!uid) return
+  qaConversationsLoading.value = true
   try {
-    localStorage.setItem(QA_HISTORY_KEY, JSON.stringify(qaHistory.value.slice(0, QA_HISTORY_MAX)))
-  } catch {}
+    qaConversations.value = await getRagConversations(uid)
+  } catch {
+    qaConversations.value = []
+  } finally {
+    qaConversationsLoading.value = false
+  }
 }
 
-function addQAHistoryItem(query: string) {
-  const q = query.trim()
-  if (!q) return
-  const item: QAHistoryItem = { id: String(Date.now()), query: q, createdAt: Date.now() }
-  qaHistory.value = [item, ...qaHistory.value.filter((h) => h.query !== q)].slice(0, QA_HISTORY_MAX)
-  saveQAHistory()
+async function loadConversation(conversationId: number) {
+  const uid = userStore.userInfo?.id
+  if (!uid) return
+  currentConversationId.value = conversationId
+  try {
+    const list = await getRagConversationMessages(uid, conversationId)
+    qaMessages.value = list.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    nextTick(() => scrollQAToBottom())
+  } catch {
+    ElMessage.error('加载对话失败')
+  }
+}
+
+function startNewConversation() {
+  currentConversationId.value = null
+  qaMessages.value = []
+}
+
+/** 删除会话：调用接口后刷新列表，若删的是当前会话则清空右侧 */
+async function deleteConversation(conversationId: number) {
+  const uid = userStore.userInfo?.id
+  if (uid == null) return
+  try {
+    await deleteRagConversation(uid, conversationId)
+    if (currentConversationId.value === conversationId) {
+      currentConversationId.value = null
+      qaMessages.value = []
+    }
+    await loadQAConversations()
+    ElMessage.success('已删除')
+  } catch {
+    ElMessage.error('删除失败')
+  }
+}
+
+/** 当前 RAG 范围摘要（用于 + 按钮 title） */
+const qaRagSummary = computed(() => {
+  if (qaUseAllKbs.value) return '使用全部知识库与订阅'
+  if (qaSelectedKbIds.value.length === 0) return '选择知识库（默认不使用 RAG）'
+  return `已选 ${qaSelectedKbIds.value.length} 个知识库`
+})
+
+/** 发送时用的 kbIds：全部则合并我的+订阅，否则用已选列表 */
+const qaEffectiveKbIds = computed(() => {
+  if (qaUseAllKbs.value) {
+    const mine = graphMyKbList.value.map((kb) => Number(kb.id))
+    const sub = mySubscriptionsFiltered.value.map((s) => Number(s.id))
+    return [...mine, ...sub]
+  }
+  return qaSelectedKbIds.value
+})
+
+function onQaUseAllChange() {
+  if (qaUseAllKbs.value) qaSelectedKbIds.value = []
+}
+
+function toggleQaKb(id: number, checked: boolean) {
+  if (checked) {
+    if (!qaSelectedKbIds.value.includes(id)) qaSelectedKbIds.value = [...qaSelectedKbIds.value, id]
+  } else {
+    qaSelectedKbIds.value = qaSelectedKbIds.value.filter((x) => x !== id)
+  }
+  qaUseAllKbs.value = false
 }
 
 function enterQAMode() {
   showQAMode.value = true
+  showGraphMode.value = false
+  loadQAConversations()
+  // 从图谱切到问答时清理图谱状态，避免下次再进图谱残留
+  if (graphInstance.value) {
+    graphResizeObserver?.disconnect()
+    graphResizeObserver = null
+    graphInstance.value._destructor()
+    graphInstance.value = null
+  }
+  graphKbId.value = null
+  graphKbSource.value = null
+  graphData.value = null
+  nextTick(() => syncRouteQuery())
 }
 
 function exitQAMode() {
@@ -1450,6 +1639,8 @@ function exitGraphMode() {
   graphKbSource.value = null
   graphData.value = null
   if (graphInstance.value) {
+    graphResizeObserver?.disconnect()
+    graphResizeObserver = null
     graphInstance.value._destructor()
     graphInstance.value = null
   }
@@ -1542,6 +1733,28 @@ function applyGraphLayoutParams(instance: GraphInstance) {
   }
 }
 
+/** 图谱：适应画布（居中并缩放以完整显示） */
+function graphFitView() {
+  const g = graphInstance.value
+  if (g) g.zoomToFit(300, 80)
+}
+
+/** 图谱：放大 */
+function graphZoomIn() {
+  const g = graphInstance.value
+  if (!g) return
+  const k = g.zoom()
+  g.zoom(k * 1.35, 200)
+}
+
+/** 图谱：缩小 */
+function graphZoomOut() {
+  const g = graphInstance.value
+  if (!g) return
+  const k = g.zoom()
+  g.zoom(k * 0.75, 200)
+}
+
 function applyGraphParams(instance: GraphInstance) {
   applyGraphVisualParams(instance)
   applyGraphLayoutParams(instance)
@@ -1568,6 +1781,8 @@ function onGraphNodeClick(node: { id: number; name?: string }) {
   selectedKbSource.value = source
   // 离开图谱时销毁力导向图实例，否则再次进入图谱会复用已卸载的 DOM 导致黑屏
   if (graphInstance.value) {
+    graphResizeObserver?.disconnect()
+    graphResizeObserver = null
     graphInstance.value._destructor()
     graphInstance.value = null
   }
@@ -1593,6 +1808,10 @@ function initOrUpdateGraph() {
     // force-graph 为工厂函数：ForceGraph() 返回图表构造函数，再传入容器
     const instance = ((ForceGraph as unknown as () => (el: HTMLElement) => GraphInstance)())(container)
     graphInstance.value = instance
+    // 按容器尺寸设置画布，避免默认 window 尺寸导致画布只显示一部分、图偏右
+    const w = container.offsetWidth || 800
+    const h = container.offsetHeight || 600
+    instance.width(w).height(h)
     instance
       .graphData(data)
       .backgroundColor(graphBgColor.value)
@@ -1614,9 +1833,13 @@ function initOrUpdateGraph() {
             targetHasXY: first.target && 'x' in first.target && 'y' in first.target,
           })
         }
-        // 延迟一帧再 zoomToFit，确保画布尺寸已稳定，并用较大 padding 让整图更居中
+        // 延迟多帧 + 短时延再 zoomToFit，确保容器尺寸已稳定，避免图偏右/显示不全
         requestAnimationFrame(() => {
-          instance.zoomToFit(400, 80)
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              instance.zoomToFit(400, 80)
+            }, 120)
+          })
         })
       })
     const linkForce = instance.d3Force('link')
@@ -1630,6 +1853,16 @@ function initOrUpdateGraph() {
     if (chargeForce && typeof (chargeForce as { strength: (v: number) => void }).strength === 'function') {
       (chargeForce as { strength: (v: number) => void }).strength(graphCharge.value)
     }
+    // 容器尺寸变化时更新画布宽高，保证画布始终铺满显示区域
+    graphResizeObserver?.disconnect()
+    graphResizeObserver = new ResizeObserver(() => {
+      if (!graphContainerRef.value || !graphInstance.value) return
+      const c = graphContainerRef.value
+      const nw = c.offsetWidth
+      const nh = c.offsetHeight
+      if (nw > 0 && nh > 0) graphInstance.value.width(nw).height(nh)
+    })
+    graphResizeObserver.observe(container)
   } else {
     graphInstance.value.graphData(data)
     applyGraphParams(graphInstance.value)
@@ -1667,19 +1900,48 @@ watch(
 async function sendQAMessage() {
   const text = qaInput.value.trim()
   if (!text || qaLoading.value) return
+  const userStore = useUserStore()
+  if (!userStore.isLoggedIn || !userStore.userInfo?.id) {
+    ElMessage.warning('请先登录')
+    return
+  }
   qaInput.value = ''
   qaMessages.value.push({ role: 'user', content: text })
-  addQAHistoryItem(text)
+  qaMessages.value.push({ role: 'assistant', content: '' })
+  qaStreamingContent.value = ''
   qaLoading.value = true
+  const hadConversationId = currentConversationId.value != null
   nextTick(() => scrollQAToBottom())
-  // 占位回复（后续可接真实 RAG 接口）
-  await new Promise((r) => setTimeout(r, 600))
-  qaMessages.value.push({
-    role: 'assistant',
-    content: '基于知识库的智能问答功能即将上线，敬请期待。您刚才的问题是：「' + text + '」',
-  })
-  qaLoading.value = false
-  nextTick(() => scrollQAToBottom())
+  const kbIds = qaEffectiveKbIds.value
+  await ragChatStream(
+    { conversationId: currentConversationId.value ?? undefined, kbIds: kbIds.length > 0 ? kbIds : undefined, question: text },
+    {
+      onChunk(t) {
+        qaStreamingContent.value += t
+        nextTick(() => scrollQAToBottom())
+      },
+      onDone() {
+        const last = qaMessages.value[qaMessages.value.length - 1]
+        if (last && last.role === 'assistant') last.content = qaStreamingContent.value
+        qaStreamingContent.value = ''
+        qaLoading.value = false
+        if (!hadConversationId) {
+          loadQAConversations().then(() => {
+            if (qaConversations.value.length > 0) currentConversationId.value = qaConversations.value[0].id
+          })
+        }
+        nextTick(() => scrollQAToBottom())
+      },
+      onError(err) {
+        const last = qaMessages.value[qaMessages.value.length - 1]
+        if (last && last.role === 'assistant') last.content = qaStreamingContent.value || '回答出错：' + err
+        qaStreamingContent.value = ''
+        qaLoading.value = false
+        ElMessage.error(err)
+        nextTick(() => scrollQAToBottom())
+      },
+    }
+  )
 }
 
 function scrollQAToBottom() {
@@ -1687,10 +1949,6 @@ function scrollQAToBottom() {
     const el = qaListRef.value
     if (el) el.scrollTop = el.scrollHeight
   })
-}
-
-function applyHistoryQuery(item: QAHistoryItem) {
-  qaInput.value = item.query
 }
 
 /** 右侧「热门知识库/搜索结果」列表面板 */
@@ -1747,7 +2005,15 @@ watch(selectedKb, (kb, oldKb) => {
     detailSelectedIds.value = []
     selectedContentId.value = null
     mainArticle.value = null
+    detailOwnerUser.value = null
     return
+  }
+  if (selectedKbSource.value !== 'mine' && kb.ownerId) {
+    getUserById(kb.ownerId)
+      .then((u) => { detailOwnerUser.value = u })
+      .catch(() => { detailOwnerUser.value = null })
+  } else {
+    detailOwnerUser.value = null
   }
   const prevId = oldKb?.id
   // 同一知识库不重复加载；但有 pendingRestoreContentId 时（从图谱点节点进来）必须加载一次以恢复选中
@@ -1775,7 +2041,7 @@ watch(selectedContentId, (id) => {
     return
   }
   const item = detailContents.value.find((c) => c.id === id)
-  if (item?.type === 'KNOWLEDGE') {
+  if (item?.type === 'KNOWLEDGE' && isOwnDetail.value) {
     loadKnowledgeForEdit(id)
   } else {
     loadMainArticle(id)
@@ -1841,6 +2107,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentCaptureClick, true)
   destroyKbVditor()
+  graphResizeObserver?.disconnect()
+  graphResizeObserver = null
   if (graphInstance.value) {
     graphInstance.value._destructor()
     graphInstance.value = null
@@ -1922,7 +2190,8 @@ async function loadDetailContents(kbId: string) {
     }
     // 显式加载正文，避免仅依赖 watch(selectedContentId) 时因时序未触发或未拿到 detailContents
     const item = detailContents.value.find((c) => Number(c.id) === numRestore)
-    if (item?.type === 'KNOWLEDGE') {
+    const isOwner = detailRes != null && Number(detailRes.ownerId) === userStore.userInfo?.id
+    if (item?.type === 'KNOWLEDGE' && isOwner) {
       loadKnowledgeForEdit(numRestore)
     } else {
       loadMainArticle(numRestore)
@@ -2408,7 +2677,6 @@ function syncRouteQuery() {
 }
 
 onMounted(async () => {
-  loadQAHistory()
   await Promise.all([loadMyKnowledgeBases(), loadMySubscriptions()])
   const q = route.query
   const kbId = typeof q.kb === 'string' ? q.kb.trim() : ''
@@ -4025,6 +4293,33 @@ async function submitCreateKb() {
   overflow: hidden;
 }
 
+/* 图谱缩放工具栏：左下角悬浮，不遮挡图谱中心 */
+.knowledge-graph-toolbar {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.knowledge-graph-toolbar-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  color: #1d1d1f;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.knowledge-graph-toolbar-btn:hover {
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
 .knowledge-graph-params-title {
   margin: 0 0 20px 0;
   font-size: 17px;
@@ -4253,23 +4548,23 @@ async function submitCreateKb() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
   width: 100%;
-  padding: 0 48px;
+  padding: 0 32px;
   background: #fafbfc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }
 
 .knowledge-qa-header {
   flex-shrink: 0;
-  padding: 28px 0 20px;
+  padding: 14px 0 12px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .knowledge-qa-title {
-  margin: 0 0 6px 0;
-  font-size: 20px;
+  margin: 0 0 4px 0;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: #1d1d1f;
@@ -4277,18 +4572,36 @@ async function submitCreateKb() {
 
 .knowledge-qa-desc {
   margin: 0;
-  font-size: 14px;
+  font-size: 12px;
   color: #6e6e73;
   font-weight: 400;
 }
 
 .knowledge-qa-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 28px 0 24px;
+  padding: 20px 0 20px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+  /* 滚动条美化 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.06);
+}
+.knowledge-qa-messages::-webkit-scrollbar {
+  width: 8px;
+}
+.knowledge-qa-messages::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+}
+.knowledge-qa-messages::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 4px;
+}
+.knowledge-qa-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
 }
 
 .knowledge-qa-welcome {
@@ -4320,31 +4633,91 @@ async function submitCreateKb() {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  max-width: 78%;
+  max-width: 90%;
 }
+/* 用户消息：气泡在左、头像在右，不反转 */
 .knowledge-qa-msg-wrap.is-user .knowledge-qa-msg {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .knowledge-qa-avatar {
   flex-shrink: 0;
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-}
-.knowledge-qa-avatar-bot {
-  background: linear-gradient(145deg, #5e5ce6 0%, #7d7af7 100%);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(94, 92, 230, 0.25);
+  overflow: hidden;
 }
 .knowledge-qa-avatar-user {
   background: #e5e5ea;
   color: #1d1d1f;
+}
+.knowledge-qa-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.knowledge-qa-avatar-initial {
+  text-transform: uppercase;
+}
+.knowledge-qa-markdown {
+  white-space: normal;
+}
+.knowledge-qa-markdown :deep(p) { margin: 0 0 0.6em 0; }
+.knowledge-qa-markdown :deep(p:last-child) { margin-bottom: 0; }
+.knowledge-qa-markdown :deep(ul), .knowledge-qa-markdown :deep(ol) { margin: 0.4em 0; padding-left: 1.4em; }
+.knowledge-qa-markdown :deep(strong) { font-weight: 600; }
+.knowledge-qa-markdown :deep(code) { background: rgba(0,0,0,0.06); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.92em; }
+.knowledge-qa-markdown :deep(pre) { margin: 0.6em 0; overflow-x: auto; }
+.knowledge-qa-markdown :deep(pre code) { padding: 12px; display: block; background: rgba(0,0,0,0.05); border-radius: 8px; }
+.knowledge-qa-new-chat {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #bb1919;
+  background: rgba(187, 25, 25, 0.06);
+  border: 1px dashed rgba(187, 25, 25, 0.4);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.knowledge-qa-new-chat:hover {
+  background: rgba(187, 25, 25, 0.1);
+}
+.knowledge-my-item.knowledge-qa-history-item.active {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+}
+.knowledge-qa-history-item .knowledge-my-name {
+  flex: 1;
+  min-width: 0;
+}
+.knowledge-qa-history-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+.knowledge-qa-history-delete:hover {
+  background: rgba(245, 108, 108, 0.15);
+  color: #f56c6c;
+}
+.knowledge-qa-history-delete .el-icon {
+  font-size: 14px;
 }
 
 .knowledge-qa-bubble {
@@ -4420,6 +4793,46 @@ async function submitCreateKb() {
 
 .knowledge-qa-add-kb .el-icon {
   font-size: 22px;
+}
+
+.knowledge-qa-kb-selector {
+  padding: 4px 0;
+}
+.knowledge-qa-kb-selector-hint {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #6e6e73;
+}
+.knowledge-qa-kb-selector-option {
+  margin-bottom: 12px;
+}
+.knowledge-qa-kb-selector-section {
+  margin-top: 12px;
+}
+.knowledge-qa-kb-selector-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #86868b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.knowledge-qa-kb-selector-section ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.knowledge-qa-kb-selector-section li {
+  padding: 6px 0;
+}
+.knowledge-qa-kb-selector-section .el-checkbox {
+  width: 100%;
+}
+.knowledge-qa-kb-selector-empty {
+  font-size: 13px;
+  color: #86868b;
 }
 
 .knowledge-qa-input {

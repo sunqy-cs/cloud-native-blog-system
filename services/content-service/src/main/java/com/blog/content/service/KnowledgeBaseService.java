@@ -38,6 +38,7 @@ public class KnowledgeBaseService {
     private final ContentMapper contentMapper;
     private final ContentReferenceMapper contentReferenceMapper;
     private final ContentService contentService;
+    private final KbVectorService kbVectorService;
 
     public List<KnowledgeBaseVO> listMy(Long userId) {
         LambdaQueryWrapper<KnowledgeBase> q = new LambdaQueryWrapper<>();
@@ -238,6 +239,7 @@ public class KnowledgeBaseService {
                 .eq(KnowledgeBaseContent::getKnowledgeBaseId, id));
         knowledgeBaseFavoriteMapper.delete(new LambdaQueryWrapper<KnowledgeBaseFavorite>()
                 .eq(KnowledgeBaseFavorite::getKnowledgeBaseId, id));
+        kbVectorService.deleteByKbId(id);
         knowledgeBaseMapper.deleteById(id);
     }
 
@@ -268,6 +270,11 @@ public class KnowledgeBaseService {
         kbc.setKnowledgeBaseId(kbId);
         kbc.setContentId(contentId);
         knowledgeBaseContentMapper.insert(kbc);
+        try {
+            kbVectorService.indexContentForKb(kbId, contentId);
+        } catch (Exception e) {
+            org.slf4j.LoggerFactory.getLogger(KnowledgeBaseService.class).warn("为知识库内容建向量索引失败 kbId={} contentId={}", kbId, contentId, e);
+        }
     }
 
     @Transactional
@@ -283,6 +290,7 @@ public class KnowledgeBaseService {
         if (deleted == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该文章不在本知识库中");
         }
+        kbVectorService.deleteByKbAndContent(kbId, contentId);
         contentService.deleteAllReferencesForContent(contentId);
     }
 

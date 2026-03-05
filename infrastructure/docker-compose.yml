@@ -73,7 +73,29 @@ services:
       retries: 10
       start_period: 30s
 
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: pgvector-blog
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: blog
+      POSTGRES_PASSWORD: blog
+      POSTGRES_DB: blog_vector
+      TZ: Asia/Shanghai
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+      - ./postgres:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blog -d blog_vector"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   mysql-data:   # MySQL 数据；删除此卷后 up 会重新执行 init 脚本，user 表变空
   minio-data:
   es-data:      # Elasticsearch 索引与数据持久化
+  pgvector-data: # PostgreSQL + pgvector，用于 RAG 向量检索

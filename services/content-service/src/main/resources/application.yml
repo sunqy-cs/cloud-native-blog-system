@@ -14,6 +14,8 @@ spring:
         ip: 127.0.0.1
         port: ${server.port}
   datasource:
+    # HikariCP 需 jdbc-url；url 保留给 Spring Boot 部分组件
+    jdbc-url: jdbc:mysql://localhost:3306/blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     url: jdbc:mysql://localhost:3306/blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
     password: root
@@ -26,7 +28,14 @@ mybatis-plus:
     db-config:
       id-type: auto
 
-# 互动服务地址，用于创作者统计昨日点赞数（服务间调用）；search-service 用于发布后建索引
+# 互动服务地址，用于创作者统计昨日点赞数（服务间调用）；search-service 用于发布后建索引；ai-service 用于 RAG 向量化
 app:
   interaction-service-url: http://localhost:8085
   search-service-url: http://localhost:8087
+  ai-service-url: http://localhost:8086
+  # PostgreSQL + pgvector（RAG 向量库），与 infrastructure/docker-compose 中 postgres 一致；HikariCP 要求用 jdbc-url
+  vector-datasource:
+    jdbc-url: jdbc:postgresql://localhost:5432/blog_vector
+    username: blog
+    password: blog
+    driver-class-name: org.postgresql.Driver

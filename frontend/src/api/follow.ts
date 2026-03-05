@@ -30,6 +30,20 @@ export function getRecommendedFollows(limit?: number): Promise<number[]> {
     .then((data) => (Array.isArray(data) ? data : []))
 }
 
+/** 影响力榜：粉丝数排行榜，返回用户 ID 列表（排除当前用户） */
+export function getLeaderboardInfluence(limit = 10): Promise<number[]> {
+  return request
+    .get<number[]>('follow/leaderboard/influence', { params: { limit } })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
+/** 成长力榜：近期涨粉排行榜，返回用户 ID 列表（排除当前用户） */
+export function getLeaderboardGrowth(limit = 10): Promise<number[]> {
+  return request
+    .get<number[]>('follow/leaderboard/growth', { params: { limit } })
+    .then((data) => (Array.isArray(data) ? data : []))
+}
+
 /**
  * 获取指定用户的关注统计（公开），用于他人个人主页展示
  */

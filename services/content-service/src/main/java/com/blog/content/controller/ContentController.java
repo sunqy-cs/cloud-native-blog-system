@@ -30,6 +30,7 @@ public class ContentController {
 
     private final ContentService contentService;
 
+    /** 我的内容列表：内容管理仅展示博客，不展示知识库文件（type 不传或 BLOG 时只查 BLOG） */
     @GetMapping("/me")
     public ResponseEntity<ContentsMeResponse> me(
             @RequestHeader(HEADER_USER_ID) Long userId,
@@ -40,10 +41,11 @@ public class ContentController {
             @RequestParam(required = false) String sortBy,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) Long columnId) {
+            @RequestParam(required = false) Long columnId,
+            @RequestParam(required = false) String type) {
         if (page < 1) page = 1;
         if (pageSize < 1 || pageSize > 100) pageSize = 10;
-        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, status, sortBy, order, q, columnId);
+        ContentsMeResponse res = contentService.listMyContents(userId, page, pageSize, visibility, status, sortBy, order, q, columnId, type);
         return ResponseEntity.ok(res);
     }
 
@@ -94,6 +96,15 @@ public class ContentController {
             @PathVariable Long id) {
         ContentDetailVO vo = contentService.getForEdit(userId, id);
         return ResponseEntity.ok(vo);
+    }
+
+    /** 删除自己的博客/内容（仅本人可删） */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id) {
+        contentService.deleteContent(userId, id);
+        return ResponseEntity.noContent().build();
     }
 
     /** 双链笔记：引用该内容的笔记列表（入链/反链） */

@@ -288,7 +288,7 @@
                     <td class="cm-col-action">
                       <span class="cm-action">数据</span>
                       <router-link :to="`/creator/write?id=${item.id}`" class="cm-action">编辑</router-link>
-                      <router-link :to="`/article/${item.id}`" class="cm-action">浏览</router-link>
+                      <button type="button" class="cm-action cm-action-danger" @click="confirmDeleteContent(item)">删除</button>
                     </td>
                   </tr>
                 </tbody>
@@ -494,7 +494,9 @@
             </button>
           </div>
           <div class="ranking-list">
+            <div v-if="rankingLoading" class="ranking-empty">加载中…</div>
             <div
+              v-else
               v-for="(item, index) in rankingList"
               :key="item.id"
               class="ranking-item"
@@ -508,7 +510,8 @@
                 <span class="ranking-name">{{ item.name }}</span>
                 <span class="ranking-desc">{{ item.desc }}</span>
               </div>
-              <button type="button" class="ranking-follow">+ 关注</button>
+              <button v-if="!item.following" type="button" class="ranking-follow" @click="onRankingFollow(item)">+ 关注</button>
+              <span v-else class="ranking-followed">已关注</span>
             </div>
             <div v-if="!rankingList.length" class="ranking-empty">暂无数据</div>
           </div>
@@ -709,12 +712,13 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete, MoreFilled } from '@element-plus/icons-vue'
-import { getContentMeStats, getContentsMe } from '@/api/content'
+import { getContentMeStats, getContentsMe, deleteContent } from '@/api/content'
 import type { ContentMeStats, ContentListItem } from '@/api/content'
 import { getCommentedArticles, getContentComments, setCommentHot, likeComment, unlikeComment, deleteComment as apiDeleteComment } from '@/api/comment'
 import type { CommentedArticle, CommentItem } from '@/api/comment'
-import { getFollowMe } from '@/api/follow'
+import { getFollowMe, getLeaderboardInfluence, getLeaderboardGrowth, followUser, checkFollow } from '@/api/follow'
 import type { FollowStats } from '@/api/follow'
+import { getUsersBatch } from '@/api/user'
 import { getColumnsMe, createColumn, updateColumn, deleteColumn, type ColumnItem } from '@/api/column'
 import { getMainTags, type TagItem } from '@/api/tag'
 import { getBlogBotsMe, createBlogBot, deleteBlogBot, type BlogBotItem } from '@/api/blogBot'
@@ -1240,6 +1244,7 @@ async function fetchCmList() {
       sortBy: cmSortBy.value,
       order: cmOrder.value,
       q: kw || undefined,
+      type: 'BLOG',
     })
     cmTotal.value = res.total
     cmList.value = res.list
@@ -1253,6 +1258,24 @@ function runCmSearch() {
   cmPage.value = 1
   fetchCmList()
 }
+
+/** 删除博客：确认后调用接口并刷新列表 */
+function confirmDeleteContent(item: ContentListItem) {
+  const title = item.title?.trim() || '未命名'
+  ElMessageBox.confirm(`确定要删除「${title}」吗？删除后不可恢复。`, '删除博客', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      await deleteContent(item.id)
+      ElMessage.success('已删除')
+      getContentsMe({ page: 1, pageSize: 1, type: 'BLOG' }).then((res) => { contentTotal.value = res.total }).catch(() => {})
+      fetchCmList()
+    })
+    .catch(() => {})
+}
+
 watch(cmPage, () => { fetchCmList() })
 async function fetchBotList() {
   if (!userStore.isLoggedIn) return
@@ -1313,6 +1336,7 @@ async function fetchBlogList() {
       visibility: blogVisibility.value,
       sortBy: blogSortBy.value,
       order: blogOrder.value,
+      type: 'BLOG',
     })
     blogList.value = res.list
     blogTotal.value = res.total
@@ -1342,32 +1366,100 @@ watch(blogPage, () => { fetchBlogList() })
 onMounted(() => {
   getContentMeStats().then((data) => { contentStats.value = data }).catch(() => {})
   getFollowMe().then((data) => { followStats.value = data }).catch(() => {})
-  getContentsMe({ page: 1, pageSize: 1 }).then((res) => { contentTotal.value = res.total }).catch(() => {})
+  getContentsMe({ page: 1, pageSize: 1, type: 'BLOG' }).then((res) => { contentTotal.value = res.total }).catch(() => {})
   if (route.path === '/creator/columns') fetchColumnList()
   if (route.path === '/creator/comments') fetchCommentedArticles()
   if (route.path === '/creator/ai/blog') fetchBotList()
   fetchBlogList()
   if (route.path === '/creator/content') fetchCmList()
+  if (route.path === '/creator') fetchRankingInfluence()
 })
 
-// 排行榜 mock 数据，后续可接接口
-const influenceList = ref([
-  { id: 1, rank: 1, name: '创作者A', desc: '科技领域优质创作者', avatar: '' },
-  { id: 2, rank: 2, name: '创作者B', desc: '生活分享，干货满满', avatar: '' },
-  { id: 3, rank: 3, name: '创作者C', desc: '新知答主，深度解读', avatar: '' },
-  { id: 4, rank: 4, name: '创作者D', desc: '专注教育成长', avatar: '' },
-  { id: 5, rank: 5, name: '创作者E', desc: '互联网观察者', avatar: '' },
-])
-const growthList = ref([
-  { id: 11, rank: 1, name: '新星F', desc: '本周阅读增长突出', avatar: '' },
-  { id: 12, rank: 2, name: '新星G', desc: '点赞增速领先', avatar: '' },
-  { id: 13, rank: 3, name: '新星H', desc: '粉丝增长迅速', avatar: '' },
-  { id: 14, rank: 4, name: '新星I', desc: '内容质量提升快', avatar: '' },
-  { id: 15, rank: 5, name: '新星J', desc: '互动数据亮眼', avatar: '' },
-])
+// 排行榜：影响力榜 = 粉丝数排行，成长力榜 = 近期涨粉排行
+interface RankingItem {
+  id: number
+  rank: number
+  name: string
+  desc: string
+  avatar?: string
+  following?: boolean
+}
+const influenceList = ref<RankingItem[]>([])
+const growthList = ref<RankingItem[]>([])
+const rankingLoading = ref(false)
+
+async function fetchRankingInfluence() {
+  rankingLoading.value = true
+  try {
+    const ids = await getLeaderboardInfluence(10)
+    if (!ids.length) { influenceList.value = []; return }
+    const users = await getUsersBatch(ids)
+    const list: RankingItem[] = users.map((u, i) => ({
+      id: u.id,
+      rank: i + 1,
+      name: u.nickname || u.username || '用户',
+      desc: u.intro || '暂无简介',
+      avatar: u.avatar,
+      following: false,
+    }))
+    if (userStore.token && list.length > 0) {
+      const checks = await Promise.all(list.map((u) => checkFollow(u.id)))
+      list.forEach((u, i) => { u.following = checks[i]?.following ?? false })
+    }
+    influenceList.value = list
+  } catch {
+    influenceList.value = []
+  } finally {
+    rankingLoading.value = false
+  }
+}
+
+async function fetchRankingGrowth() {
+  rankingLoading.value = true
+  try {
+    const ids = await getLeaderboardGrowth(10)
+    if (!ids.length) { growthList.value = []; return }
+    const users = await getUsersBatch(ids)
+    const list: RankingItem[] = users.map((u, i) => ({
+      id: u.id,
+      rank: i + 1,
+      name: u.nickname || u.username || '用户',
+      desc: u.intro || '暂无简介',
+      avatar: u.avatar,
+      following: false,
+    }))
+    if (userStore.token && list.length > 0) {
+      const checks = await Promise.all(list.map((u) => checkFollow(u.id)))
+      list.forEach((u, i) => { u.following = checks[i]?.following ?? false })
+    }
+    growthList.value = list
+  } catch {
+    growthList.value = []
+  } finally {
+    rankingLoading.value = false
+  }
+}
+
+async function onRankingFollow(item: RankingItem) {
+  if (!userStore.token) { ElMessage.warning('请先登录'); return }
+  if (item.following) return
+  try {
+    await followUser(item.id)
+    item.following = true
+    ElMessage.success('关注成功')
+  } catch {
+    // 拦截器已提示
+  }
+}
+
 const rankingList = computed(() =>
   rankingTab.value === 'influence' ? influenceList.value : growthList.value
 )
+
+watch(rankingTab, (tab) => {
+  if (tab === 'influence') fetchRankingInfluence()
+  else fetchRankingGrowth()
+})
 
 const avatarUrl = computed(() => (userStore.userInfo as { avatar?: string })?.avatar || '')
 const avatarInitial = computed(() => {
@@ -1762,6 +1854,13 @@ const avatarInitial = computed(() => {
 }
 .cm-action:hover {
   color: #8b0000;
+}
+.cm-action.cm-action-danger {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 .cm-empty {
   padding: 48px 24px;
@@ -2491,6 +2590,12 @@ const avatarInitial = computed(() => {
 
 .ranking-follow:hover {
   color: #8b0000;
+}
+
+.ranking-followed {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #999;
 }
 
 .ranking-empty {

@@ -100,6 +100,12 @@ spring:
           predicates:
             - Path=/api/ai/**
           order: 3
+        # AI 服务：RAG 知识库问答（流式）
+        - id: ai-service-rag
+          uri: lb://ai-service
+          predicates:
+            - Path=/api/rag/**
+          order: 3
         # 博客服务（若有）
         - id: blog-service
           uri: lb://blog-service

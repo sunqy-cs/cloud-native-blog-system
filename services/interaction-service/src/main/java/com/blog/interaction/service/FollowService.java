@@ -65,6 +65,18 @@ public class FollowService {
         return ids;
     }
 
+    /** 影响力榜：粉丝数排行榜，含当前用户与粉丝数为 0 的用户 */
+    public List<Long> listLeaderboardInfluence(int limit, Long excludeUserId) {
+        if (limit <= 0) return List.of();
+        return followMapper.selectAllUserIdsByFollowerCountDesc(limit);
+    }
+
+    /** 成长力榜：近期（7 天）涨粉排行榜，含当前用户与涨粉为 0 的用户 */
+    public List<Long> listLeaderboardGrowth(int limit, Long excludeUserId) {
+        if (limit <= 0) return List.of();
+        return followMapper.selectAllUserIdsByRecentFollowerGrowthDesc(limit);
+    }
+
     /** 当前用户是否已关注指定用户（用于 visibility=FANS 的博客可见性校验） */
     public boolean isFollowing(Long followerId, Long followeeId) {
         if (followerId == null || followeeId == null) return false;
