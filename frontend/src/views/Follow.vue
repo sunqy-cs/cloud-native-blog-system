@@ -20,7 +20,7 @@
               <span class="follow-people-loading">加载中…</span>
             </template>
             <router-link
-              v-for="user in followedUsers"
+              v-for="user in followedUsersWithSelf"
               :key="user.id"
               :to="`/follow?user=${user.id}`"
               class="follow-people-item"
@@ -120,6 +120,7 @@ import { List, ArrowDown, CaretTop, ChatDotRound, Share, Star } from '@element-p
 import { getFollowList } from '@/api/follow'
 import { getUsersBatch } from '@/api/user'
 import { getContentsList, type ContentListItem } from '@/api/content'
+import { useUserStore } from '@/stores/user'
 import CreationCenter from '@/components/CreationCenter.vue'
 import HotSearch from '@/components/HotSearch.vue'
 import RecommendedFollows from '@/components/RecommendedFollows.vue'
@@ -178,6 +179,7 @@ function formatFeedCount(n: number): string {
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 const currentFeedId = ref('all')
 const followedUsers = ref<FollowedUser[]>([])
 const followeeIds = ref<number[]>([])
@@ -191,6 +193,20 @@ const feedLoadingMore = ref(false)
 const feedSentinelRef = ref<HTMLElement | null>(null)
 
 const hasMoreFeed = computed(() => feedList.value.length < feedTotal.value)
+
+/** 顶部关注条列表：自己 + 关注的人（已登录时自己在最前） */
+const followedUsersWithSelf = computed(() => {
+  const u = userStore.userInfo
+  if (!u?.id) return followedUsers.value
+  const self: FollowedUser = {
+    id: String(u.id),
+    name: u.nickname || u.username || '我',
+    avatar: u.avatar,
+    hasNew: false,
+  }
+  if (followedUsers.value.some((f) => f.id === self.id)) return followedUsers.value
+  return [self, ...followedUsers.value]
+})
 
 function setFeedId(id: string) {
   currentFeedId.value = id
@@ -225,10 +241,15 @@ async function loadFollowList() {
   }
 }
 
+/** 动态流要拉取的用户 ID：全部动态 = 自己 + 关注的人，单人 = 该用户 */
 function getFeedUserIds(): number[] {
-  if (currentFeedId.value === 'all') return followeeIds.value
+  const myId = userStore.userInfo?.id
+  if (currentFeedId.value === 'all') {
+    const ids = myId != null ? [myId, ...followeeIds.value] : followeeIds.value
+    return [...new Set(ids)]
+  }
   const id = Number(currentFeedId.value)
-  if (!Number.isFinite(id)) return followeeIds.value
+  if (!Number.isFinite(id)) return myId != null ? [myId, ...followeeIds.value] : followeeIds.value
   return [id]
 }
 
@@ -561,7 +582,6 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: cover;
   display: block;
-  vertical-align: middle;
 }
 
 .feed-cover-placeholder {

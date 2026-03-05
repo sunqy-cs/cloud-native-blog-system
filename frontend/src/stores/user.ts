@@ -6,7 +6,7 @@ const USER_KEY = 'blog_user'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref<string>(localStorage.getItem(TOKEN_KEY) || '')
-  let initialUser: { id?: number; username?: string; nickname?: string; role?: string } | null = null
+  let initialUser: { id?: number; username?: string; nickname?: string; role?: string; avatar?: string } | null = null
 try {
   const raw = localStorage.getItem(USER_KEY)
   initialUser = raw ? JSON.parse(raw) : null
