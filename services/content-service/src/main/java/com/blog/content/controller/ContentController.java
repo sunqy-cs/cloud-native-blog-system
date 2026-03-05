@@ -9,6 +9,7 @@ import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
 import com.blog.content.dto.UpdateContentTitleRequest;
+import com.blog.content.dto.AddContentReferenceRequest;
 import com.blog.content.service.ContentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -107,6 +108,54 @@ public class ContentController {
     public ResponseEntity<List<ContentListItemVO>> getOutlinks(@PathVariable Long id) {
         List<ContentListItemVO> list = contentService.getOutlinks(id);
         return ResponseEntity.ok(list);
+    }
+
+    /** 双链：添加出链（当前内容 → 目标内容），需认证 */
+    @PostMapping("/{id}/references")
+    public ResponseEntity<Void> addOutlink(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody AddContentReferenceRequest request) {
+        Long targetId = request != null ? request.getTargetId() : null;
+        if (targetId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        contentService.addOutlink(userId, id, targetId);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    /** 双链：删除出链，需认证 */
+    @DeleteMapping("/{id}/references/{targetId}")
+    public ResponseEntity<Void> deleteOutlink(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @PathVariable Long targetId) {
+        contentService.deleteOutlink(userId, id, targetId);
+        return ResponseEntity.ok().build();
+    }
+
+    /** 双链：添加入链（来源内容 → 当前内容），需认证 */
+    @PostMapping("/{id}/backlinks")
+    public ResponseEntity<Void> addBacklink(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @RequestBody AddContentReferenceRequest request) {
+        Long sourceId = request != null ? request.getSourceId() : null;
+        if (sourceId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        contentService.addBacklink(userId, sourceId, id);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    /** 双链：删除入链，需认证 */
+    @DeleteMapping("/{id}/backlinks/{sourceId}")
+    public ResponseEntity<Void> deleteBacklink(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id,
+            @PathVariable Long sourceId) {
+        contentService.deleteBacklink(userId, sourceId, id);
+        return ResponseEntity.ok().build();
     }
 
     @PatchMapping("/{id}")

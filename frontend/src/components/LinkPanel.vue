@@ -45,7 +45,10 @@
       </div>
       <div v-show="!collapsed" class="link-panel-body">
         <template v-if="activeTab === 'in'">
-          <h4 class="link-panel-section-title">链接当前文件</h4>
+          <div class="link-panel-section-head">
+            <h4 class="link-panel-section-title">链接当前文件</h4>
+            <button type="button" class="link-panel-btn-add" title="添加入链" @click="openAddBacklinkPicker">添加</button>
+          </div>
           <div v-if="backlinksLoading" class="link-panel-loading">加载中…</div>
           <p v-else-if="!backlinks.length" class="link-panel-empty">没有笔记链接</p>
           <ul v-else class="link-panel-list">
@@ -53,11 +56,15 @@
               <button type="button" class="link-panel-link" @click="$emit('open', item.id)">
                 {{ item.title || '[无标题]' }}
               </button>
+              <button type="button" class="link-panel-btn-del" title="删除入链" @click.stop="onDeleteBacklink(item.id)">删除</button>
             </li>
           </ul>
         </template>
         <template v-else-if="showOutlinks && activeTab === 'out'">
-          <h4 class="link-panel-section-title">当前文件链接到</h4>
+          <div class="link-panel-section-head">
+            <h4 class="link-panel-section-title">当前文件链接到</h4>
+            <button type="button" class="link-panel-btn-add" title="添加出链" @click="openAddOutlinkPicker">添加</button>
+          </div>
           <div v-if="outlinksLoading" class="link-panel-loading">加载中…</div>
           <p v-else-if="!outlinks.length" class="link-panel-empty">没有引出链接</p>
           <ul v-else class="link-panel-list">
@@ -65,6 +72,7 @@
               <button type="button" class="link-panel-link" @click="$emit('open', item.id)">
                 {{ item.title || '[无标题]' }}
               </button>
+              <button type="button" class="link-panel-btn-del" title="删除出链" @click.stop="onDeleteOutlink(item.id)">删除</button>
             </li>
           </ul>
         </template>
@@ -108,7 +116,10 @@
     </div>
     <div v-show="!collapsed" class="link-panel-body">
       <template v-if="activeTab === 'in'">
-        <h4 class="link-panel-section-title">链接当前文件</h4>
+        <div class="link-panel-section-head">
+          <h4 class="link-panel-section-title">链接当前文件</h4>
+          <button type="button" class="link-panel-btn-add" title="添加入链" @click="openAddBacklinkPicker">添加</button>
+        </div>
         <div v-if="backlinksLoading" class="link-panel-loading">加载中…</div>
         <p v-else-if="!backlinks.length" class="link-panel-empty">没有笔记链接</p>
         <ul v-else class="link-panel-list">
@@ -116,11 +127,15 @@
             <button type="button" class="link-panel-link" @click="$emit('open', item.id)">
               {{ item.title || '[无标题]' }}
             </button>
+            <button type="button" class="link-panel-btn-del" title="删除入链" @click.stop="onDeleteBacklink(item.id)">删除</button>
           </li>
         </ul>
       </template>
       <template v-else-if="showOutlinks && activeTab === 'out'">
-        <h4 class="link-panel-section-title">当前文件链接到</h4>
+        <div class="link-panel-section-head">
+          <h4 class="link-panel-section-title">当前文件链接到</h4>
+          <button type="button" class="link-panel-btn-add" title="添加出链" @click="openAddOutlinkPicker">添加</button>
+        </div>
         <div v-if="outlinksLoading" class="link-panel-loading">加载中…</div>
         <p v-else-if="!outlinks.length" class="link-panel-empty">没有引出链接</p>
         <ul v-else class="link-panel-list">
@@ -128,17 +143,50 @@
             <button type="button" class="link-panel-link" @click="$emit('open', item.id)">
               {{ item.title || '[无标题]' }}
             </button>
+            <button type="button" class="link-panel-btn-del" title="删除出链" @click.stop="onDeleteOutlink(item.id)">删除</button>
           </li>
         </ul>
       </template>
     </div>
   </aside>
+
+  <!-- 选择内容作为入链/出链 -->
+  <el-dialog
+    v-model="pickerVisible"
+    :title="pickerMode === 'backlink' ? '选择要链接到当前文件的笔记' : '选择当前文件要链接到的内容'"
+    width="400px"
+    class="link-panel-picker-dialog"
+    @closed="pickerList = []"
+  >
+    <div v-if="pickerLoading" class="link-panel-loading">加载中…</div>
+    <ul v-else-if="pickerList.length === 0" class="link-panel-empty">暂无可选内容</ul>
+    <ul v-else class="link-panel-picker-list">
+      <li
+        v-for="item in pickerList"
+        :key="item.id"
+        class="link-panel-picker-item"
+        @click="onPickContent(item)"
+      >
+        {{ item.title || '[无标题]' }}
+      </li>
+    </ul>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { Back, Right, DArrowLeft, DArrowRight } from '@element-plus/icons-vue'
-import { getContentBacklinks, getContentOutlinks, type ContentListItem } from '@/api/content'
+import { ElMessage } from 'element-plus'
+import {
+  getContentBacklinks,
+  getContentOutlinks,
+  addContentOutlink,
+  deleteContentOutlink,
+  addContentBacklink,
+  deleteContentBacklink,
+  getContentsMe,
+  type ContentListItem,
+} from '@/api/content'
 
 const props = withDefaults(
   defineProps<{
@@ -147,11 +195,21 @@ const props = withDefaults(
     showOutlinks?: boolean
     /** 是否为悬浮卡片（可拖动） */
     floating?: boolean
+    /** 是否为知识库且可编辑正文：true 时添加/删除出链通过事件由父组件插入/移除 [[id]]；false（博客等）时通过 API 增删 */
+    canEditBody?: boolean
+    /** 可选链接范围（如传入则只从该列表中选，用于同一知识库内；不传则拉取全部我的内容） */
+    candidateContents?: { id: number; title?: string }[]
+    /** 父组件保存正文后递增此值，用于重新拉取入链/出链列表 */
+    refreshTrigger?: number
   }>(),
-  { showOutlinks: true, floating: false }
+  { showOutlinks: true, floating: false, canEditBody: false, candidateContents: () => [] }
 )
 
-defineEmits<{ (e: 'open', id: number): void }>()
+const emit = defineEmits<{
+  (e: 'open', id: number): void
+  (e: 'insert-outlink', payload: { id: number; title: string }): void
+  (e: 'remove-outlink', payload: { id: number }): void
+}>()
 
 /** 悬浮卡片默认收起，边栏模式默认展开 */
 const collapsed = ref(props.floating)
@@ -220,6 +278,99 @@ function onDragStart(e: MouseEvent) {
   dragPosition.value = { left, top }
 }
 
+const pickerVisible = ref(false)
+const pickerMode = ref<'backlink' | 'outlink'>('outlink')
+const pickerList = ref<ContentListItem[]>([])
+const pickerLoading = ref(false)
+
+function openAddBacklinkPicker() {
+  if (props.contentId == null) return
+  pickerMode.value = 'backlink'
+  pickerVisible.value = true
+  const candidates = props.candidateContents?.length ? props.candidateContents : null
+  if (candidates) {
+    pickerLoading.value = false
+    pickerList.value = candidates.filter((c) => c.id !== props.contentId && !backlinks.value.some((b) => b.id === c.id)) as ContentListItem[]
+  } else {
+    pickerLoading.value = true
+    getContentsMe({ page: 1, pageSize: 200 })
+      .then((res) => {
+        pickerList.value = (res.list ?? []).filter((c) => c.id !== props.contentId && !backlinks.value.some((b) => b.id === c.id))
+      })
+      .catch(() => { pickerList.value = [] })
+      .finally(() => { pickerLoading.value = false })
+  }
+}
+
+function openAddOutlinkPicker() {
+  if (props.contentId == null) return
+  pickerMode.value = 'outlink'
+  pickerVisible.value = true
+  const candidates = props.candidateContents?.length ? props.candidateContents : null
+  if (candidates) {
+    pickerLoading.value = false
+    pickerList.value = candidates.filter((c) => c.id !== props.contentId && !outlinks.value.some((o) => o.id === c.id)) as ContentListItem[]
+  } else {
+    pickerLoading.value = true
+    getContentsMe({ page: 1, pageSize: 200 })
+      .then((res) => {
+        pickerList.value = (res.list ?? []).filter((c) => c.id !== props.contentId && !outlinks.value.some((o) => o.id === c.id))
+      })
+      .catch(() => { pickerList.value = [] })
+      .finally(() => { pickerLoading.value = false })
+  }
+}
+
+function onPickContent(item: ContentListItem) {
+  if (props.contentId == null) return
+  const id = item.id
+  const title = item.title || '[无标题]'
+  if (pickerMode.value === 'backlink') {
+    addContentBacklink(props.contentId, id)
+      .then(() => {
+        pickerVisible.value = false
+        load()
+        ElMessage.success('已添加入链')
+      })
+      .catch((e: { message?: string }) => ElMessage.warning(e?.message || '添加失败'))
+  } else {
+    if (props.canEditBody) {
+      emit('insert-outlink', { id, title })
+      pickerVisible.value = false
+      load()
+      ElMessage.success('已添加出链（请保存后生效）')
+    } else {
+      addContentOutlink(props.contentId, id)
+        .then(() => {
+          pickerVisible.value = false
+          load()
+          ElMessage.success('已添加出链')
+        })
+        .catch((e: { message?: string }) => ElMessage.warning(e?.message || '添加失败'))
+    }
+  }
+}
+
+function onDeleteBacklink(sourceId: number) {
+  if (props.contentId == null) return
+  deleteContentBacklink(props.contentId, sourceId)
+    .then(() => { load(); ElMessage.success('已删除入链') })
+    .catch((e: { message?: string }) => ElMessage.warning(e?.message || '删除失败'))
+}
+
+function onDeleteOutlink(targetId: number) {
+  if (props.contentId == null) return
+  if (props.canEditBody) {
+    emit('remove-outlink', { id: targetId })
+    load()
+    ElMessage.success('已移除出链（请保存后生效）')
+  } else {
+    deleteContentOutlink(props.contentId, targetId)
+      .then(() => { load(); ElMessage.success('已删除出链') })
+      .catch((e: { message?: string }) => ElMessage.warning(e?.message || '删除失败'))
+  }
+}
+
 function load() {
   if (props.contentId == null) {
     backlinks.value = []
@@ -241,6 +392,7 @@ function load() {
 }
 
 watch(() => props.contentId, load, { immediate: true })
+watch(() => props.refreshTrigger, () => { if (props.contentId != null) load() })
 </script>
 
 <style scoped>
@@ -357,12 +509,76 @@ watch(() => props.contentId, load, { immediate: true })
   overflow: auto;
   padding: 14px;
 }
+.link-panel-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 .link-panel-section-title {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
   color: #424245;
   letter-spacing: -0.01em;
+}
+.link-panel-btn-add {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #007aff;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.link-panel-btn-add:hover {
+  background: rgba(0, 122, 255, 0.1);
+}
+.link-panel-item {
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.link-panel-item .link-panel-link {
+  flex: 1;
+  min-width: 0;
+}
+.link-panel-btn-del {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #86868b;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+.link-panel-btn-del:hover {
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.08);
+}
+.link-panel-picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.link-panel-picker-item {
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #1d1d1f;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.link-panel-picker-item:hover {
+  background: rgba(0, 0, 0, 0.05);
 }
 .link-panel-loading,
 .link-panel-empty {
@@ -374,9 +590,6 @@ watch(() => props.contentId, load, { immediate: true })
   margin: 0;
   padding: 0;
   list-style: none;
-}
-.link-panel-item {
-  margin-bottom: 2px;
 }
 .link-panel-link {
   display: block;

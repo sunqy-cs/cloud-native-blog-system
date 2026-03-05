@@ -398,8 +398,14 @@ public class ContentService {
     public ContentViewVO getForView(Long id, Long userId) {
         if (id == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在");
         Content c = contentMapper.selectById(id);
-        if (c == null || !TYPE_BLOG.equals(c.getType()) || !STATUS_PUBLISHED.equals(c.getStatus())) {
+        if (c == null || !TYPE_BLOG.equals(c.getType())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
+        }
+        // 已发布：所有人（按 visibility）可见；未发布草稿：仅作者本人可见（便于知识库内展示自己的博客）
+        if (!STATUS_PUBLISHED.equals(c.getStatus())) {
+            if (userId == null || !userId.equals(c.getUserId())) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
+            }
         }
         String vis = c.getVisibility() != null ? c.getVisibility().toUpperCase() : VISIBILITY_ALL;
         if (VISIBILITY_SELF.equals(vis)) {
@@ -411,7 +417,7 @@ public class ContentService {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或未发布");
             }
         }
-        if (userId != null) {
+        if (userId != null && STATUS_PUBLISHED.equals(c.getStatus())) {
             long exists = contentViewMapper.selectCount(
                     new LambdaQueryWrapper<ContentView>()
                             .eq(ContentView::getUserId, userId)
@@ -713,7 +719,7 @@ public class ContentService {
                 if (idPart.matches("\\d+")) {
                     targetId = Long.parseLong(idPart);
                     Content target = contentMapper.selectById(targetId);
-                    if (target == null || !TYPE_KNOWLEDGE.equals(target.getType())) targetId = null;
+                    if (target == null) targetId = null;
                 }
             }
             if (targetId == null && anyKbId != null && !inner.contains(":")) {
@@ -765,6 +771,91 @@ public class ContentService {
         List<Long> targetIds = refs.stream().map(ContentReference::getTargetContentId).distinct().collect(Collectors.toList());
         List<Content> contents = contentMapper.selectBatchIds(targetIds);
         return contents.stream().map(this::toListItemVO).collect(Collectors.toList());
+    }
+
+    /** 双链：添加出链（当前内容 → 目标内容），需登录且当前内容归属当前用户 */
+    @Transactional(rollbackFor = Exception.class)
+    public void addOutlink(Long userId, Long sourceContentId, Long targetContentId) {
+        if (sourceContentId == null || targetContentId == null || sourceContentId.equals(targetContentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数无效");
+        }
+        Content source = contentMapper.selectById(sourceContentId);
+        if (source == null || !userId.equals(source.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权操作");
+        }
+        Content target = contentMapper.selectById(targetContentId);
+        if (target == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标内容不存在");
+        }
+        long exists = contentReferenceMapper.selectCount(
+                new LambdaQueryWrapper<ContentReference>()
+                        .eq(ContentReference::getSourceContentId, sourceContentId)
+                        .eq(ContentReference::getTargetContentId, targetContentId));
+        if (exists > 0) return;
+        ContentReference ref = new ContentReference();
+        ref.setSourceContentId(sourceContentId);
+        ref.setTargetContentId(targetContentId);
+        ref.setCreatedAt(LocalDateTime.now());
+        contentReferenceMapper.insert(ref);
+    }
+
+    /** 双链：删除出链（当前内容 → 目标内容），需登录且当前内容归属当前用户 */
+    public void deleteOutlink(Long userId, Long sourceContentId, Long targetContentId) {
+        Content source = contentMapper.selectById(sourceContentId);
+        if (source == null || !userId.equals(source.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权操作");
+        }
+        contentReferenceMapper.delete(
+                new LambdaQueryWrapper<ContentReference>()
+                        .eq(ContentReference::getSourceContentId, sourceContentId)
+                        .eq(ContentReference::getTargetContentId, targetContentId));
+    }
+
+    /** 双链：添加入链（来源内容 → 当前内容），需登录且来源内容归属当前用户 */
+    @Transactional(rollbackFor = Exception.class)
+    public void addBacklink(Long userId, Long sourceContentId, Long targetContentId) {
+        if (sourceContentId == null || targetContentId == null || sourceContentId.equals(targetContentId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "参数无效");
+        }
+        Content source = contentMapper.selectById(sourceContentId);
+        if (source == null || !userId.equals(source.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权操作");
+        }
+        Content target = contentMapper.selectById(targetContentId);
+        if (target == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "目标内容不存在");
+        }
+        long exists = contentReferenceMapper.selectCount(
+                new LambdaQueryWrapper<ContentReference>()
+                        .eq(ContentReference::getSourceContentId, sourceContentId)
+                        .eq(ContentReference::getTargetContentId, targetContentId));
+        if (exists > 0) return;
+        ContentReference ref = new ContentReference();
+        ref.setSourceContentId(sourceContentId);
+        ref.setTargetContentId(targetContentId);
+        ref.setCreatedAt(LocalDateTime.now());
+        contentReferenceMapper.insert(ref);
+    }
+
+    /** 双链：删除入链（来源内容 → 当前内容），需登录且来源内容归属当前用户 */
+    public void deleteBacklink(Long userId, Long sourceContentId, Long targetContentId) {
+        Content source = contentMapper.selectById(sourceContentId);
+        if (source == null || !userId.equals(source.getUserId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "内容不存在或无权操作");
+        }
+        contentReferenceMapper.delete(
+                new LambdaQueryWrapper<ContentReference>()
+                        .eq(ContentReference::getSourceContentId, sourceContentId)
+                        .eq(ContentReference::getTargetContentId, targetContentId));
+    }
+
+    /** 删除与某内容相关的全部双链引用（该内容作为 source 或 target），用于从知识库移除文件时一并清理 */
+    public void deleteAllReferencesForContent(Long contentId) {
+        if (contentId == null) return;
+        contentReferenceMapper.delete(
+                new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getSourceContentId, contentId));
+        contentReferenceMapper.delete(
+                new LambdaQueryWrapper<ContentReference>().eq(ContentReference::getTargetContentId, contentId));
     }
 
     /** 按名称查询标签，不存在则插入（is_main=0）并返回 id */

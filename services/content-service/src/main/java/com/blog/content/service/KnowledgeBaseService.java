@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,6 +33,7 @@ public class KnowledgeBaseService {
     private final KnowledgeBaseContentMapper knowledgeBaseContentMapper;
     private final KnowledgeBaseFavoriteMapper knowledgeBaseFavoriteMapper;
     private final ContentMapper contentMapper;
+    private final ContentService contentService;
 
     public List<KnowledgeBaseVO> listMy(Long userId) {
         LambdaQueryWrapper<KnowledgeBase> q = new LambdaQueryWrapper<>();
@@ -110,7 +112,11 @@ public class KnowledgeBaseService {
                         .orderByDesc(KnowledgeBaseContent::getCreatedAt));
         List<Long> contentIds = p.getRecords().stream().map(KnowledgeBaseContent::getContentId).collect(Collectors.toList());
         List<Content> contents = contentMapper.selectBatchIds(contentIds);
-        List<KnowledgeBaseContentItemVO> list = contents.stream()
+        // 按收录顺序(contentIds)构建列表，避免 selectBatchIds 返回的 id 顺序导致博客/笔记标题错位
+        Map<Long, Content> contentMap = contents.stream().collect(Collectors.toMap(Content::getId, c -> c, (a, b) -> a));
+        List<KnowledgeBaseContentItemVO> list = contentIds.stream()
+                .map(contentMap::get)
+                .filter(java.util.Objects::nonNull)
                 .map(this::toContentItemVO)
                 .collect(Collectors.toList());
         KnowledgeBaseContentsResponse res = new KnowledgeBaseContentsResponse();
@@ -219,6 +225,7 @@ public class KnowledgeBaseService {
         if (deleted == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该文章不在本知识库中");
         }
+        contentService.deleteAllReferencesForContent(contentId);
     }
 
     @Transactional

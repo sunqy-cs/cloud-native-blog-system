@@ -213,7 +213,7 @@
             </el-dropdown>
             <template v-if="detailContents.length > 0">
               <template v-if="!detailBatchMode">
-                <button type="button" class="knowledge-detail-btn" @click="detailBatchMode = true">批量删除</button>
+                <button type="button" class="knowledge-detail-btn" @click="detailBatchMode = true">批量移除</button>
               </template>
               <template v-else>
                 <button
@@ -222,7 +222,7 @@
                   :disabled="detailSelectedIds.length === 0"
                   @click="batchRemoveFromKb"
                 >
-                  删除选中{{ detailSelectedIds.length > 0 ? ` (${detailSelectedIds.length})` : '' }}
+                  移除选中{{ detailSelectedIds.length > 0 ? ` (${detailSelectedIds.length})` : '' }}
                 </button>
                 <button type="button" class="knowledge-detail-btn" @click="exitDetailBatchMode">取消</button>
               </template>
@@ -284,7 +284,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item :command="'rename:' + art.id">重命名</el-dropdown-item>
-                  <el-dropdown-item :command="String(art.id)" class="knowledge-article-dropdown-danger">删除这篇博客</el-dropdown-item>
+                  <el-dropdown-item :command="String(art.id)" class="knowledge-article-dropdown-danger" title="仅解除收录，不删除博客/笔记原文">从知识库中移除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -341,9 +341,12 @@
             </template>
           </el-input>
         </div>
-        <ul v-if="addContentCandidatesFiltered.length === 0" class="knowledge-add-empty">暂无已发布文章或没有匹配结果</ul>
+        <ul v-if="addContentSearchLoading" class="knowledge-add-empty">搜索中…</ul>
+        <ul v-else-if="addContentDisplayList.length === 0" class="knowledge-add-empty">
+          {{ addContentKeyword.trim() ? '没有匹配结果' : '暂无已发布文章或没有匹配结果' }}
+        </ul>
         <ul v-else class="knowledge-add-list">
-          <li v-for="art in addContentCandidatesFiltered" :key="art.id" class="knowledge-add-item">
+          <li v-for="art in addContentDisplayList" :key="art.id" class="knowledge-add-item">
             <el-checkbox
               v-if="!detailContentIds.has(art.id)"
               :model-value="addContentGeneralSelectedIds.includes(art.id)"
@@ -363,6 +366,16 @@
             </button>
           </li>
         </ul>
+        <div v-if="addContentTab === 'general' && !addContentKeyword.trim() && addContentCandidates.length > 0 && addContentCandidates.length < addContentGeneralTotal" class="knowledge-add-load-more">
+          <button
+            type="button"
+            class="knowledge-add-btn-load-more"
+            :disabled="addContentGeneralLoadingMore"
+            @click="loadMoreAddContentGeneral"
+          >
+            {{ addContentGeneralLoadingMore ? '加载中…' : `加载更多（已显示 ${addContentCandidates.length} / ${addContentGeneralTotal} 篇）` }}
+          </button>
+        </div>
         <div v-if="addContentTab === 'general' && addContentGeneralSelectedIds.length > 0" class="knowledge-add-batch-bar">
           <span>已选 {{ addContentGeneralSelectedIds.length }} 篇</span>
           <button
@@ -811,24 +824,24 @@
               <span class="knowledge-tool-label">链接</span>
             </button>
             <el-dropdown trigger="click" @command="kbOnWikiLinkCommand">
-              <button type="button" class="knowledge-tool-btn" title="插入笔记链接（双链）">
+              <button type="button" class="knowledge-tool-btn" title="插入链接（可链到本知识库内笔记或博客）">
                 <span class="knowledge-tool-icon">[[ ]]</span>
                 <span class="knowledge-tool-label">笔记链接</span>
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item
-                    v-for="item in detailContents.filter((c) => c.type === 'KNOWLEDGE' && c.id !== selectedContentId)"
+                    v-for="item in linkableContentsInKb"
                     :key="item.id"
                     :command="{ id: item.id, title: item.title }"
                   >
-                    {{ item.title || '[无标题]' }}
+                    {{ item.title || '[无标题]' }} ({{ item.type === 'BLOG' ? '博客' : '笔记' }})
                   </el-dropdown-item>
                   <el-dropdown-item
-                    v-if="detailContents.filter((c) => c.type === 'KNOWLEDGE' && c.id !== selectedContentId).length === 0"
+                    v-if="linkableContentsInKb.length === 0"
                     disabled
                   >
-                    当前知识库暂无其他笔记
+                    当前知识库暂无其他可链接文件
                   </el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -837,15 +850,20 @@
               <el-icon><Close /></el-icon>
             </button>
             </div>
-            <div class="knowledge-editor-paper" @mousedown="onKbPaperMouseDown">
+            <div class="knowledge-editor-paper" @mousedown="onKbPaperMouseDown" @click.capture="onKbPaperClick">
               <div ref="kbVditorRef" class="vditor-wrap"></div>
             </div>
             </div>
             <LinkPanel
               floating
+              can-edit-body
               :content-id="selectedContentId"
+              :candidate-contents="detailContents"
+              :refresh-trigger="linkPanelRefreshKey"
               :show-outlinks="true"
               @open="selectedContentId = $event"
+              @insert-outlink="onInsertOutlink"
+              @remove-outlink="onRemoveOutlink"
             />
           </div>
         </template>
@@ -900,6 +918,8 @@
             <LinkPanel
               floating
               :content-id="selectedContentId"
+              :candidate-contents="detailContents"
+              :refresh-trigger="linkPanelRefreshKey"
               :show-outlinks="true"
               @open="selectedContentId = $event"
             />
@@ -1111,6 +1131,10 @@ const mainPreviewRef = ref<HTMLDivElement | null>(null)
 const selectedDetailItem = computed(() =>
   selectedContentId.value == null ? undefined : detailContents.value.find((c) => c.id === selectedContentId.value!)
 )
+/** 当前知识库内可被链接的文件（笔记+博客），排除当前正在编辑的 */
+const linkableContentsInKb = computed(() =>
+  detailContents.value.filter((c) => c.id !== selectedContentId.value)
+)
 /** 是否为知识库类型：显示工具栏 + 纯 Markdown 编辑区 */
 const isKnowledgeEditor = computed(() => selectedContentId.value != null && selectedDetailItem.value?.type === 'KNOWLEDGE')
 
@@ -1122,6 +1146,8 @@ const kbImageInputRef = ref<HTMLInputElement | null>(null)
 const kbImageUploading = ref(false)
 let kbVditor: Vditor | null = null
 let kbSaveTimer: ReturnType<typeof setTimeout> | null = null
+/** 保存正文后递增，用于让 LinkPanel 重新拉取入链/出链 */
+const linkPanelRefreshKey = ref(0)
 
 const isDetailSubscribed = computed(() => selectedKb.value != null && selectedKb.value.subscribed === true)
 
@@ -1215,13 +1241,17 @@ const addContentDialogVisible = ref(false)
 const addContentTab = ref<'general' | 'column' | 'folder'>('general')
 const addContentKeyword = ref('')
 const addContentCandidates = ref<DetailContentItem[]>([])
-const addContentCandidatesFiltered = computed(() => {
-  const q = addContentKeyword.value.trim().toLowerCase()
-  if (!q) return addContentCandidates.value
-  return addContentCandidates.value.filter(
-    (c) =>
-      (c.title ?? '').toLowerCase().includes(q) || (c.summary ?? '').toLowerCase().includes(q)
-  )
+const addContentGeneralTotal = ref(0)
+const addContentGeneralPage = ref(1)
+const addContentGeneralLoadingMore = ref(false)
+/** 综合 tab 搜索：有关键词时走接口在全量已发布博客中搜，无关键词时显示本地已加载列表 */
+const addContentSearchResults = ref<DetailContentItem[]>([])
+const addContentSearchLoading = ref(false)
+let addContentSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const addContentDisplayList = computed(() => {
+  const q = addContentKeyword.value.trim()
+  if (q) return addContentSearchResults.value
+  return addContentCandidates.value
 })
 const addingContentId = ref<number | null>(null)
 
@@ -1282,6 +1312,34 @@ watch([selectedKb, selectedContentId], () => {
   syncRouteQuery()
 }, { flush: 'post' })
 
+/** 综合 tab 搜索关键词变化时，防抖后请求接口在全量已发布博客中搜索 */
+watch(addContentKeyword, () => {
+  if (addContentSearchDebounceTimer) clearTimeout(addContentSearchDebounceTimer)
+  const q = addContentKeyword.value.trim()
+  if (!q) {
+    addContentSearchResults.value = []
+    return
+  }
+  addContentSearchDebounceTimer = setTimeout(async () => {
+    addContentSearchDebounceTimer = null
+    addContentSearchLoading.value = true
+    try {
+      const res = await getContentsMe({ status: 'PUBLISHED', q, page: 1, pageSize: 100 })
+      const list = (res.list ?? []).filter((c) => !detailContentIds.value.has(c.id))
+      addContentSearchResults.value = list.map((c) => ({
+        id: c.id,
+        title: c.title,
+        summary: c.summary ?? undefined,
+        cover: c.cover ?? undefined,
+      }))
+    } catch {
+      addContentSearchResults.value = []
+    } finally {
+      addContentSearchLoading.value = false
+    }
+  }, 300)
+})
+
 /** 编辑区加载完成后再次尝试聚焦（从问答等界面切过来时光标更可靠） */
 watch(knowledgeEditLoading, (loading, prevLoading) => {
   if (prevLoading === true && loading === false && isKnowledgeEditor.value) {
@@ -1289,7 +1347,25 @@ watch(knowledgeEditLoading, (loading, prevLoading) => {
   }
 })
 
+/** document 捕获阶段拦截 knowledge:// 链接点击，防止编辑区内点击仍触发跳转 */
+function onDocumentCaptureClick(e: MouseEvent) {
+  if (!isKnowledgeEditor.value || !kbVditorRef.value) return
+  const link = (e.target as HTMLElement)?.closest?.('a[href^="knowledge://"]') as HTMLAnchorElement | null
+  if (!link || !kbVditorRef.value.contains(link)) return
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  const href = link.getAttribute('href') || ''
+  const id = parseInt(href.replace('knowledge://', '').trim(), 10)
+  if (!Number.isNaN(id)) trySelectContentInKb(id)
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentCaptureClick, true)
+})
+
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentCaptureClick, true)
   destroyKbVditor()
 })
 
@@ -1425,11 +1501,19 @@ async function loadMainArticle(contentId: number) {
   }
 }
 
-/** 双链笔记：将正文中的 [[id:标题]] 转为 Markdown 链接，便于预览中点击跳转 */
+/** 双链笔记：将正文中的 [[id:标题]] 转为 Markdown 链接，便于预览/编辑区中点击跳转 */
 function processWikiLinksForPreview(body: string): string {
   return body.replace(/\[\[(\d+):([^\]]*)\]\]/g, (_, id, title) => {
     const text = (title || id).trim() || '笔记'
     return `[${text}](knowledge://${id})`
+  })
+}
+
+/** 双链笔记：将编辑区中的 [text](knowledge://id) 转回 [[id:text]] 再保存 */
+function reverseWikiLinksToStorage(body: string): string {
+  return body.replace(/\[([^\]]*)\]\(knowledge:\/\/(\d+)\)/g, (_, text, id) => {
+    const t = (text || '').trim() || '笔记'
+    return `[[${id}:${t}]]`
   })
 }
 
@@ -1454,16 +1538,25 @@ async function renderMainMarkdown() {
   }
 }
 
+/** 双链笔记：若链接目标在当前知识库内则切换展示，否则仅提示不报错 */
+function trySelectContentInKb(contentId: number): boolean {
+  const inKb = detailContents.value.some((c) => c.id === contentId)
+  if (inKb) {
+    selectedContentId.value = contentId
+    return true
+  }
+  ElMessage.warning('该链接对应的笔记或博客已不在当前知识库中')
+  return false
+}
+
 /** 双链笔记：为 knowledge:// 链接绑定点击，在知识库内跳转到对应笔记 */
 function attachWikiLinkClick(container: HTMLElement) {
   container.querySelectorAll<HTMLAnchorElement>('a[href^="knowledge://"]').forEach((link) => {
     link.addEventListener('click', (e) => {
       e.preventDefault()
       const href = link.getAttribute('href') || ''
-      const id = href.replace('knowledge://', '').trim()
-      const numId = parseInt(id, 10)
-      if (Number.isNaN(numId)) return
-      selectedContentId.value = numId
+      const numId = parseInt(href.replace('knowledge://', '').trim(), 10)
+      if (!Number.isNaN(numId)) trySelectContentInKb(numId)
     })
   })
 }
@@ -1508,13 +1601,29 @@ function onKbPaperMouseDown(e: MouseEvent) {
   focusKbVditor()
 }
 
+/** 编辑区内点击 knowledge:// 链接时在知识库内跳转，不打开新页（捕获阶段拦截，避免浏览器执行链接默认行为） */
+function onKbPaperClick(e: MouseEvent) {
+  const link = (e.target as HTMLElement)?.closest?.('a[href^="knowledge://"]') as HTMLAnchorElement | null
+  if (!link) return
+  e.preventDefault()
+  e.stopPropagation()
+  e.stopImmediatePropagation()
+  const href = link.getAttribute('href') || ''
+  const id = parseInt(href.replace('knowledge://', '').trim(), 10)
+  if (!Number.isNaN(id)) trySelectContentInKb(id)
+}
+
 function saveKnowledgeBody() {
   const id = selectedContentId.value
   if (id == null || !kbVditor) return
-  const body = kbVditor.getValue() ?? ''
+  const raw = kbVditor.getValue() ?? ''
+  const body = reverseWikiLinksToStorage(raw)
   // 知识库允许正文为空，直接保存
   saveDraft({ id, body, title: knowledgeEditTitle.value || undefined })
-    .then(() => ElMessage.success('已保存'))
+    .then(() => {
+      ElMessage.success('已保存')
+      linkPanelRefreshKey.value++
+    })
     .catch((err: { response?: { data?: { message?: string } }; message?: string }) => {
       const msg = err?.response?.data?.message || err?.message || '保存失败'
       ElMessage.warning(msg)
@@ -1533,7 +1642,7 @@ async function loadKnowledgeForEdit(contentId: number) {
     if (!kbVditorRef.value) return
     kbVditor = new Vditor(kbVditorRef.value, {
       height: 420,
-      value: data.body ?? '',
+      value: processWikiLinksForPreview(data.body ?? ''),
       placeholder: '在此编写知识库文件内容…',
       lang: 'zh_CN',
       mode: 'wysiwyg',
@@ -1694,11 +1803,34 @@ function kbOnLink() {
   kbInsertMD(`[${sel}](https://example.com)\n`)
 }
 
-/** 双链笔记：插入 [[id:标题]] 语法 */
+/** 双链笔记：插入笔记/博客链接后自动保存一次 */
 function kbOnWikiLinkCommand(payload: { id: number; title: string }) {
   if (!kbVditor || !payload?.id) return
   const title = (payload.title || '').trim() || '笔记'
-  kbInsertMD(`[[${payload.id}:${title}]]`)
+  kbInsertMD(`[${title}](knowledge://${payload.id})`)
+  if (kbSaveTimer) clearTimeout(kbSaveTimer)
+  kbSaveTimer = setTimeout(saveKnowledgeBody, 300)
+}
+
+/** 入链/出链面板「添加出链」：在正文插入笔记链接（编辑器内显示为可点击链接，保存时转为 [[id:标题]]） */
+function onInsertOutlink(payload: { id: number; title: string }) {
+  if (!payload?.id) return
+  const title = (payload.title || '').trim() || '笔记'
+  kbInsertMD(`[${title}](knowledge://${payload.id})`)
+  if (kbSaveTimer) clearTimeout(kbSaveTimer)
+  kbSaveTimer = setTimeout(saveKnowledgeBody, 300)
+}
+
+/** 入链/出链面板「删除出链」：从正文移除该 id 的链接（支持 [[id:标题]] 与 [text](knowledge://id) 两种格式）并保存 */
+function onRemoveOutlink(payload: { id: number }) {
+  if (!kbVditor || payload?.id == null) return
+  const id = String(payload.id)
+  let body = kbVditor.getValue() ?? ''
+  body = body.replace(new RegExp(`\\[\\[${id}(?::[^\\]]*)?\\]\\]`, 'g'), '')
+  body = body.replace(new RegExp(`\\[[^\\]]*\\]\\(knowledge://${id}\\)`, 'g'), '')
+  kbVditor.setValue(body)
+  if (kbSaveTimer) clearTimeout(kbSaveTimer)
+  kbSaveTimer = setTimeout(saveKnowledgeBody, 300)
 }
 
 function kbOnHeadingCommand(level: string | number) {
@@ -1846,6 +1978,13 @@ async function openAddContentDialog() {
   addContentTab.value = 'general'
   addContentKeyword.value = ''
   addContentCandidates.value = []
+  addContentGeneralTotal.value = 0
+  addContentGeneralPage.value = 1
+  addContentSearchResults.value = []
+  if (addContentSearchDebounceTimer) {
+    clearTimeout(addContentSearchDebounceTimer)
+    addContentSearchDebounceTimer = null
+  }
   addContentSelectedColumnId.value = null
   addContentColumnArticles.value = []
   addContentColumnSelectedIds.value = []
@@ -1855,7 +1994,7 @@ async function openAddContentDialog() {
   addContentGeneralSelectedIds.value = []
   if (!selectedKb.value || selectedKb.value.id === 'default') return
   try {
-    const res = await getContentsMe({ status: 'PUBLISHED', pageSize: 50 })
+    const res = await getContentsMe({ status: 'PUBLISHED', page: 1, pageSize: 100 })
     const list = (res.list ?? []).filter((c) => !detailContentIds.value.has(c.id))
     addContentCandidates.value = list.map((c) => ({
       id: c.id,
@@ -1863,8 +2002,32 @@ async function openAddContentDialog() {
       summary: c.summary ?? undefined,
       cover: c.cover ?? undefined,
     }))
+    addContentGeneralTotal.value = res.total ?? 0
+    addContentGeneralPage.value = 1
   } catch {
     addContentCandidates.value = []
+    addContentGeneralTotal.value = 0
+  }
+}
+
+async function loadMoreAddContentGeneral() {
+  if (addContentGeneralLoadingMore.value || addContentCandidates.value.length >= addContentGeneralTotal.value) return
+  addContentGeneralLoadingMore.value = true
+  try {
+    const nextPage = addContentGeneralPage.value + 1
+    const res = await getContentsMe({ status: 'PUBLISHED', page: nextPage, pageSize: 100 })
+    const list = (res.list ?? []).filter((c) => !detailContentIds.value.has(c.id))
+    const newItems = list.map((c) => ({
+      id: c.id,
+      title: c.title,
+      summary: c.summary ?? undefined,
+      cover: c.cover ?? undefined,
+    }))
+    addContentCandidates.value = [...addContentCandidates.value, ...newItems]
+    addContentGeneralPage.value = nextPage
+    addContentGeneralTotal.value = res.total ?? addContentGeneralTotal.value
+  } finally {
+    addContentGeneralLoadingMore.value = false
   }
 }
 
@@ -1962,6 +2125,7 @@ async function batchAddContentToKb(ids: number[]) {
   for (const id of ids) {
     const from =
       addContentCandidates.value.find((c) => c.id === id) ||
+      addContentSearchResults.value.find((c) => c.id === id) ||
       addContentColumnArticles.value.find((c) => c.id === id) ||
       addContentFolderArticles.value.find((c) => c.id === id)
     if (from) itemsToAppend.push(from)
@@ -1970,6 +2134,7 @@ async function batchAddContentToKb(ids: number[]) {
   try {
     await Promise.all(ids.map((contentId) => knowledgeApi.addContentToKnowledgeBase(numId, contentId)))
     addContentCandidates.value = addContentCandidates.value.filter((c) => !idSet.has(c.id))
+    addContentSearchResults.value = addContentSearchResults.value.filter((c) => !idSet.has(c.id))
     addContentColumnArticles.value = addContentColumnArticles.value.filter((c) => !idSet.has(c.id))
     addContentFolderArticles.value = addContentFolderArticles.value.filter((c) => !idSet.has(c.id))
     addContentGeneralSelectedIds.value = []
@@ -2180,7 +2345,9 @@ async function addContentToKb(id: number) {
   addingContentId.value = id
   try {
     await knowledgeApi.addContentToKnowledgeBase(numId, id)
-    const art = addContentCandidates.value.find((a) => a.id === id)
+    const art =
+      addContentCandidates.value.find((a) => a.id === id) ||
+      addContentSearchResults.value.find((a) => a.id === id)
     if (art) {
       detailContents.value = [...detailContents.value, art]
       if (selectedKb.value) {
@@ -2188,6 +2355,7 @@ async function addContentToKb(id: number) {
       }
     }
     addContentCandidates.value = addContentCandidates.value.filter((c) => c.id !== id)
+    addContentSearchResults.value = addContentSearchResults.value.filter((c) => c.id !== id)
     addContentColumnArticles.value = addContentColumnArticles.value.filter((c) => c.id !== id)
     addContentFolderArticles.value = addContentFolderArticles.value.filter((c) => c.id !== id)
     ElMessage.success('已添加')
@@ -3036,6 +3204,31 @@ async function submitCreateKb() {
   cursor: not-allowed;
 }
 
+.knowledge-add-load-more {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.knowledge-add-btn-load-more {
+  padding: 6px 16px;
+  font-size: 13px;
+  color: #666;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.knowledge-add-btn-load-more:hover:not(:disabled) {
+  background: #eee;
+  color: #333;
+}
+
+.knowledge-add-btn-load-more:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .knowledge-add-batch-bar {
   display: flex;
   align-items: center;
@@ -3836,6 +4029,13 @@ async function submitCreateKb() {
 .knowledge-editor-paper ::selection {
   background: rgba(0, 122, 255, 0.2);
   color: #1d1d1f;
+}
+
+/* 编辑区内笔记双链 [[id:标题]] 渲染为链接后的样式，可点击跳转 */
+.knowledge-editor-paper :deep(a[href^="knowledge://"]) {
+  color: #0066cc;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .knowledge-editor-close {

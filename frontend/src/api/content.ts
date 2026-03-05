@@ -235,3 +235,31 @@ export function getContentBacklinks(contentId: number): Promise<ContentListItem[
 export function getContentOutlinks(contentId: number): Promise<ContentListItem[]> {
   return request.get(`contents/${contentId}/outlinks`).then((data) => data as unknown as ContentListItem[])
 }
+
+/**
+ * 双链：添加出链（当前内容 → 目标内容），需登录
+ */
+export function addContentOutlink(contentId: number, targetId: number): Promise<void> {
+  return request.post(`contents/${contentId}/references`, { targetId })
+}
+
+/**
+ * 双链：删除出链，需登录
+ */
+export function deleteContentOutlink(contentId: number, targetId: number): Promise<void> {
+  return request.delete(`contents/${contentId}/references/${targetId}`)
+}
+
+/**
+ * 双链：添加入链（来源内容 → 当前内容），需登录
+ */
+export function addContentBacklink(contentId: number, sourceId: number): Promise<void> {
+  return request.post(`contents/${contentId}/backlinks`, { sourceId })
+}
+
+/**
+ * 双链：删除入链，需登录
+ */
+export function deleteContentBacklink(contentId: number, sourceId: number): Promise<void> {
+  return request.delete(`contents/${contentId}/backlinks/${sourceId}`)
+}

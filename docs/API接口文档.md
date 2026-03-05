@@ -378,6 +378,26 @@
 
 ---
 
+#### 双链：添加/删除引用（需认证）
+
+**`POST /api/contents/{id}/references`** — 添加出链（当前内容 → 目标内容）
+
+需要认证。Request Body：`{ "targetId": number }`。仅允许当前内容作者操作。
+
+**`DELETE /api/contents/{id}/references/{targetId}`** — 删除出链
+
+需要认证。仅允许当前内容作者操作。
+
+**`POST /api/contents/{id}/backlinks`** — 添加入链（来源内容 → 当前内容）
+
+需要认证。Request Body：`{ "sourceId": number }`。仅允许来源内容作者操作。
+
+**`DELETE /api/contents/{id}/backlinks/{sourceId}`** — 删除入链
+
+需要认证。仅允许来源内容作者操作。
+
+---
+
 ### 5.3 发布博客
 
 **`POST /api/contents/{id}/publish`**
