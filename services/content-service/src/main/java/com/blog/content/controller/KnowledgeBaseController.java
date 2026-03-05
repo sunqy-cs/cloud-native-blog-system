@@ -61,6 +61,15 @@ public class KnowledgeBaseController {
         return ResponseEntity.ok(res);
     }
 
+    /** 知识图谱：节点+边，用于前端力导向图 */
+    @GetMapping("/{id}/graph")
+    public ResponseEntity<KnowledgeBaseGraphResponse> getGraph(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @PathVariable Long id) {
+        KnowledgeBaseGraphResponse res = knowledgeBaseService.getGraph(userId, id);
+        return ResponseEntity.ok(res);
+    }
+
     @PostMapping
     public ResponseEntity<KnowledgeBaseVO> create(
             @RequestHeader(HEADER_USER_ID) Long userId,

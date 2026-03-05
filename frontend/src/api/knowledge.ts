@@ -91,6 +91,18 @@ export function getKnowledgeBaseContents(
     .then((data) => (data as unknown) as KnowledgeBaseContentsResponse)
 }
 
+/** 知识图谱：节点与边，用于力导向图 */
+export interface KnowledgeBaseGraphResponse {
+  nodes: { id: number; title: string; type?: string }[]
+  links: { source: number; target: number }[]
+}
+
+export function getKnowledgeBaseGraph(kbId: number): Promise<KnowledgeBaseGraphResponse> {
+  return request
+    .get<KnowledgeBaseGraphResponse>(`knowledge-bases/${kbId}/graph`)
+    .then((data) => (data as unknown) as KnowledgeBaseGraphResponse)
+}
+
 /** 创建知识库 */
 export function createKnowledgeBase(body: CreateKnowledgeBaseBody): Promise<KnowledgeBaseItem> {
   return request

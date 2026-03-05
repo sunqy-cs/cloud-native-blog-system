@@ -19,13 +19,13 @@
           </span>
         </button>
 
-        <!-- 1. 知识库：点击与「返回知识库」同效，退出问答模式 -->
+        <!-- 1. 知识库：点击与「返回知识库」同效，退出问答/图谱模式 -->
         <router-link
           to="/knowledge"
           class="knowledge-nav-item"
-          :class="{ active: !showQAMode }"
+          :class="{ active: !showQAMode && !showGraphMode }"
           title="知识库"
-          @click="exitQAMode"
+          @click="handleExitToKnowledge"
         >
           <el-icon><FolderOpened /></el-icon>
           <span v-if="sidebarExpanded" class="knowledge-nav-text">知识库</span>
@@ -42,7 +42,13 @@
           <span v-if="sidebarExpanded" class="knowledge-nav-text">搜索</span>
         </button>
         <!-- 3. 知识图谱 -->
-        <button type="button" class="knowledge-nav-item" title="知识图谱">
+        <button
+          type="button"
+          class="knowledge-nav-item"
+          :class="{ active: showGraphMode }"
+          title="知识图谱"
+          @click="enterGraphMode"
+        >
           <el-icon><Connection /></el-icon>
           <span v-if="sidebarExpanded" class="knowledge-nav-text">知识图谱</span>
         </button>
@@ -74,6 +80,49 @@
                 <el-icon class="knowledge-my-icon"><Search /></el-icon>
                 <span class="knowledge-my-name knowledge-qa-history-query">{{ item.query }}</span>
               </li>
+            </ul>
+          </section>
+        </template>
+        <template v-else-if="showGraphMode">
+          <button type="button" class="knowledge-hot-tab knowledge-qa-back" @click="exitGraphMode">
+            <el-icon class="knowledge-hot-tab-icon"><ArrowLeft /></el-icon>
+            <span>返回知识库</span>
+          </button>
+          <div class="knowledge-main-divider" />
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">选择要可视化的知识库</h2>
+            <p class="knowledge-graph-hint">从下方选择知识库，中间将显示该库内笔记/博客的双链图谱</p>
+          </section>
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">我的知识库</h2>
+            <ul class="knowledge-my-list">
+              <li
+                v-for="kb in graphMyKbList"
+                :key="kb.id"
+                class="knowledge-my-item"
+                :class="{ active: graphKbId === Number(kb.id) && graphKbSource === 'mine' }"
+                @click="selectGraphKb(Number(kb.id), 'mine')"
+              >
+                <el-icon class="knowledge-my-icon"><Reading /></el-icon>
+                <span class="knowledge-my-name">{{ kb.name || '未命名' }}</span>
+              </li>
+              <li v-if="graphMyKbList.length === 0" class="knowledge-search-no-result">暂无知识库</li>
+            </ul>
+          </section>
+          <section class="knowledge-section">
+            <h2 class="knowledge-section-title">我的订阅</h2>
+            <ul class="knowledge-my-list">
+              <li
+                v-for="sub in mySubscriptionsFiltered"
+                :key="sub.id"
+                class="knowledge-my-item"
+                :class="{ active: graphKbId === Number(sub.id) && graphKbSource === 'sub' }"
+                @click="selectGraphKb(Number(sub.id), 'sub')"
+              >
+                <el-icon class="knowledge-my-icon"><Reading /></el-icon>
+                <span class="knowledge-my-name">{{ sub.name || '未命名' }}</span>
+              </li>
+              <li v-if="mySubscriptionsFiltered.length === 0" class="knowledge-search-no-result">暂无订阅</li>
             </ul>
           </section>
         </template>
@@ -145,13 +194,97 @@
       </div>
     </aside>
 
-    <!-- 右侧：知识库详情边栏（问答模式下不显示） -->
+    <!-- 右侧：知识库详情边栏 或 图谱参数（问答模式下不显示） -->
     <aside
-      v-show="selectedKb && !showQAMode"
+      v-show="(selectedKb && !showQAMode) || showGraphMode"
       class="knowledge-detail-sidebar"
       :class="{ expanded: sidebarExpanded }"
     >
-      <div class="knowledge-detail-inner">
+      <div v-if="showGraphMode" class="knowledge-detail-inner knowledge-graph-params">
+        <h2 class="knowledge-graph-params-title">图谱参数</h2>
+
+        <section class="knowledge-graph-params-section">
+          <h3 class="knowledge-graph-params-section-title">外观</h3>
+          <div class="knowledge-graph-param">
+            <label>背景色</label>
+            <div class="knowledge-graph-color-row">
+              <input v-model="graphBgColor" type="color" class="knowledge-graph-color-swatch" />
+              <input v-model="graphBgColor" type="text" class="knowledge-graph-color-hex" placeholder="#f5f5f7" />
+            </div>
+          </div>
+          <div class="knowledge-graph-param">
+            <label>节点颜色</label>
+            <div class="knowledge-graph-color-row">
+              <input v-model="graphNodeColor" type="color" class="knowledge-graph-color-swatch" />
+              <input v-model="graphNodeColor" type="text" class="knowledge-graph-color-hex" placeholder="#1d1d1f" />
+            </div>
+          </div>
+          <div class="knowledge-graph-param">
+            <label>边颜色</label>
+            <div class="knowledge-graph-color-row">
+              <input
+                :value="graphLinkColorForPicker"
+                type="color"
+                class="knowledge-graph-color-swatch"
+                title="取色器"
+                @input="graphLinkColor = ($event.target as HTMLInputElement).value"
+              />
+              <input v-model="graphLinkColor" type="text" class="knowledge-graph-color-hex" placeholder="hex 或 rgba" title="支持 #xxx 或 rgba(r,g,b,a)" />
+            </div>
+          </div>
+          <div class="knowledge-graph-param">
+            <label>边粗细</label>
+            <div class="knowledge-graph-slider-wrap">
+              <input v-model.number="graphLinkWidth" type="range" class="knowledge-graph-range" min="0.5" max="4" step="0.25" />
+              <span class="knowledge-graph-range-value">{{ graphLinkWidth }}</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="knowledge-graph-params-section">
+          <h3 class="knowledge-graph-params-section-title">关键词着色</h3>
+          <p class="knowledge-graph-params-hint-inline">标题包含关键词的节点将使用对应颜色</p>
+          <div v-for="rule in graphKeywordRules" :key="rule.id" class="knowledge-graph-keyword-row">
+            <input v-model="rule.keyword" type="text" class="knowledge-graph-keyword-input" placeholder="关键词" />
+            <input v-model="rule.color" type="color" class="knowledge-graph-color-swatch knowledge-graph-color-swatch--sm" title="节点颜色" />
+            <button type="button" class="knowledge-graph-keyword-remove" title="移除" @click="removeGraphKeywordRule(rule.id)">
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+          <button type="button" class="knowledge-graph-keyword-add" @click="addGraphKeywordRule">
+            <el-icon><Plus /></el-icon>
+            <span>添加关键词颜色</span>
+          </button>
+        </section>
+
+        <section class="knowledge-graph-params-section">
+          <h3 class="knowledge-graph-params-section-title">布局</h3>
+          <div class="knowledge-graph-param">
+            <label>连线距离</label>
+            <div class="knowledge-graph-slider-wrap">
+              <input v-model.number="graphLinkDistance" type="range" class="knowledge-graph-range" min="20" max="300" step="10" />
+              <span class="knowledge-graph-range-value">{{ graphLinkDistance }}</span>
+            </div>
+          </div>
+          <div class="knowledge-graph-param">
+            <label>节点斥力</label>
+            <div class="knowledge-graph-slider-wrap">
+              <input v-model.number="graphCharge" type="range" class="knowledge-graph-range" min="-400" max="-20" step="10" />
+              <span class="knowledge-graph-range-value">{{ graphCharge }}</span>
+            </div>
+          </div>
+          <div class="knowledge-graph-param">
+            <label>节点大小</label>
+            <div class="knowledge-graph-slider-wrap">
+              <input v-model.number="graphNodeRelSize" type="range" class="knowledge-graph-range" min="2" max="12" step="0.5" />
+              <span class="knowledge-graph-range-value">{{ graphNodeRelSize }}</span>
+            </div>
+          </div>
+        </section>
+
+        <p class="knowledge-graph-params-hint">点击图中节点可跳转到该笔记/博客</p>
+      </div>
+      <div v-else class="knowledge-detail-inner">
         <div class="knowledge-detail-header">
           <div class="knowledge-detail-cover-row">
             <div v-if="selectedKb?.cover" class="knowledge-detail-cover-wrap">
@@ -650,10 +783,24 @@
       </template>
     </el-dialog>
 
-    <!-- 中间：主内容区（问答模式 > 文章阅读 > 热门/搜索列表 > 占位） -->
-    <main class="knowledge-main" :class="{ expanded: sidebarExpanded, 'knowledge-main--qa': showQAMode }">
+    <!-- 中间：主内容区（图谱 > 问答 > 编辑/阅读 > 热门/搜索列表 > 占位） -->
+    <main class="knowledge-main" :class="{ expanded: sidebarExpanded, 'knowledge-main--qa': showQAMode, 'knowledge-main--graph': showGraphMode }">
+      <!-- 知识图谱：力导向图 -->
+      <div v-if="showGraphMode" class="knowledge-graph-view" :style="{ background: graphBgColor }">
+        <div v-if="!graphKbId" class="knowledge-graph-placeholder">
+          <el-icon class="knowledge-graph-placeholder-icon"><Connection /></el-icon>
+          <p>请在左侧选择要可视化的知识库</p>
+        </div>
+        <div v-else class="knowledge-graph-wrap">
+          <div v-if="graphLoading" class="knowledge-graph-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载图谱…</span>
+          </div>
+          <div ref="graphContainerRef" class="knowledge-graph-container" />
+        </div>
+      </div>
       <!-- 问答模式：GPT 风格对话 -->
-      <div v-if="showQAMode" class="knowledge-qa-panel">
+      <div v-else-if="showQAMode" class="knowledge-qa-panel">
         <div class="knowledge-qa-header">
           <h2 class="knowledge-qa-title">知识库问答</h2>
           <p class="knowledge-qa-desc">基于你的知识库与订阅进行智能问答</p>
@@ -1006,6 +1153,8 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { uploadImage } from '@/api/upload'
 import * as knowledgeApi from '@/api/knowledge'
+import { getKnowledgeBaseGraph, type KnowledgeBaseGraphResponse } from '@/api/knowledge'
+import ForceGraph from 'force-graph'
 import { getContentsMe, getContentView, getContentForEdit, updateContentTitle, saveDraft, type ContentView } from '@/api/content'
 import { getMe, getUserById, type UserMe } from '@/api/user'
 import Vditor from 'vditor'
@@ -1063,6 +1212,11 @@ function matchKbKeyword(kb: KnowledgeBaseItem, q: string): boolean {
   const desc = String(kb.description ?? '').toLowerCase()
   return name.includes(k) || desc.includes(k)
 }
+
+/** 图谱模式下左侧「我的知识库」列表（排除 default 占位） */
+const graphMyKbList = computed(() =>
+  myKnowledgeBasesFiltered.value.filter((kb) => String(kb.id) !== 'default')
+)
 
 const myKnowledgeBasesFiltered = computed(() => {
   const list = myKnowledgeBases.value
@@ -1151,6 +1305,84 @@ const linkPanelRefreshKey = ref(0)
 
 const isDetailSubscribed = computed(() => selectedKb.value != null && selectedKb.value.subscribed === true)
 
+/** 知识图谱模式 */
+const showGraphMode = ref(false)
+const graphKbId = ref<number | null>(null)
+const graphKbSource = ref<'mine' | 'sub' | null>(null)
+interface GraphNode { id: number; name: string; type?: string }
+const graphData = ref<{ nodes: GraphNode[]; links: { source: GraphNode; target: GraphNode }[] } | null>(null)
+const graphLoading = ref(false)
+const graphContainerRef = ref<HTMLDivElement | null>(null)
+const graphLinkDistance = ref(120)
+const graphCharge = ref(-120)
+const graphNodeRelSize = ref(6)
+/** force-graph 实例（库的 .d.ts 为 class，实际运行时为工厂函数，此处用接口避免类型报错） */
+interface GraphInstance {
+  graphData(data: unknown): GraphInstance
+  nodeRelSize(n: number): GraphInstance
+  nodeLabel(accessor: (n: { name?: string }) => string): GraphInstance
+  nodeColor(accessor: string | ((n: { name?: string }) => string)): GraphInstance
+  linkColor(accessor: string | (() => string)): GraphInstance
+  linkWidth(accessor: number | (() => number)): GraphInstance
+  linkDirectionalArrowLength(n: number): GraphInstance
+  linkDirectionalArrowColor(accessor: string | (() => string)): GraphInstance
+  backgroundColor(color?: string): GraphInstance
+  zoomToFit(durationMs?: number, padding?: number): GraphInstance
+  onEngineStop(cb: () => void): GraphInstance
+  onNodeClick(cb: (node: { id: number; name?: string }, event: MouseEvent) => void): GraphInstance
+  d3Force(name: string): unknown
+  d3ReheatSimulation?(): void
+  _destructor(): void
+}
+const graphInstance = ref<GraphInstance | null>(null)
+
+/** 图谱外观：苹果风格默认 + 用户可调 */
+const graphBgColor = ref('#f5f5f7')
+const graphNodeColor = ref('#1d1d1f')
+const graphLinkColor = ref('rgba(0,0,0,0.42)')
+const graphLinkWidth = ref(1.5)
+
+/** 边颜色在取色器中的 hex 表示（取色器仅支持 hex，rgba 时取 rgb 转 hex） */
+const graphLinkColorForPicker = computed(() => {
+  const v = graphLinkColor.value.trim()
+  if (/^#[0-9a-fA-F]{3,8}$/.test(v)) return v.slice(0, 7)
+  const rgba = v.match(/rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/)
+  if (rgba) {
+    const r = Number(rgba[1]).toString(16).padStart(2, '0')
+    const g = Number(rgba[2]).toString(16).padStart(2, '0')
+    const b = Number(rgba[3]).toString(16).padStart(2, '0')
+    return '#' + r + g + b
+  }
+  return '#000000'
+})
+/** 关键词 → 节点颜色（匹配到的节点用该颜色） */
+interface GraphKeywordRule {
+  id: string
+  keyword: string
+  color: string
+}
+const graphKeywordRules = ref<GraphKeywordRule[]>([])
+
+function getNodeColorByRules(node: { name?: string }): string | null {
+  const name = (node.name ?? '').toLowerCase()
+  for (const rule of graphKeywordRules.value) {
+    if (!rule.keyword.trim()) continue
+    if (name.includes(rule.keyword.trim().toLowerCase())) return rule.color
+  }
+  return null
+}
+
+function addGraphKeywordRule() {
+  graphKeywordRules.value = [
+    ...graphKeywordRules.value,
+    { id: String(Date.now()), keyword: '', color: '#0071e3' },
+  ]
+}
+
+function removeGraphKeywordRule(id: string) {
+  graphKeywordRules.value = graphKeywordRules.value.filter((r) => r.id !== id)
+}
+
 /** 问答模式：点击左侧搜索后右侧为 GPT 风格问答，左侧为历史记录 */
 const showQAMode = ref(false)
 const qaMessages = ref<{ role: 'user' | 'assistant'; content: string }[]>([])
@@ -1198,6 +1430,239 @@ function enterQAMode() {
 function exitQAMode() {
   showQAMode.value = false
 }
+
+function enterGraphMode() {
+  showGraphMode.value = true
+  showQAMode.value = false
+  // 每次进入图谱模式都重置选择与数据，避免上次的 graphKbId 导致只显示空黑区、不显示占位提示
+  graphKbId.value = null
+  graphKbSource.value = null
+  graphData.value = null
+  graphLoading.value = false
+  // 进入图谱时清掉正文选中并同步 URL，避免 URL 仍带 contentId 导致路由/跳转错乱
+  selectedContentId.value = null
+  nextTick(() => syncRouteQuery())
+}
+
+function exitGraphMode() {
+  showGraphMode.value = false
+  graphKbId.value = null
+  graphKbSource.value = null
+  graphData.value = null
+  if (graphInstance.value) {
+    graphInstance.value._destructor()
+    graphInstance.value = null
+  }
+}
+
+function handleExitToKnowledge() {
+  exitQAMode()
+  exitGraphMode()
+}
+
+async function selectGraphKb(kbId: number, source: 'mine' | 'sub') {
+  if (Number.isNaN(kbId)) return
+  graphKbId.value = kbId
+  graphKbSource.value = source
+  graphLoading.value = true
+  // 不先清空 graphData，避免重新点击同一知识库时出现黑屏；新数据返回后再覆盖
+  try {
+    const res = await getKnowledgeBaseGraph(kbId)
+    if (DEBUG_GRAPH) {
+      console.log('[Graph] API 返回', {
+        nodesCount: (res.nodes ?? []).length,
+        linksCount: (res.links ?? []).length,
+        rawNodes: res.nodes ?? [],
+        rawLinks: res.links ?? [],
+      })
+    }
+    const nodes = (res.nodes ?? []).map((n) => ({ id: Number(n.id), name: n.title ?? '[无标题]', type: n.type }))
+    const nodeById = new Map(nodes.map((n) => [n.id, n]))
+    const links: { source: GraphNode; target: GraphNode }[] = []
+    for (const l of res.links ?? []) {
+      const src = nodeById.get(Number(l.source))
+      const tgt = nodeById.get(Number(l.target))
+      if (DEBUG_GRAPH && (!src || !tgt)) {
+        console.warn('[Graph] 跳过无效边: source=', l.source, 'target=', l.target, 'nodeById.has(source)=', nodeById.has(Number(l.source)), 'nodeById.has(target)=', nodeById.has(Number(l.target)))
+      }
+      if (src && tgt) links.push({ source: src, target: tgt })
+    }
+    if (DEBUG_GRAPH) {
+      console.log('[Graph] 构建后', {
+        nodesCount: nodes.length,
+        linksCount: links.length,
+        nodeIds: nodes.map((n) => n.id),
+        linksSample: links.slice(0, 3).map((l) => ({ sourceId: l.source.id, targetId: l.target.id, sourceHasXY: 'x' in l.source && 'y' in l.source })),
+      })
+    }
+    graphData.value = { nodes, links }
+  } catch {
+    graphData.value = null
+    ElMessage.warning('加载图谱失败')
+  } finally {
+    graphLoading.value = false
+  }
+  nextTick(() => syncRouteQuery())
+}
+
+/** 仅更新外观（颜色、边粗细、箭头、节点大小等），不重新加热仿真 */
+function applyGraphVisualParams(instance: GraphInstance) {
+  instance
+    .backgroundColor(graphBgColor.value)
+    .nodeColor((n: { name?: string }) => getNodeColorByRules(n) ?? graphNodeColor.value)
+    .linkColor(() => graphLinkColor.value)
+    .linkWidth(() => graphLinkWidth.value)
+    .linkDirectionalArrowLength(8)
+    .linkDirectionalArrowColor(() => graphLinkColor.value)
+    .nodeRelSize(graphNodeRelSize.value)
+    .nodeLabel((n: { name?: string }) => n.name ?? '')
+}
+
+/** 仅更新力学布局（连线距离、斥力）并重新加热仿真 */
+function applyGraphLayoutParams(instance: GraphInstance) {
+  const linkForce = instance.d3Force('link')
+  const chargeForce = instance.d3Force('charge')
+  if (DEBUG_GRAPH) {
+    console.log('[Graph] applyGraphLayoutParams', {
+      hasLinkForce: !!linkForce,
+      hasChargeForce: !!chargeForce,
+      linkDistance: graphLinkDistance.value,
+      charge: graphCharge.value,
+      linkForceKeys: linkForce ? Object.keys(linkForce) : [],
+    })
+  }
+  if (linkForce && typeof (linkForce as { distance: (v: number) => void }).distance === 'function') {
+    (linkForce as { distance: (v: number) => void }).distance(graphLinkDistance.value)
+  }
+  if (chargeForce && typeof (chargeForce as { strength: (v: number) => void }).strength === 'function') {
+    (chargeForce as { strength: (v: number) => void }).strength(graphCharge.value)
+  }
+  if (typeof instance.d3ReheatSimulation === 'function') {
+    instance.d3ReheatSimulation()
+  }
+}
+
+function applyGraphParams(instance: GraphInstance) {
+  applyGraphVisualParams(instance)
+  applyGraphLayoutParams(instance)
+}
+
+const DEBUG_GRAPH_NAV = true // 调试：图谱节点点击跳转，查完问题可改为 false
+const DEBUG_GRAPH = true // 调试：边不显示、距离/斥力调节无效，查完可改为 false
+
+function onGraphNodeClick(node: { id: number; name?: string }) {
+  const kbId = graphKbId.value
+  const source = graphKbSource.value
+  if (kbId == null || source == null) return
+  const kb =
+    source === 'mine'
+      ? myKnowledgeBases.value.find((k) => Number(k.id) === kbId)
+      : mySubscriptions.value.find((s) => Number(s.id) === kbId)
+  if (!kb) return
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[GraphNodeClick] 点击节点', { nodeId: node.id, nodeName: node.name, kbId, kbIdType: typeof kb.id, kbIdVal: kb.id })
+  }
+  pendingRestoreContentId.value = node.id
+  showGraphMode.value = false
+  selectedKb.value = kb
+  selectedKbSource.value = source
+  // 离开图谱时销毁力导向图实例，否则再次进入图谱会复用已卸载的 DOM 导致黑屏
+  if (graphInstance.value) {
+    graphInstance.value._destructor()
+    graphInstance.value = null
+  }
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[GraphNodeClick] 已设置 pendingRestoreContentId=', node.id, 'selectedKb.id=', kb.id)
+  }
+  // 依赖 watch(selectedKb)：已改为有 pendingRestoreContentId 时不因 sameKb 跳过，会调 loadDetailContents 并恢复 contentId
+}
+
+function initOrUpdateGraph() {
+  const container = graphContainerRef.value
+  const data = graphData.value
+  if (!container || !data?.nodes?.length) return
+  if (DEBUG_GRAPH) {
+    console.log('[Graph] initOrUpdateGraph', {
+      isNewInstance: !graphInstance.value,
+      nodesCount: data.nodes.length,
+      linksCount: data.links.length,
+      linksFirst: data.links[0] ? { sourceId: data.links[0].source.id, targetId: data.links[0].target.id, sourceRef: !!data.links[0].source, targetRef: !!data.links[0].target } : null,
+    })
+  }
+  if (!graphInstance.value) {
+    // force-graph 为工厂函数：ForceGraph() 返回图表构造函数，再传入容器
+    const instance = ((ForceGraph as unknown as () => (el: HTMLElement) => GraphInstance)())(container)
+    graphInstance.value = instance
+    instance
+      .graphData(data)
+      .backgroundColor(graphBgColor.value)
+      .nodeColor((n: { name?: string }) => getNodeColorByRules(n) ?? graphNodeColor.value)
+      .linkColor(() => graphLinkColor.value)
+      .linkWidth(() => graphLinkWidth.value)
+      .linkDirectionalArrowLength(8)
+      .linkDirectionalArrowColor(() => graphLinkColor.value)
+      .nodeRelSize(graphNodeRelSize.value)
+      .nodeLabel((n: { name?: string }) => n.name ?? '')
+      .onNodeClick((n: { id: number; name?: string }, _e: MouseEvent) => onGraphNodeClick(n))
+      .onEngineStop(() => {
+        if (DEBUG_GRAPH && data.links.length > 0) {
+          const first = data.links[0]
+          console.log('[Graph] onEngineStop 首条边', {
+            source: first.source,
+            target: first.target,
+            sourceHasXY: first.source && 'x' in first.source && 'y' in first.source,
+            targetHasXY: first.target && 'x' in first.target && 'y' in first.target,
+          })
+        }
+        // 延迟一帧再 zoomToFit，确保画布尺寸已稳定，并用较大 padding 让整图更居中
+        requestAnimationFrame(() => {
+          instance.zoomToFit(400, 80)
+        })
+      })
+    const linkForce = instance.d3Force('link')
+    const chargeForce = instance.d3Force('charge')
+    if (DEBUG_GRAPH) {
+      console.log('[Graph] 初试化 link/charge', { linkForce: !!linkForce, chargeForce: !!chargeForce })
+    }
+    if (linkForce && typeof (linkForce as { distance: (v: number) => void }).distance === 'function') {
+      (linkForce as { distance: (v: number) => void }).distance(graphLinkDistance.value)
+    }
+    if (chargeForce && typeof (chargeForce as { strength: (v: number) => void }).strength === 'function') {
+      (chargeForce as { strength: (v: number) => void }).strength(graphCharge.value)
+    }
+  } else {
+    graphInstance.value.graphData(data)
+    applyGraphParams(graphInstance.value)
+  }
+}
+
+watch(
+  [graphContainerRef, graphData],
+  () => {
+    const container = graphContainerRef.value
+    const data = graphData.value
+    if (!data?.nodes?.length) return
+    if (!container) {
+      // 数据先到、容器尚未挂载时，nextTick 再试一次（如从节点跳转返回后选知识库）
+      nextTick(() => initOrUpdateGraph())
+      return
+    }
+    nextTick(() => initOrUpdateGraph())
+  },
+  { flush: 'post' }
+)
+
+watch([graphLinkDistance, graphCharge], () => {
+  if (graphInstance.value) applyGraphParams(graphInstance.value)
+})
+
+watch(
+  [graphBgColor, graphNodeColor, graphLinkColor, graphLinkWidth, graphNodeRelSize, graphKeywordRules],
+  () => {
+    if (graphInstance.value) applyGraphVisualParams(graphInstance.value)
+  },
+  { deep: true }
+)
 
 async function sendQAMessage() {
   const text = qaInput.value.trim()
@@ -1273,6 +1738,9 @@ const addContentBatchAdding = ref(false)
 const detailContentIds = computed(() => new Set(detailContents.value.map((c) => c.id)))
 
 watch(selectedKb, (kb, oldKb) => {
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[watch selectedKb] 触发', { kbId: kb?.id, oldKbId: oldKb?.id, prevIdType: typeof oldKb?.id, kbIdType: typeof kb?.id })
+  }
   if (!kb) {
     detailContents.value = []
     detailBatchMode.value = false
@@ -1281,13 +1749,19 @@ watch(selectedKb, (kb, oldKb) => {
     mainArticle.value = null
     return
   }
+  const prevId = oldKb?.id
+  // 同一知识库不重复加载；但有 pendingRestoreContentId 时（从图谱点节点进来）必须加载一次以恢复选中
+  const sameKb = prevId !== undefined && prevId !== null && String(prevId) === String(kb.id)
+  const skipLoad = sameKb && pendingRestoreContentId.value == null
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[watch selectedKb] sameKb=', sameKb, 'pendingRestore=', pendingRestoreContentId.value, '→', skipLoad ? 'return 不加载' : '清空选中并 loadDetailContents(kb.id)')
+  }
+  if (skipLoad) {
+    return
+  }
   selectedContentId.value = null
   mainArticle.value = null
   mainArticleAuthor.value = null
-  const prevId = oldKb?.id
-  if (prevId !== undefined && prevId === kb.id) {
-    return
-  }
   detailBatchMode.value = false
   detailSelectedIds.value = []
   loadDetailContents(kb.id)
@@ -1367,6 +1841,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocumentCaptureClick, true)
   destroyKbVditor()
+  if (graphInstance.value) {
+    graphInstance.value._destructor()
+    graphInstance.value = null
+  }
 })
 
 watch(
@@ -1392,6 +1870,9 @@ function mapKbToItem(kb: knowledgeApi.KnowledgeBaseItem): KnowledgeBaseItem {
 }
 
 async function loadDetailContents(kbId: string) {
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[loadDetailContents] 开始 kbId=', kbId)
+  }
   if (kbId === 'default') {
     detailContents.value = []
     return
@@ -1401,12 +1882,13 @@ async function loadDetailContents(kbId: string) {
     detailContents.value = []
     return
   }
+  let detailRes: knowledgeApi.KnowledgeBaseItem | null = null
   try {
-    const [detailRes, contentsRes] = await Promise.all([
+    const [res, contentsRes] = await Promise.all([
       knowledgeApi.getKnowledgeBaseById(id),
       knowledgeApi.getKnowledgeBaseContents(id, { page: 1, pageSize: 100 }),
     ])
-    selectedKb.value = mapKbToItem(detailRes)
+    detailRes = res
     detailContents.value = (contentsRes.list ?? []).map((c) => ({
       id: c.id,
       title: c.title,
@@ -1415,13 +1897,39 @@ async function loadDetailContents(kbId: string) {
       type: c.type,
       userId: c.userId,
     }))
+    if (DEBUG_GRAPH_NAV) {
+      console.log('[loadDetailContents] 拉取完成 detailContents.ids=', detailContents.value.map((c) => c.id))
+    }
   } catch {
     detailContents.value = []
+    if (DEBUG_GRAPH_NAV) {
+      console.log('[loadDetailContents] 请求异常')
+    }
   }
   const toRestore = pendingRestoreContentId.value
-  if (toRestore != null && detailContents.value.some((c) => c.id === toRestore)) {
-    selectedContentId.value = toRestore
+  const numRestore = toRestore != null ? Number(toRestore) : NaN
+  const found = !Number.isNaN(numRestore) && detailContents.value.some((c) => Number(c.id) === numRestore)
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[loadDetailContents] pendingRestoreContentId=', toRestore, 'numRestore=', numRestore, 'foundInList=', found, '→', found ? '先设 selectedContentId + syncRouteQuery，再设 selectedKb' : '未恢复选中')
+  }
+  // 先恢复选中并同步 URL，再更新 selectedKb，避免 watch(selectedKb) 触发时 selectedContentId 尚未写入
+  if (found) {
+    selectedContentId.value = numRestore
     pendingRestoreContentId.value = null
+    syncRouteQuery()
+    if (DEBUG_GRAPH_NAV) {
+      console.log('[loadDetailContents] 已同步 syncRouteQuery 当前 selectedContentId=', selectedContentId.value, 'route.query=', route.query)
+    }
+    // 显式加载正文，避免仅依赖 watch(selectedContentId) 时因时序未触发或未拿到 detailContents
+    const item = detailContents.value.find((c) => Number(c.id) === numRestore)
+    if (item?.type === 'KNOWLEDGE') {
+      loadKnowledgeForEdit(numRestore)
+    } else {
+      loadMainArticle(numRestore)
+    }
+  }
+  if (detailRes) {
+    selectedKb.value = mapKbToItem(detailRes)
   }
 }
 
@@ -1499,6 +2007,13 @@ async function loadMainArticle(contentId: number) {
   } finally {
     mainArticleLoading.value = false
   }
+}
+
+/** 移除曾被 Vditor 代码块预览注入的「代码块主题预览」及主题名列表，避免再次显示或保存 */
+function stripCodeBlockThemePreview(body: string): string {
+  if (!body || !body.includes('代码块主题预览')) return body
+  // 匹配整行：以「代码块主题预览」开头，后跟无空格的英文/数字/横线/斜线（主题名拼接），直到换行
+  return body.replace(/代码块主题预览[^\n\u4e00-\u9fff]*/g, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 /** 双链笔记：将正文中的 [[id:标题]] 转为 Markdown 链接，便于预览/编辑区中点击跳转 */
@@ -1640,9 +2155,10 @@ async function loadKnowledgeForEdit(contentId: number) {
     knowledgeEditLoading.value = false
     await nextTick()
     if (!kbVditorRef.value) return
+    const bodyClean = stripCodeBlockThemePreview(data.body ?? '')
     kbVditor = new Vditor(kbVditorRef.value, {
       height: 420,
-      value: processWikiLinksForPreview(data.body ?? ''),
+      value: processWikiLinksForPreview(bodyClean),
       placeholder: '在此编写知识库文件内容…',
       lang: 'zh_CN',
       mode: 'wysiwyg',
@@ -1651,6 +2167,8 @@ async function loadKnowledgeForEdit(contentId: number) {
       toolbarConfig: { hide: true },
       customWysiwygToolbar: () => [],
       counter: { enable: true, type: 'markdown' },
+      // 关闭代码块预览，避免 Lute 在编辑区注入「代码块主题预览」及大量主题名导致被误保存进正文
+      preview: { markdown: { codeBlockPreview: false } },
       input() {
         if (kbSaveTimer) clearTimeout(kbSaveTimer)
         kbSaveTimer = setTimeout(saveKnowledgeBody, 800)
@@ -1872,11 +2390,20 @@ async function loadMySubscriptions() {
 
 function syncRouteQuery() {
   if (route.path !== '/knowledge') return
-  const kbId = selectedKb.value?.id
-  const contentId = selectedContentId.value
   const q: Record<string, string> = {}
-  if (kbId) q.kb = kbId
-  if (contentId != null) q.contentId = String(contentId)
+  if (showGraphMode.value) {
+    // 图谱模式下只同步 kb（来自当前选中的图谱知识库），不写 contentId，避免路由混乱
+    const kbId = graphKbId.value != null ? String(graphKbId.value) : selectedKb.value?.id
+    if (kbId) q.kb = kbId
+  } else {
+    const kbId = selectedKb.value?.id
+    const contentId = selectedContentId.value
+    if (kbId) q.kb = kbId
+    if (contentId != null) q.contentId = String(contentId)
+  }
+  if (DEBUG_GRAPH_NAV) {
+    console.log('[syncRouteQuery]', { showGraphMode: showGraphMode.value, query: q })
+  }
   router.replace({ path: '/knowledge', query: q })
 }
 
@@ -3440,6 +3967,287 @@ async function submitCreateKb() {
   background: #f5f6f8;
 }
 
+.knowledge-main.knowledge-main--graph {
+  background: #f5f5f7;
+  overflow: hidden;
+}
+
+/* 知识图谱：力导向图区域，严格贴合容器不出现滚动条 */
+.knowledge-graph-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.knowledge-graph-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #6e6e73;
+  font-size: 15px;
+}
+
+.knowledge-graph-placeholder-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.knowledge-graph-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.knowledge-graph-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #6e6e73;
+  font-size: 14px;
+  z-index: 1;
+}
+
+.knowledge-graph-container {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.knowledge-graph-params-title {
+  margin: 0 0 20px 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #1d1d1f;
+}
+
+.knowledge-graph-params-section {
+  margin-bottom: 24px;
+}
+
+.knowledge-graph-params-section:last-of-type {
+  margin-bottom: 20px;
+}
+
+.knowledge-graph-params-section-title {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6e73;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.knowledge-graph-param {
+  margin-bottom: 14px;
+}
+
+.knowledge-graph-param:last-child {
+  margin-bottom: 0;
+}
+
+.knowledge-graph-param label {
+  display: block;
+  font-size: 13px;
+  color: #1d1d1f;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+/* Apple 风格滑块 */
+.knowledge-graph-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.knowledge-graph-range {
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  outline: none;
+}
+
+.knowledge-graph-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.knowledge-graph-range::-webkit-slider-thumb:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.knowledge-graph-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+
+.knowledge-graph-range-value {
+  font-size: 13px;
+  color: #6e6e73;
+  min-width: 2.5em;
+  text-align: right;
+}
+
+/* 颜色选择行 */
+.knowledge-graph-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.knowledge-graph-color-swatch {
+  width: 36px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.knowledge-graph-color-swatch--sm {
+  width: 28px;
+  height: 28px;
+}
+
+.knowledge-graph-color-hex {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  color: #1d1d1f;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.knowledge-graph-color-hex:focus {
+  border-color: #0071e3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.knowledge-graph-color-hex--full {
+  flex: 1;
+}
+
+.knowledge-graph-params-hint-inline {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.4;
+}
+
+/* 关键词着色 */
+.knowledge-graph-keyword-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.knowledge-graph-keyword-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  color: #1d1d1f;
+  outline: none;
+}
+
+.knowledge-graph-keyword-input:focus {
+  border-color: #0071e3;
+}
+
+.knowledge-graph-keyword-remove {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #86868b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.knowledge-graph-keyword-remove:hover {
+  color: #1d1d1f;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.knowledge-graph-keyword-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #0071e3;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.knowledge-graph-keyword-add:hover {
+  background: rgba(0, 113, 227, 0.08);
+}
+
+.knowledge-graph-params-hint {
+  margin: 16px 0 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.4;
+}
+
+.knowledge-graph-hint {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  line-height: 1.5;
+}
+
 /* 问答模式：加宽、淡底、高级感 */
 .knowledge-qa-panel {
   display: flex;
@@ -3809,6 +4617,7 @@ async function submitCreateKb() {
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

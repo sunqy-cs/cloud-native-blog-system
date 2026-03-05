@@ -12,6 +12,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +36,7 @@ public class KnowledgeBaseService {
     private final KnowledgeBaseContentMapper knowledgeBaseContentMapper;
     private final KnowledgeBaseFavoriteMapper knowledgeBaseFavoriteMapper;
     private final ContentMapper contentMapper;
+    private final ContentReferenceMapper contentReferenceMapper;
     private final ContentService contentService;
 
     public List<KnowledgeBaseVO> listMy(Long userId) {
@@ -122,6 +126,60 @@ public class KnowledgeBaseService {
         KnowledgeBaseContentsResponse res = new KnowledgeBaseContentsResponse();
         res.setList(list);
         res.setTotal(total);
+        return res;
+    }
+
+    /** 知识图谱：返回指定知识库内节点（收录内容）与边（content_reference 双链），用于前端力导向图 */
+    public KnowledgeBaseGraphResponse getGraph(Long userId, Long kbId) {
+        KnowledgeBase kb = knowledgeBaseMapper.selectById(kbId);
+        if (kb == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "知识库不存在");
+        }
+        if (VISIBILITY_PRIVATE.equals(kb.getVisibility()) && !kb.getUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "知识库不存在");
+        }
+        List<KnowledgeBaseContent> kbcList = knowledgeBaseContentMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseContent>()
+                        .eq(KnowledgeBaseContent::getKnowledgeBaseId, kbId));
+        List<Long> contentIds = kbcList.stream()
+                .map(KnowledgeBaseContent::getContentId)
+                .distinct()
+                .collect(Collectors.toList());
+        if (contentIds.isEmpty()) {
+            KnowledgeBaseGraphResponse empty = new KnowledgeBaseGraphResponse();
+            empty.setNodes(List.of());
+            empty.setLinks(List.of());
+            return empty;
+        }
+        Set<Long> idSet = new HashSet<>(contentIds);
+        List<Content> contents = contentMapper.selectBatchIds(contentIds);
+        Map<Long, Content> contentMap = contents.stream().collect(Collectors.toMap(Content::getId, c -> c, (a, b) -> a));
+        List<KnowledgeBaseGraphResponse.GraphNodeVO> nodes = contentIds.stream()
+                .map(contentMap::get)
+                .filter(java.util.Objects::nonNull)
+                .map(c -> {
+                    KnowledgeBaseGraphResponse.GraphNodeVO n = new KnowledgeBaseGraphResponse.GraphNodeVO();
+                    n.setId(c.getId());
+                    n.setTitle(c.getTitle() != null && !c.getTitle().isEmpty() ? c.getTitle() : "[无标题]");
+                    n.setType(c.getType());
+                    return n;
+                })
+                .collect(Collectors.toList());
+        List<ContentReference> refs = contentReferenceMapper.selectList(
+                new LambdaQueryWrapper<ContentReference>()
+                        .in(ContentReference::getSourceContentId, contentIds));
+        List<KnowledgeBaseGraphResponse.GraphLinkVO> links = new ArrayList<>();
+        for (ContentReference ref : refs) {
+            if (ref.getTargetContentId() != null && idSet.contains(ref.getTargetContentId())) {
+                KnowledgeBaseGraphResponse.GraphLinkVO link = new KnowledgeBaseGraphResponse.GraphLinkVO();
+                link.setSource(ref.getSourceContentId());
+                link.setTarget(ref.getTargetContentId());
+                links.add(link);
+            }
+        }
+        KnowledgeBaseGraphResponse res = new KnowledgeBaseGraphResponse();
+        res.setNodes(nodes);
+        res.setLinks(links);
         return res;
     }
 
