@@ -158,7 +158,8 @@ services:
     command: -config.file=/etc/promtail/promtail-config.yaml -config.expand-env=true
     volumes:
       - ./observability/promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
-      - app-logs:/var/log/app:ro
+      # 宿主机目录：宿主机运行服务时设置 LOG_PATH 指向 infrastructure/observability/app-logs，Promtail 即可采集
+      - ./observability/app-logs:/var/log/app:ro
     depends_on:
       - loki
     restart: unless-stopped
@@ -171,4 +172,3 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
-  app-logs:     # 应用日志目录，各服务将日志写入此处后由 Promtail 采集
