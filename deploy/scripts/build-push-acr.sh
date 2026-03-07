@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 构建并推送所有业务镜像到阿里云 ACR
-# 使用前：1. 在阿里云控制台创建命名空间；2. 修改下面 ACR 地址与命名空间；3. 执行 docker login 登录 ACR
+
 
 set -e
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
