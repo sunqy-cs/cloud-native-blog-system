@@ -1,0 +1,11 @@
+# 仅包含建库脚本，完整表结构请用: kubectl create configmap mysql-init-sql --from-file=<repo>/infrastructure/mysql/ -n blog-infra --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-sql
+  namespace: blog-infra
+data:
+  00_init.sql: |
+    SET NAMES utf8mb4;
+    CREATE DATABASE IF NOT EXISTS blog DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    USE blog;

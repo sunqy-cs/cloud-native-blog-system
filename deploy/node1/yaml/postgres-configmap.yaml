@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: blog-infra
+data:
+  00_init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+  01_kb_chunk_embedding.sql: |
+    CREATE TABLE IF NOT EXISTS kb_chunk_embedding (
+        id           BIGSERIAL PRIMARY KEY,
+        kb_id        BIGINT        NOT NULL,
+        content_id   BIGINT        NOT NULL,
+        chunk_index  INT           NOT NULL DEFAULT 0,
+        content      TEXT          NOT NULL,
+        embedding    vector(1024)   NOT NULL,
+        created_at   TIMESTAMPTZ   DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_kb_chunk_kb_id ON kb_chunk_embedding (kb_id);
+    CREATE INDEX IF NOT EXISTS idx_kb_chunk_content_id ON kb_chunk_embedding (content_id);
+    CREATE INDEX IF NOT EXISTS idx_kb_chunk_embedding_hnsw ON kb_chunk_embedding USING hnsw (embedding vector_cosine_ops);

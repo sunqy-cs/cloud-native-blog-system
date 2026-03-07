@@ -1,0 +1,36 @@
+# Promtail 推送到集群内 Loki；按需调整 __path__ 采集宿主机或容器日志
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: blog-infra
+data:
+  promtail-config.yaml: |
+    server:
+      http_listen_port: 9080
+      grpc_listen_port: 0
+    positions:
+      filename: /tmp/positions.yaml
+    clients:
+      - url: http://loki.blog-infra.svc.cluster.local:3100/loki/api/v1/push
+    scrape_configs:
+      - job_name: app
+        static_configs:
+          - targets: [localhost]
+            labels:
+              job: blog-services
+              __path__: /var/log/app/*.log
+      - job_name: pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            separator: /
+            target_label: __path__
+            replacement: /var/log/pods/$1/$2/*.log

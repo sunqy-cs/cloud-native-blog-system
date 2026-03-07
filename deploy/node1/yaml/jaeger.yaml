@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: blog-infra
+spec:
+  ports:
+    - port: 16686
+      targetPort: 16686
+      name: ui
+    - port: 14268
+      targetPort: 14268
+      name: http
+    - port: 9411
+      targetPort: 9411
+      name: zipkin
+  selector:
+    app: jaeger
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: blog-infra
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      nodeSelector:
+        node: node4
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.52
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+            - name: COLLECTOR_ZIPKIN_HOST_PORT
+              value: ":9411"
+          ports:
+            - containerPort: 16686
+            - containerPort: 14268
+            - containerPort: 9411

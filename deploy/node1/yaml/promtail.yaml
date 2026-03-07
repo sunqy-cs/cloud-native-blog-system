@@ -1,0 +1,41 @@
+# DaemonSet：在 Node2/Node3/Node4 各跑一个，采集本节点日志；不调度到 Node1（控制面）
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: promtail
+  namespace: blog-infra
+spec:
+  selector:
+    matchLabels:
+      app: promtail
+  template:
+    metadata:
+      labels:
+        app: promtail
+    spec:
+      # 不容忍 control-plane 污点，故只在 Node2/Node3/Node4 运行
+      containers:
+        - name: promtail
+          image: grafana/promtail:3.0.0
+          args:
+            - -config.file=/etc/promtail/promtail-config.yaml
+            - -config.expand-env=true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/promtail
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: podlogs
+              mountPath: /var/log/pods
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: promtail-config
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: podlogs
+          hostPath:
+            path: /var/log/pods
