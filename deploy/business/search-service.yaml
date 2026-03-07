@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-service
+  namespace: blog-app
+spec:
+  ports:
+    - port: 8087
+      targetPort: 8087
+      name: http
+  selector:
+    app: search-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service
+  namespace: blog-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: search-service
+  template:
+    metadata:
+      labels:
+        app: search-service
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node
+                    operator: In
+                    values: [node2, node3]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: search-service
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: search-service
+          image: registry.cn-beijing.aliyuncs.com/your-namespace/search-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8087
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret

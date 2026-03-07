@@ -1,0 +1,38 @@
+# 业务服务共用环境变量（Nacos、MySQL、ES、MinIO、Postgres、Jaeger）
+# 各 Deployment 用 envFrom 引用，再按需覆盖
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: blog-app
+data:
+  # Nacos（blog-infra 为 Node4 中间件命名空间）
+  SPRING_CLOUD_NACOS_DISCOVERY_SERVER_ADDR: "nacos.blog-infra.svc.cluster.local:8848"
+  # MySQL
+  SPRING_DATASOURCE_URL: "jdbc:mysql://mysql.blog-infra.svc.cluster.local:3306/blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
+  SPRING_DATASOURCE_USERNAME: "root"
+  SPRING_DATASOURCE_DRIVER_CLASS_NAME: "com.mysql.cj.jdbc.Driver"
+  # Elasticsearch
+  SPRING_ELASTICSEARCH_URIS: "http://elasticsearch.blog-infra.svc.cluster.local:9200"
+  # MinIO
+  MINIO_ENDPOINT: "http://minio.blog-infra.svc.cluster.local:9000"
+  MINIO_ACCESS_KEY: "minioadmin"
+  MINIO_SECRET_KEY: "minioadmin"
+  # PostgreSQL (pgvector)
+  POSTGRES_JDBC_URL: "jdbc:postgresql://postgres.blog-infra.svc.cluster.local:5432/blog_vector"
+  POSTGRES_USER: "blog"
+  POSTGRES_PASSWORD: "blog"
+  # Zipkin/Jaeger
+  ZIPKIN_ENDPOINT: "http://jaeger.blog-infra.svc.cluster.local:9411/api/v2/spans"
+---
+# 敏感信息放 Secret，按需挂到各服务
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: blog-app
+type: Opaque
+stringData:
+  SPRING_DATASOURCE_PASSWORD: "root"
+  JWT_SECRET: "your-256-bit-secret-key-change-in-production-please"
+  POSTGRES_PASSWORD: "blog"

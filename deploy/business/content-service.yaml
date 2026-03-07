@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: content-service
+  namespace: blog-app
+spec:
+  ports:
+    - port: 8084
+      targetPort: 8084
+      name: http
+  selector:
+    app: content-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-service
+  namespace: blog-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: content-service
+  template:
+    metadata:
+      labels:
+        app: content-service
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node
+                    operator: In
+                    values: [node2, node3]
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: content-service
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: content-service
+          image: registry.cn-beijing.aliyuncs.com/your-namespace/content-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8084
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secret
+          env:
+            - name: SPRING_DATASOURCE_JDBC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: SPRING_DATASOURCE_URL
+            - name: APP_INTERACTION_SERVICE_URL
+              value: "http://interaction-service:8085"
+            - name: APP_SEARCH_SERVICE_URL
+              value: "http://search-service:8087"
+            - name: APP_AI_SERVICE_URL
+              value: "http://ai-service:8086"
+            - name: APP_VECTOR_DATASOURCE_JDBC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: POSTGRES_JDBC_URL
+            - name: APP_VECTOR_DATASOURCE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: POSTGRES_USER
+            - name: APP_VECTOR_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secret
+                  key: POSTGRES_PASSWORD
+---
