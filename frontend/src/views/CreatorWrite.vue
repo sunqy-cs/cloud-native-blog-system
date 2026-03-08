@@ -302,7 +302,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRight, List, Rank, CircleCheck, Top, Bottom, QuestionFilled, Plus, Loading } from '@element-plus/icons-vue'
@@ -639,6 +639,34 @@ async function onOneClickGenerate() {
   }
 }
 
+/** 根据文章 id 拉取详情并填充表单，返回正文（供编辑器使用）。失败时返回空字符串。 */
+async function fetchAndApplyArticle(id: number): Promise<string> {
+  try {
+    const data = await getContentForEdit(id)
+    contentId.value = data.id
+    title.value = data.title ?? ''
+    summary.value = data.summary ?? ''
+    cover.value = data.cover ?? ''
+    columnId.value = data.columnId
+    articleType.value = (data.articleType === 'REPRINT' ? 'reprint' : data.articleType === 'TRANSLATED' ? 'translated' : 'original') as 'original' | 'reprint' | 'translated'
+    visibility.value = (data.visibility === 'SELF' ? 'self' : data.visibility === 'FANS' ? 'fans' : 'all') as 'all' | 'self' | 'fans'
+    creationStatement.value = (data.creationStatement ?? 'none') as 'none' | 'ai-assisted' | 'network' | 'personal'
+    const names = data.tagNames ?? []
+    if (names.length > 0 && mainTagList.value.length > 0) {
+      const mainTag = mainTagList.value.find((t) => t.name === names[0])
+      if (mainTag) mainTagId.value = mainTag.id
+    }
+    if (names.length > 1) {
+      selectedOtherIds.value = []
+      aiGeneratedTagNames.value = names.slice(1).slice(0, 5)
+    }
+    return data.body ?? ''
+  } catch {
+    ElMessage.warning('加载文章失败，将使用空白编辑')
+    return ''
+  }
+}
+
 onMounted(async () => {
   await Promise.all([
     getColumnsMe().then((list) => { columnList.value = list ?? [] }),
@@ -656,29 +684,7 @@ onMounted(async () => {
   if (idParam) {
     const id = typeof idParam === 'string' ? parseInt(idParam, 10) : Number(idParam)
     if (!Number.isNaN(id)) {
-      try {
-        const data = await getContentForEdit(id)
-        contentId.value = data.id
-        title.value = data.title ?? ''
-        summary.value = data.summary ?? ''
-        cover.value = data.cover ?? ''
-        columnId.value = data.columnId
-        articleType.value = (data.articleType === 'REPRINT' ? 'reprint' : data.articleType === 'TRANSLATED' ? 'translated' : 'original') as 'original' | 'reprint' | 'translated'
-        visibility.value = (data.visibility === 'SELF' ? 'self' : data.visibility === 'FANS' ? 'fans' : 'all') as 'all' | 'self' | 'fans'
-        creationStatement.value = (data.creationStatement ?? 'none') as 'none' | 'ai-assisted' | 'network' | 'personal'
-        initialBody = data.body ?? ''
-        const names = data.tagNames ?? []
-        if (names.length > 0 && mainTagList.value.length > 0) {
-          const mainTag = mainTagList.value.find((t) => t.name === names[0])
-          if (mainTag) mainTagId.value = mainTag.id
-        }
-        if (names.length > 1) {
-          selectedOtherIds.value = []
-          aiGeneratedTagNames.value = names.slice(1).slice(0, 5)
-        }
-      } catch {
-        ElMessage.warning('加载文章失败，将使用空白编辑')
-      }
+      initialBody = await fetchAndApplyArticle(id)
     }
   }
   if (!vditorRef.value) return
@@ -707,6 +713,22 @@ onMounted(async () => {
     },
   })
 })
+
+// 从列表点「编辑」进入时路由变为 /creator/write?id=xxx，组件会被复用，onMounted 不会再次执行，需监听 query.id 拉取并填充
+watch(
+  () => route.query.id,
+  async (newId) => {
+    const idParam = Array.isArray(newId) ? newId[0] : newId
+    if (idParam == null || idParam === '') return
+    const id = typeof idParam === 'string' ? parseInt(idParam, 10) : Number(idParam)
+    if (Number.isNaN(id)) return
+    const body = await fetchAndApplyArticle(id)
+    if (vditor) {
+      vditor.setValue(body, true)
+      updateTocFromMarkdown(body)
+    }
+  }
+)
 
 onBeforeUnmount(() => {
   vditor?.destroy()
