@@ -47,6 +47,8 @@ public class CommentService {
 
     @Value("${app.user-service-url:http://localhost:8081}")
     private String userServiceBaseUrl;
+    @Value("${app.content-service-url:http://localhost:8084}")
+    private String contentServiceBaseUrl;
 
     /**
      * 当前用户作为作者、有评论的文章列表（用于评论管理左侧）
@@ -86,6 +88,7 @@ public class CommentService {
         Long contentOwnerId = content.getUserId();
         LambdaQueryWrapper<Comment> q = new LambdaQueryWrapper<>();
         q.eq(Comment::getContentId, contentId)
+                .and(w -> w.isNull(Comment::getModerationStatus).or().eq(Comment::getModerationStatus, "APPROVED"))
                 .orderByDesc(Comment::getIsHot)
                 .orderByDesc(Comment::getCreatedAt);
         List<Comment> list = commentMapper.selectList(q);
@@ -124,17 +127,69 @@ public class CommentService {
         comment.setUserId(currentUserId);
         comment.setContentId(req.getContentId());
         comment.setBody(body);
+        comment.setModerationStatus("PENDING");
         comment.setParentId(parentId);
         comment.setIsHot(false);
         commentMapper.insert(comment);
         if (comment.getCreatedAt() == null) {
             comment.setCreatedAt(LocalDateTime.now());
         }
-        LambdaUpdateWrapper<Content> updateContent = new LambdaUpdateWrapper<>();
-        updateContent.eq(Content::getId, req.getContentId())
-                .setSql("comment_count = comment_count + 1");
-        contentMapper.update(null, updateContent);
+        boolean isAdmin = isAdminUser(currentUserId);
+        if (isAdmin) {
+            comment.setModerationStatus("APPROVED");
+            commentMapper.updateById(comment);
+            LambdaUpdateWrapper<Content> updateContent = new LambdaUpdateWrapper<>();
+            updateContent.eq(Content::getId, req.getContentId())
+                    .setSql("comment_count = comment_count + 1");
+            contentMapper.update(null, updateContent);
+        } else {
+            String moderationStatus = submitCommentModeration(comment);
+            comment.setModerationStatus(moderationStatus);
+            commentMapper.updateById(comment);
+            if ("APPROVED".equalsIgnoreCase(moderationStatus)) {
+                LambdaUpdateWrapper<Content> updateContent = new LambdaUpdateWrapper<>();
+                updateContent.eq(Content::getId, req.getContentId())
+                        .setSql("comment_count = comment_count + 1");
+                contentMapper.update(null, updateContent);
+            }
+        }
         return toCommentVO(comment, content.getUserId(), getNicknameAndAvatar(currentUserId), 0L, false);
+    }
+
+    private boolean isAdminUser(Long userId) {
+        try {
+            String url = userServiceBaseUrl.replaceFirst("/$", "") + "/api/users/" + userId;
+            @SuppressWarnings("unchecked")
+            var map = restTemplate.getForObject(url, java.util.Map.class);
+            if (map == null) return false;
+            String role = (String) map.get("role");
+            return "ADMIN".equalsIgnoreCase(role);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private String submitCommentModeration(Comment comment) {
+        try {
+            String url = contentServiceBaseUrl.replaceFirst("/$", "") + "/api/admin/moderation/tasks/submit";
+            var req = new java.util.HashMap<String, Object>();
+            req.put("resourceType", "COMMENT");
+            req.put("resourceId", comment.getId());
+            req.put("ownerUserId", comment.getUserId());
+            String body = comment.getBody() != null && comment.getBody().length() > 1000
+                    ? comment.getBody().substring(0, 1000)
+                    : comment.getBody();
+            req.put("payloadSnapshot", body != null ? body : "");
+            @SuppressWarnings("unchecked")
+            var resp = restTemplate.postForObject(url, req, java.util.Map.class);
+            if (resp == null) return "NEEDS_HUMAN";
+            Object status = resp.get("status");
+            if (status != null) return String.valueOf(status);
+            if (Boolean.TRUE.equals(resp.get("skipped"))) return "APPROVED";
+            return "NEEDS_HUMAN";
+        } catch (Exception e) {
+            return "NEEDS_HUMAN";
+        }
     }
 
     /** 点赞评论（幂等） */

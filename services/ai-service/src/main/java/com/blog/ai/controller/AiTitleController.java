@@ -99,6 +99,17 @@ public class AiTitleController {
     }
 
     /**
+     * 审核预判：返回 PASS / REJECT / NEEDS_HUMAN。
+     * 该接口供业务服务调用（博客、知识库文档、评论、资料等）。
+     */
+    @PostMapping("/moderation/review")
+    public ResponseEntity<Map<String, Object>> reviewModeration(@RequestBody ModerationReviewRequest req) {
+        String resourceType = req != null ? req.getResourceType() : null;
+        String content = req != null ? req.getContent() : null;
+        return ResponseEntity.ok(deepSeekService.reviewModeration(resourceType, content));
+    }
+
+    /**
      * 一键生成：根据 bot 与 prompt 生成正文、标题、摘要、小标签、封面、主标签。需认证，请求头 X-User-Id；仅能使用当前用户的 bot。
      */
     @PostMapping("/one-click-generate")
@@ -224,5 +235,11 @@ public class AiTitleController {
     public static class OneClickRequest {
         private Long botId;
         private String prompt;
+    }
+
+    @lombok.Data
+    public static class ModerationReviewRequest {
+        private String resourceType;
+        private String content;
     }
 }

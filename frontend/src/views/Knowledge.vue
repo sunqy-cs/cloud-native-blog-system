@@ -1131,7 +1131,17 @@
               <span>评论 {{ mainArticle.commentCount }}</span>
               <span class="knowledge-article-date">{{ formatArticleDate(mainArticle.publishedAt ?? mainArticle.createdAt) }}</span>
             </div>
-            <div ref="mainPreviewRef" class="knowledge-article-body vditor-reset" />
+            <div class="knowledge-article-body-wrap">
+              <div v-if="mainPreviewRendering" class="knowledge-article-body-loading">
+                <el-icon class="is-loading"><Loading /></el-icon>
+                <span>正在渲染正文…</span>
+              </div>
+              <div
+                ref="mainPreviewRef"
+                class="knowledge-article-body vditor-reset"
+                :class="{ 'knowledge-article-body--hidden': mainPreviewRendering }"
+              />
+            </div>
             </div>
             <LinkPanel
               floating
@@ -1230,6 +1240,9 @@ import { getContentsMe, getContentView, getContentForEdit, updateContentTitle, s
 import { getMe, getUserById, type UserMe } from '@/api/user'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
+import 'katex/dist/katex.min.css'
+import { VDITOR_CDN } from '@/utils/vditorCdn'
+import { renderMarkdownWithMath } from '@/utils/markdown'
 import { getColumnsMe } from '@/api/column'
 import { ragChatStream, getRagConversations, getRagConversationMessages, deleteRagConversation, type RagConversationItem, type RagMessageItem } from '@/api/ai'
 import { marked } from 'marked'
@@ -1354,6 +1367,7 @@ const editingTitleInputRef = ref<HTMLInputElement | null>(null)
 const selectedContentId = ref<number | null>(null)
 const mainArticle = ref<ContentView | null>(null)
 const mainArticleLoading = ref(false)
+const mainPreviewRendering = ref(false)
 const mainArticleAuthor = ref<UserMe | null>(null)
 const mainPreviewRef = ref<HTMLDivElement | null>(null)
 
@@ -2301,25 +2315,33 @@ function reverseWikiLinksToStorage(body: string): string {
   })
 }
 
-async function renderMainMarkdown() {
+function renderMainMarkdown(): Promise<void> {
   const a = mainArticle.value
-  if (!a?.body) return
-  await nextTick()
-  const el = mainPreviewRef.value
-  if (!el) {
-    setTimeout(renderMainMarkdown, 50)
-    return
+  if (!a?.body) {
+    mainPreviewRendering.value = false
+    return Promise.resolve()
   }
-  el.innerHTML = ''
-  // 仅笔记正文解析 [[...]] 为可点击链接；博客只侧栏显示入链/出链，正文不解析
-  const bodyForPreview = selectedDetailItem.value?.type === 'KNOWLEDGE' ? processWikiLinksForPreview(a.body) : a.body
-  try {
-    await Vditor.preview(el, bodyForPreview, { mode: 'light', lang: 'zh_CN' })
-    attachWikiLinkClick(el)
-  } catch (e) {
-    el.textContent = a.body || '暂无正文'
-    console.warn('Vditor.preview error', e)
-  }
+  return nextTick().then(() => {
+    const el = mainPreviewRef.value
+    if (!el) {
+      setTimeout(renderMainMarkdown, 50)
+      return
+    }
+    mainPreviewRendering.value = true
+    el.innerHTML = ''
+    // 仅笔记正文解析 [[...]] 为可点击链接；博客只侧栏显示入链/出链，正文不解析
+    const bodyForPreview = selectedDetailItem.value?.type === 'KNOWLEDGE' ? processWikiLinksForPreview(a.body) : a.body
+    try {
+      const html = renderMarkdownWithMath(bodyForPreview)
+      el.innerHTML = html
+      attachWikiLinkClick(el)
+    } catch (e) {
+      el.textContent = a.body || '暂无正文'
+      console.warn('Markdown render error', e)
+    } finally {
+      mainPreviewRendering.value = false
+    }
+  })
 }
 
 /** 双链笔记：若链接目标在当前知识库内则切换展示，否则仅提示不报错 */
@@ -2426,6 +2448,7 @@ async function loadKnowledgeForEdit(contentId: number) {
     if (!kbVditorRef.value) return
     const bodyClean = stripCodeBlockThemePreview(data.body ?? '')
     kbVditor = new Vditor(kbVditorRef.value, {
+      cdn: VDITOR_CDN,
       height: 420,
       value: processWikiLinksForPreview(bodyClean),
       placeholder: '在此编写知识库文件内容…',
@@ -5441,6 +5464,28 @@ async function submitCreateKb() {
   margin-left: 4px;
 }
 
+.knowledge-article-body-wrap {
+  position: relative;
+  min-height: 120px;
+}
+.knowledge-article-body-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+.knowledge-article-body-loading .el-icon.is-loading {
+  font-size: 1.25rem;
+}
+.knowledge-article-body--hidden {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  pointer-events: none;
+}
 .knowledge-article-body {
   font-size: 15px;
   line-height: 1.75;

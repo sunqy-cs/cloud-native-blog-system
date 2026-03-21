@@ -52,8 +52,18 @@
         <span class="article-date">{{ formatDate(article.publishedAt ?? article.createdAt) }}</span>
       </div>
 
-      <!-- 正文 Markdown -->
-      <div ref="previewRef" class="article-body vditor-reset"></div>
+      <!-- 正文 Markdown：加载中显示骨架，完成后渲染内容 -->
+      <div class="article-body-wrap">
+        <div v-if="bodyRendering" class="article-body-loading">
+          <el-icon class="article-body-loading-icon is-loading"><Loading /></el-icon>
+          <span>正在渲染正文…</span>
+        </div>
+        <div
+          ref="previewRef"
+          class="article-body vditor-reset"
+          :class="{ 'article-body--hidden': bodyRendering }"
+        ></div>
+      </div>
 
       <!-- 底部操作：点赞、收藏、评论 -->
       <div class="article-actions">
@@ -183,7 +193,10 @@
       </section>
     </el-card>
         <el-empty v-else-if="!loading" description="文章不存在或加载失败" />
-        <div v-else class="loading-wrap"><el-icon class="is-loading"><Loading /></el-icon> 加载中...</div>
+        <div v-else class="loading-wrap article-page-loading">
+          <el-icon class="is-loading article-page-loading-icon"><Loading /></el-icon>
+          <p class="article-page-loading-text">正在加载博客…</p>
+        </div>
 
         <el-dialog
       v-model="collectionDialogVisible"
@@ -234,9 +247,10 @@ import { useRoute, useRouter } from 'vue-router'
 import { getContentView, type ContentView } from '@/api/content'
 import { getMe, getUserById, type UserMe } from '@/api/user'
 import { useUserStore } from '@/stores/user'
-import Vditor from 'vditor'
 import 'vditor/dist/index.css'
+import 'katex/dist/katex.min.css'
 import { Loading, Star, StarFilled, Collection, ChatDotRound, MoreFilled } from '@element-plus/icons-vue'
+import { renderMarkdownWithMath } from '@/utils/markdown'
 import { ElMessage } from 'element-plus'
 import { getContentComments, createComment, likeComment, unlikeComment, deleteComment as apiDeleteComment, type CommentItem } from '@/api/comment'
 import { checkContentLiked, likeContent, unlikeContent } from '@/api/contentLike'
@@ -251,6 +265,7 @@ const userStore = useUserStore()
 
 const article = ref<ContentView | null>(null)
 const loading = ref(true)
+const bodyRendering = ref(false)
 const authorInfo = ref<UserMe | null>(null)
 const previewRef = ref<HTMLDivElement | null>(null)
 
@@ -575,16 +590,23 @@ async function loadArticle() {
   }
 }
 
-async function renderMarkdown() {
+function renderMarkdown() {
   const a = article.value
   const el = previewRef.value
-  if (!a?.body || !el) return
+  if (!a?.body || !el) {
+    bodyRendering.value = false
+    return
+  }
+  bodyRendering.value = true
   el.innerHTML = ''
   try {
-    await Vditor.preview(el, a.body, { mode: 'light', lang: 'zh_CN' })
+    const html = renderMarkdownWithMath(a.body)
+    el.innerHTML = html
   } catch (e) {
     el.textContent = a.body || '暂无正文'
-    console.warn('Vditor.preview error', e)
+    console.warn('Markdown render error', e)
+  } finally {
+    bodyRendering.value = false
   }
 }
 
@@ -958,6 +980,46 @@ watch(
   padding: 2rem;
   text-align: center;
   color: #555;
+}
+.article-page-loading {
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+.article-page-loading-icon {
+  font-size: 2.5rem;
+  color: #bb1919;
+}
+.article-page-loading-text {
+  margin: 0;
+  font-size: 1rem;
+  color: #555;
+}
+.article-body-wrap {
+  position: relative;
+  min-height: 120px;
+}
+.article-body-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: #666;
+  font-size: 0.95rem;
+}
+.article-body-loading-icon {
+  font-size: 1.25rem;
+  color: #bb1919;
+}
+.article-body--hidden {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 收藏弹窗：与专栏/收藏夹添加弹窗风格一致 */

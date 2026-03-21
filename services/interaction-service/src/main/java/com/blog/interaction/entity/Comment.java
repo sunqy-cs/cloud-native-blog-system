@@ -16,6 +16,7 @@ public class Comment {
     private Long userId;
     private Long contentId;
     private String body;
+    private String moderationStatus;
     private Long parentId;
     private Boolean isHot;
     private Integer likeCount;

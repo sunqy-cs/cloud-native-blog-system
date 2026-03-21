@@ -10,13 +10,73 @@
 
 ## 认证相关
 
-### 1. 创建会话（登录）
+### 1. 发送短信验证码
+
+**`POST /api/auth/sms/send`**
+
+向指定手机号发送短信验证码（登录或注册场景）。前端在「验证码登录」或「注册」时，用户点击「获取验证码」后调用。  
+**无需登录。**
+
+**Request Body**:
+
+```json
+{
+  "phone": "13800138000",
+  "scene": "LOGIN"
+}
+```
+
+| 字段   | 类型   | 必填 | 说明 |
+|--------|--------|------|------|
+| phone  | string | 是   | 中国大陆 11 位手机号（建议正则：`^1\d{10}$`） |
+| scene  | string | 是   | `LOGIN`：验证码登录；`REGISTER`：注册；`RESET_PASSWORD`：找回/重置密码 |
+
+**Response** `204 No Content`（成功无 body）。
+
+**后端实现说明（user-service，阿里云号码认证）**：
+
+- 调用阿里云 **SendSmsVerifyCode**（OpenAPI：`dypnsapi.aliyuncs.com`，需 RAM 授权 `dypns:SendSmsVerifyCode`）。
+- 须在 `application.yml` 配置 `aliyun.dypns.*`：`enabled=true`、AccessKey、**控制台赠送的** `sign-name` / `template-code`，以及 `template-param-json`（模板变量须与控制台一致；使用 `{"code":"##code##","min":"5"}` 时由阿里云生成验证码，便于服务端调用 **CheckSmsVerifyCode** 核验）。
+- 注册与验证码登录时，服务端在写库/发 Token 前会调用 **CheckSmsVerifyCode** 校验用户提交的 `smsCode`（无需自建 Redis 存码，与官方文档一致）。
+- 频控、有效时间等与阿里云接口 `Interval`、`ValidTime` 等参数及运营商策略一致；失败时返回 `400` 及可读 `message`。
+
+---
+
+### 2. 通过手机验证码重置密码
+
+**`POST /api/auth/password/reset`**
+
+已绑定手机号的用户忘记密码时，通过短信验证码设置新密码。**无需登录。**
+
+须先调用 **`POST /api/auth/sms/send`**，且 **`scene` 必须为 `RESET_PASSWORD`**。
+
+**Request Body**：
+
+```json
+{
+  "phone": "13800138000",
+  "smsCode": "123456",
+  "newPassword": "新密码至少6位"
+}
+```
+
+| 字段        | 类型   | 必填 | 说明 |
+|-------------|--------|------|------|
+| phone       | string | 是   | 11 位手机号，须为已注册账号 |
+| smsCode     | string | 是   | 与 `RESET_PASSWORD` 场景下发的验证码一致 |
+| newPassword | string | 是   | 新密码，至少 6 位 |
+
+**Response** `204 No Content`。若手机号未注册返回 `400`。
+
+---
+
+### 3. 创建会话（登录）
 
 **`POST /api/sessions`**
 
-创建登录会话，获取访问令牌。
+创建登录会话，获取访问令牌。支持 **两种方式二选一**（不可混用）：
 
-**Request Body**:
+**方式 A：用户名 + 密码**
 
 ```json
 {
@@ -27,8 +87,24 @@
 
 | 字段     | 类型   | 必填 | 说明   |
 |----------|--------|------|--------|
-| username | string | 是   | 用户名 |
-| password | string | 是   | 密码   |
+| username | string | 是*  | 用户名 |
+| password | string | 是*  | 密码   |
+
+**方式 B：手机号 + 短信验证码**
+
+```json
+{
+  "phone": "13800138000",
+  "smsCode": "123456"
+}
+```
+
+| 字段    | 类型   | 必填 | 说明 |
+|---------|--------|------|------|
+| phone   | string | 是*  | 已与账号绑定的 11 位手机号 |
+| smsCode | string | 是*  | 通过 `POST /api/auth/sms/send`（`scene=LOGIN`）获取的验证码 |
+
+\* 方式 A 与方式 B 互斥：请求体要么包含 `username`+`password`，要么包含 `phone`+`smsCode`。
 
 **Response** `201 Created`:
 
@@ -55,25 +131,29 @@
 
 ---
 
-### 2. 创建用户（注册）
+### 4. 创建用户（注册）
 
 **`POST /api/users`**
 
-创建新用户账号。
+创建新用户账号。**必须**校验手机号与短信验证码（`scene=REGISTER`）有效且匹配，否则返回 `400`。**无需登录。**
 
 **Request Body**:
 
 ```json
 {
   "username": "string",
-  "password": "string"
+  "password": "string",
+  "phone": "13800138000",
+  "smsCode": "123456"
 }
 ```
 
 | 字段     | 类型   | 必填 | 说明           |
 |----------|--------|------|----------------|
-| username | string | 是   | 用户名         |
+| username | string | 是   | 用户名，唯一   |
 | password | string | 是   | 密码，至少 6 位 |
+| phone    | string | 是   | 11 位手机号，注册成功后写入用户表，建议唯一 |
+| smsCode  | string | 是   | 与 `phone` 对应、且 `scene=REGISTER` 下发验证码 |
 
 **Response** `201 Created`:
 
@@ -89,7 +169,7 @@
 
 ---
 
-### 3. 获取当前用户
+### 4. 获取当前用户
 
 **`GET /api/users/me`**
 
@@ -109,7 +189,7 @@
   "residence": "string",
   "industry": "string",
   "bio": "string",
-  "wechatId": "string",
+  "phone": "138****8000",
   "role": "string",
   "createdAt": "2025-01-01T00:00:00"
 }
@@ -127,13 +207,13 @@
 | residence  | string | 居住地，可选         |
 | industry   | string | 所在行业，可选       |
 | bio        | string | 个人简介，可选       |
-| wechatId   | string | 微信 ID，可选        |
+| phone      | string | 绑定手机号，可选脱敏 |
 | role       | string | 角色                 |
 | createdAt  | string | 创建时间             |
 
 ---
 
-### 4. 更新当前用户资料（编辑个人资料）
+### 5. 更新当前用户资料（编辑个人资料）
 
 **`PATCH /api/users/me`**
 
@@ -150,8 +230,7 @@
   "intro": "一句话介绍",
   "residence": "现居深圳市",
   "industry": "计算机软件",
-  "bio": "个人简介内容",
-  "wechatId": "wxid_xxx"
+  "bio": "个人简介内容"
 }
 ```
 
@@ -165,7 +244,8 @@
 | residence | string | 否   | 居住地                   |
 | industry  | string | 否   | 所在行业                 |
 | bio       | string | 否   | 个人简介                 |
-| wechatId  | string | 否   | 微信 ID                  |
+
+> **手机号**：不建议在本接口直接修改；换绑宜使用单独的验证码换绑接口。
 
 **Response** `200 OK`: 返回更新后的用户对象，格式同 `GET /api/users/me`。
 
@@ -173,7 +253,7 @@
 
 ## 内容/博客相关
 
-### 5. 分页获取当前用户的博客列表（我的博客）
+### 6. 分页获取当前用户的博客列表（我的博客）
 
 **`GET /api/contents/me`**
 
@@ -234,7 +314,7 @@
 
 ---
 
-### 5.1 保存草稿
+### 6.1 保存草稿
 
 **`POST /api/contents/draft`**
 
@@ -292,7 +372,7 @@
 
 ---
 
-### 5.2 获取编辑用内容详情
+### 6.2 获取编辑用内容详情
 
 **`GET /api/contents/{id}`**
 
@@ -334,7 +414,7 @@
 
 ---
 
-### 5.2.1 仅更新内容标题
+### 6.2.1 仅更新内容标题
 
 **`PATCH /api/contents/{id}`**
 
@@ -360,7 +440,7 @@
 
 ---
 
-### 5.2.2 双链笔记：获取反链
+### 6.2.2 双链笔记：获取反链
 
 **`GET /api/contents/{id}/backlinks`**
 
@@ -398,7 +478,7 @@
 
 ---
 
-### 5.3 发布博客
+### 6.3 发布博客
 
 **`POST /api/contents/{id}/publish`**
 
@@ -481,7 +561,7 @@
 
 ## 收藏夹相关
 
-### 6. 获取当前用户的收藏夹列表
+### 7. 获取当前用户的收藏夹列表
 
 **`GET /api/collection-folders/me`**
 
@@ -523,7 +603,7 @@
 
 ---
 
-### 7. 创建收藏夹
+### 8. 创建收藏夹
 
 **`POST /api/collection-folders`**
 
@@ -560,7 +640,7 @@
 
 ---
 
-### 8. 更新收藏夹
+### 9. 更新收藏夹
 
 **`PATCH /api/collection-folders/{id}`**
 
@@ -592,7 +672,7 @@
 
 ---
 
-### 9. 删除收藏夹
+### 10. 删除收藏夹
 
 **`DELETE /api/collection-folders/{id}`**
 
@@ -610,7 +690,7 @@
 
 ---
 
-### 10. 注销会话（登出）
+### 11. 注销会话（登出）
 
 **`DELETE /api/sessions/current`**
 
@@ -626,7 +706,7 @@
 
 个人页「我的动态」需要展示「赞同了文章」与「发表了博客」的混合时间线。赞同数据由 interaction-service 提供，内容摘要由 content-service 提供。
 
-### 11. 分页获取当前用户赞同的内容列表（我赞同的文章）
+### 12. 分页获取当前用户赞同的内容列表（我赞同的文章）
 
 **`GET /api/content-likes/me`**
 
@@ -666,7 +746,7 @@
 
 ## 内容服务补充（content-service）
 
-### 11.1 博客可见性（visibility）校验
+### 12.1 博客可见性（visibility）校验
 
 博客字段 `visibility`：**ALL** 全部可见、**SELF** 仅作者可见、**FANS** 仅作者与粉丝可见。
 
@@ -677,7 +757,7 @@
 
 ---
 
-### 12. 按 ID 批量获取内容摘要（用于动态等）
+### 13. 按 ID 批量获取内容摘要（用于动态等）
 
 **`GET /api/contents/by-ids`**
 
@@ -710,7 +790,7 @@
 
 ---
 
-### 13. 获取有评论的文章列表（评论管理左侧）
+### 14. 获取有评论的文章列表（评论管理左侧）
 
 **`GET /api/comments/commented-articles`**（interaction-service）
 
@@ -738,7 +818,7 @@
 
 ---
 
-### 14. 获取某篇文章的评论列表（评论管理右侧 / 文章页评论区）
+### 15. 获取某篇文章的评论列表（评论管理右侧 / 文章页评论区）
 
 **`GET /api/comments/list?contentId={contentId}`**（interaction-service）
 
@@ -784,7 +864,7 @@
 
 ---
 
-### 14.1 发表评论
+### 15.1 发表评论
 
 **`POST /api/comments`**（interaction-service）
 
@@ -832,7 +912,7 @@
 
 ---
 
-### 14.2 点赞评论
+### 15.2 点赞评论
 
 **`POST /api/comments/{id}/like`**（interaction-service）
 
@@ -848,7 +928,7 @@
 
 ---
 
-### 14.3 取消点赞评论
+### 15.3 取消点赞评论
 
 **`DELETE /api/comments/{id}/like`**（interaction-service）
 
@@ -862,7 +942,7 @@
 
 ---
 
-### 15. 设置/取消热评
+### 16. 设置/取消热评
 
 **`PATCH /api/comments/{id}/hot`**（interaction-service）
 
@@ -888,7 +968,7 @@
 
 个人页「我的专栏」展示当前用户创建的专栏列表，支持新建专栏（名称、描述、封面）。他人博客页顶栏「全部 / 专栏」需按用户 ID 拉取该用户的专栏列表（公开接口）。
 
-### 15.1 按用户 ID 获取专栏列表（公开）
+### 16.1 按用户 ID 获取专栏列表（公开）
 
 **`GET /api/columns/list`**
 
@@ -920,7 +1000,7 @@
 
 ---
 
-### 16. 获取当前用户的专栏列表
+### 17. 获取当前用户的专栏列表
 
 **`GET /api/columns/me`**
 
@@ -956,7 +1036,7 @@
 
 ---
 
-### 17. 创建专栏
+### 18. 创建专栏
 
 **`POST /api/columns`**
 
@@ -984,7 +1064,7 @@
 
 ---
 
-### 18. 更新专栏
+### 19. 更新专栏
 
 **`PATCH /api/columns/{id}`**
 
@@ -1018,7 +1098,7 @@
 
 ---
 
-### 19. 删除专栏
+### 20. 删除专栏
 
 **`DELETE /api/columns/{id}`**
 
@@ -1366,7 +1446,7 @@
 
 创作者中心「博客机器人」：当前用户创建的机器人列表，支持新建（名称、头像、发文风格、主标签、默认摘要风格、字数偏好）。
 
-### 20. 获取当前用户的博客机器人列表
+### 21. 获取当前用户的博客机器人列表
 
 **`GET /api/blog-bots/me`**
 
@@ -1408,7 +1488,7 @@
 
 ---
 
-### 21. 创建博客机器人
+### 22. 创建博客机器人
 
 **`POST /api/blog-bots`**
 
@@ -1442,7 +1522,7 @@
 
 ---
 
-### 22. 删除博客机器人
+### 23. 删除博客机器人
 
 **`DELETE /api/blog-bots/{id}`**
 
@@ -1460,7 +1540,7 @@
 
 个人页右侧展示当前用户的「关注了」与「关注者」数量，由 interaction-service 基于 `follow` 表统计。
 
-### 23. 获取当前用户关注统计
+### 24. 获取当前用户关注统计
 
 **`GET /api/follow/me`**
 
@@ -1488,7 +1568,7 @@
 
 创作者中心首页需展示：总阅读量、总点赞量、粉丝数、收藏数，及每项对应的「昨日增长」。总阅读量/总点赞量/收藏数由当前用户发布的内容汇总得到，粉丝数由关注表统计；昨日增长为昨日 0 点至今日 0 点（服务器时区）的新增数。
 
-### 24. 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长）
+### 25. 获取当前用户内容统计（总阅读/总点赞/收藏及昨日增长）
 
 **`GET /api/contents/me/stats`**
 
@@ -1520,7 +1600,102 @@
 
 ---
 
-### 25. 获取当前用户关注统计（扩展：昨日粉丝增长）
+### 25.1 获取创作者数据分析（多维聚合）
+
+**`GET /api/contents/me/analytics`**
+
+需要认证。对当前用户全部博客内容做多维聚合：总览指标、按日趋势、标签洞察、正文长度分桶、综合分 Top 内容、创作时间热力（按小时 / 星期）。用于创作者中心「数据分析」大屏。
+
+**请求头**：需携带网关下发的用户 ID（如 `X-User-Id`）。
+
+**Query 参数**：
+
+| 参数 | 类型   | 必填 | 说明 |
+|------|--------|------|------|
+| days | number | 否   | 趋势统计窗口天数，默认 `30`；服务端限制在 **7～90**（小于 7 按 7，大于 90 按 90） |
+
+**Response** `200 OK`：
+
+```json
+{
+  "overview": {
+    "totalContents": 42,
+    "publishedContents": 38,
+    "draftContents": 4,
+    "totalViews": 12050,
+    "totalLikes": 320,
+    "totalCollections": 180,
+    "totalComments": 95,
+    "totalEngagement": 595,
+    "avgViewsPerPublished": 317.1,
+    "avgEngagementPerPublished": 15.7,
+    "publishRate": 0.9,
+    "followers": 120,
+    "following": 45
+  },
+  "trend": [
+    {
+      "date": "2025-03-15",
+      "publishedCount": 1,
+      "views": 1200,
+      "likes": 10,
+      "collections": 5,
+      "comments": 2,
+      "score": 45.2
+    }
+  ],
+  "tagInsights": [
+    {
+      "tagId": 3,
+      "tagName": "后端",
+      "articleCount": 12,
+      "views": 5000,
+      "engagement": 200
+    }
+  ],
+  "lengthDistribution": [
+    { "bucket": "0-500", "count": 5, "ratio": 0.12 },
+    { "bucket": "500-1500", "count": 10, "ratio": 0.24 },
+    { "bucket": "1500-3000", "count": 15, "ratio": 0.36 },
+    { "bucket": "3000+", "count": 12, "ratio": 0.29 }
+  ],
+  "topContents": [
+    {
+      "contentId": 101,
+      "title": "示例标题",
+      "publishedAt": "2025-03-10 14:00:00",
+      "views": 2000,
+      "engagement": 88,
+      "score": 52.3
+    }
+  ],
+  "heatmap": {
+    "hourCounts": [0,0,0,0,0,1,2,5,8,12,10,6,4,3,2,1,0,0,0,0,0,0,0,0],
+    "weekDayCounts": [5,8,6,7,9,4,3]
+  }
+}
+```
+
+| 字段路径 | 类型 | 说明 |
+|----------|------|------|
+| overview.totalContents | number | 博客条数（含草稿） |
+| overview.publishedContents | number | 已发布篇数 |
+| overview.draftContents | number | 草稿篇数 |
+| overview.totalViews 等 | number | 全量内容的阅读/赞/收藏/评论/互动总和 |
+| overview.avgViewsPerPublished | number | 均篇阅读（仅已发布） |
+| overview.avgEngagementPerPublished | number | 均篇互动（赞+收藏+评论，仅已发布） |
+| overview.publishRate | number | 已发布 / 总篇数，0～1 |
+| overview.followers / following | number | 由 interaction-service `GET /api/follow/me` 汇总 |
+| trend[] | array | 最近 `days` 天每日一行；`score` 为当日内容加权综合分（含 log(阅读) 等） |
+| tagInsights[] | array | 按标签聚合，按 engagement 降序，最多 8 条 |
+| lengthDistribution[] | array | 正文长度分桶及占比 |
+| topContents[] | array | 已发布内容按综合分降序，最多 8 条 |
+| heatmap.hourCounts | number[] | 长度 24，按创建时刻小时 0～23 计数 |
+| heatmap.weekDayCounts | number[] | 长度 7，周一至周日（与 Java `DayOfWeek` 顺序一致） |
+
+---
+
+### 26. 获取当前用户关注统计（扩展：昨日粉丝增长）
 
 **`GET /api/follow/me`**（在原有接口上扩展返回字段）
 
@@ -1791,6 +1966,209 @@
 **Response** `201 Created`:
 
 与 `POST /api/objects` 一致，返回 `ObjectMetaVO`（`key`、`url`、`size`、`contentType`），其中 `url` 为本站访问路径（如 `/api/objects/ai/xxx.png?stream=1`）。
+
+---
+
+## 审核中心（content-service）
+
+### A1. 提交审核任务（业务服务内部调用）
+
+**`POST /api/admin/moderation/tasks/submit`**
+
+用于内容服务/互动服务/用户服务提交审核任务（统一写入 `moderation_task`）。  
+管理员账号提交时返回 `skipped=true`（免审）。
+
+**Request Body**:
+
+```json
+{
+  "resourceType": "ARTICLE",
+  "resourceId": 123,
+  "ownerUserId": 1,
+  "payloadSnapshot": "title=...\\nbody=..."
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| resourceType | string | 是 | `ARTICLE` / `KNOWLEDGE_DOC` / `COMMENT` / `USER_PROFILE` |
+| resourceId | number | 是 | 业务资源 ID |
+| ownerUserId | number | 是 | 提交者 UID |
+| payloadSnapshot | string | 否 | 送审快照文本（供 AI/人工查看） |
+
+**Response** `201 Created`:
+
+```json
+{
+  "id": 10,
+  "status": "NEEDS_HUMAN",
+  "aiDecision": "NEEDS_HUMAN"
+}
+```
+
+或：
+
+```json
+{
+  "skipped": true,
+  "reason": "admin_exempt"
+}
+```
+
+### A2. 审核任务列表（管理员）
+
+**`GET /api/admin/moderation/tasks`**
+
+需要管理员登录。
+
+**Query 参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | number | 否 | 默认 1 |
+| pageSize | number | 否 | 默认 20，最大 100 |
+| resourceType | string | 否 | 同上四类 |
+| status | string | 否 | `ALL` / `PENDING` / `NEEDS_HUMAN` / `APPROVED` / `REJECTED` |
+| finishedOnly | boolean | 否 | 是否仅已结单 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "records": [
+    {
+      "id": 10,
+      "resourceType": "ARTICLE",
+      "resourceId": 123,
+      "ownerUserId": 1,
+      "status": "NEEDS_HUMAN",
+      "aiDecision": "NEEDS_HUMAN",
+      "createdAt": "2026-03-17T10:30:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+### A3. 审核统计（管理员首页）
+
+**`GET /api/admin/moderation/stats`**
+
+**Response** `200 OK`:
+
+```json
+{
+  "pending": 12,
+  "pendingHuman": 4,
+  "todayFinished": 9,
+  "rejected7d": 3
+}
+```
+
+### A4. 人工审核
+
+**`POST /api/admin/moderation/tasks/{id}/human-review`**
+
+**Request Body**:
+
+```json
+{
+  "decision": "APPROVE",
+  "note": "内容合规，允许发布"
+}
+```
+
+`decision` 仅支持 `APPROVE` / `REJECT`。
+
+### A5. 重新执行 AI 审核
+
+**`POST /api/admin/moderation/tasks/{id}/ai-review`**
+
+重新调用 ai-service 的审核接口，刷新 AI 结论与任务状态。
+
+---
+
+## 收件箱（user-service）
+
+### B1. 获取当前用户消息列表
+
+**`GET /api/users/me/messages`**
+
+需要认证。
+
+**Query 参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| page | number | 否 | 默认 1 |
+| pageSize | number | 否 | 默认 20 |
+| unreadOnly | boolean | 否 | `true` 仅未读 |
+
+**Response** `200 OK`:
+
+```json
+{
+  "records": [
+    {
+      "id": 1,
+      "title": "博客审核通过",
+      "body": "你的博客（ID=123）已通过审核。",
+      "msgType": "AUDIT",
+      "scene": "MODERATION_RESULT",
+      "read": false,
+      "createdAt": "2026-03-17T10:40:00"
+    }
+  ],
+  "total": 1
+}
+```
+
+### B2. 未读数量
+
+**`GET /api/users/me/messages/unread-count`**
+
+**Response**:
+
+```json
+{ "count": 3 }
+```
+
+### B3. 标记单条已读
+
+**`PATCH /api/users/me/messages/{id}/read`** → `204 No Content`
+
+### B4. 全部标记已读
+
+**`PATCH /api/users/me/messages/read-all`** → `204 No Content`
+
+---
+
+## AI 审核接口（ai-service）
+
+### C1. 审核预判
+
+**`POST /api/ai/moderation/review`**
+
+供业务服务调用，返回 `PASS` / `REJECT` / `NEEDS_HUMAN`。
+
+**Request Body**:
+
+```json
+{
+  "resourceType": "ARTICLE",
+  "content": "待审核文本快照"
+}
+```
+
+**Response**:
+
+```json
+{
+  "decision": "NEEDS_HUMAN",
+  "reason": "命中人工复核关键词: 政治",
+  "score": 0.62
+}
+```
 
 ---
 

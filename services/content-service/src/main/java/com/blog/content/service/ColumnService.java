@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.blog.content.dto.ColumnVO;
 import com.blog.content.dto.CreateColumnRequest;
+import com.blog.content.dto.ModerationSubmitRequest;
 import com.blog.content.dto.UpdateColumnRequest;
 import com.blog.content.entity.Column;
 import com.blog.content.entity.Content;
@@ -28,6 +29,7 @@ public class ColumnService {
 
     private final ColumnMapper columnMapper;
     private final ContentMapper contentMapper;
+    private final ModerationService moderationService;
 
     public List<ColumnVO> listMyColumns(Long userId) {
         return listColumnsByUserId(userId);
@@ -82,6 +84,7 @@ public class ColumnService {
         column.setCover(request.getCover() != null && !request.getCover().trim().isEmpty()
                 ? request.getCover().trim() : null);
         columnMapper.insert(column);
+        submitColumnModeration(column);
         Column saved = columnMapper.selectById(column.getId());
         return toVO(saved != null ? saved : column);
     }
@@ -105,6 +108,7 @@ public class ColumnService {
             column.setCover(request.getCover().trim().isEmpty() ? null : request.getCover().trim());
         }
         columnMapper.updateById(column);
+        submitColumnModeration(column);
         Column updated = columnMapper.selectById(columnId);
         return toVO(updated != null ? updated : column);
     }
@@ -182,5 +186,27 @@ public class ColumnService {
                         .eq(Content::getColumnId, columnId)
                         .eq(Content::getType, TYPE_BLOG));
         return n != null ? n.intValue() : 0;
+    }
+
+    private void submitColumnModeration(Column column) {
+        if (column == null || column.getId() == null || column.getUserId() == null) return;
+        try {
+            ModerationSubmitRequest req = new ModerationSubmitRequest();
+            req.setResourceType("COLUMN");
+            req.setResourceId(column.getId());
+            req.setOwnerUserId(column.getUserId());
+            req.setPayloadSnapshot(buildColumnModerationPayload(column));
+            moderationService.submitTask(req);
+        } catch (Exception ignored) {
+            // 专栏审核失败不阻塞主流程
+        }
+    }
+
+    private String buildColumnModerationPayload(Column column) {
+        String desc = column.getDescription() != null ? column.getDescription().trim() : "";
+        if (desc.length() > 1000) desc = desc.substring(0, 1000);
+        return "title=" + (column.getName() != null ? column.getName() : "")
+                + "\nsummary=" + desc
+                + "\ncover=" + (column.getCover() != null ? column.getCover() : "");
     }
 }

@@ -182,17 +182,19 @@ onUnmounted(() => {
   background: var(--el-bg-color-page, #f5f5f5);
 }
 
-/* 主布局 */
+/* 主布局：与关注页一致，避免侧栏异步撑宽挤压主栏、刷新时主内容区左右闪动 */
 .hot-layout {
   max-width: 1400px;
+  width: 100%;
   margin: 0 auto;
   padding: 24px;
   display: flex;
   gap: 24px;
+  box-sizing: border-box;
 }
 
 .hot-main {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   background: #fff;
   border: 1px solid #e8e8e8;
@@ -246,11 +248,12 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* 热榜列表 */
+/* 热榜列表：加载中与有数据时高度接近，减轻纵向闪一下 */
 .hot-list {
   display: flex;
   flex-direction: column;
   gap: 0;
+  min-height: 420px;
 }
 
 .hot-list-item {
@@ -412,14 +415,19 @@ onUnmounted(() => {
   padding: 0;
 }
 
-/* 右侧栏：整列 sticky，粘在顶栏下，不随滚动滑没 */
+/* 右侧栏：固定列宽，避免子组件加载改变侧栏宽度导致主栏抖动 */
 .hot-sidebar-wrap {
+  flex: 0 0 300px;
+  width: 300px;
+  max-width: 300px;
+  box-sizing: border-box;
   flex-shrink: 0;
   align-self: flex-start;
   position: sticky;
   top: 64px;
   max-height: calc(100vh - 64px);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .hot-sidebar-inner {

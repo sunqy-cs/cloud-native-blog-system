@@ -16,31 +16,58 @@
               </span>
               <span class="follow-people-name">全部动态</span>
             </button>
-            <template v-if="followListLoading">
-              <span class="follow-people-loading">加载中…</span>
-            </template>
-            <router-link
-              v-for="user in followedUsersWithSelf"
-              :key="user.id"
-              :to="`/follow?user=${user.id}`"
-              class="follow-people-item"
-              :class="{ active: currentFeedId === user.id }"
-              @click.prevent="setFeedId(user.id)"
-            >
-              <span class="follow-people-avatar-wrap">
-                <img v-if="user.avatar" :src="user.avatar" :alt="user.name" class="follow-people-avatar" />
-                <span v-else class="follow-people-avatar follow-people-avatar-ph">{{ user.name.charAt(0) }}</span>
-                <span v-if="user.hasNew" class="follow-people-dot"></span>
-              </span>
-              <span class="follow-people-name">{{ user.name }}</span>
-            </router-link>
+            <!-- 加载中不渲染真实头像，避免与骨架并存导致高度/宽度跳变 -->
+            <div class="follow-people-rest">
+              <div v-if="followListLoading" class="follow-people-loading-panel">
+                <div class="follow-people-loading-row">
+                  <span class="follow-people-spin-wrap" aria-hidden="true">
+                    <el-icon class="follow-people-spin"><Loading /></el-icon>
+                  </span>
+                  <div class="follow-people-skel" aria-hidden="true">
+                    <span v-for="i in 5" :key="'sk' + i" class="follow-people-skel-item">
+                      <span class="follow-people-skel-avatar" />
+                      <span class="follow-people-skel-name" />
+                    </span>
+                  </div>
+                </div>
+                <p class="follow-people-loading-text">加载关注列表中…</p>
+              </div>
+              <template v-else>
+                <router-link
+                  v-for="user in followedUsersWithSelf"
+                  :key="user.id"
+                  :to="`/follow?user=${user.id}`"
+                  class="follow-people-item"
+                  :class="{ active: currentFeedId === user.id }"
+                  @click.prevent="setFeedId(user.id)"
+                >
+                  <span class="follow-people-avatar-wrap">
+                    <img v-if="user.avatar" :src="user.avatar" :alt="user.name" class="follow-people-avatar" />
+                    <span v-else class="follow-people-avatar follow-people-avatar-ph">{{ user.name.charAt(0) }}</span>
+                    <span v-if="user.hasNew" class="follow-people-dot"></span>
+                  </span>
+                  <span class="follow-people-name">{{ user.name }}</span>
+                </router-link>
+              </template>
+            </div>
           </div>
         </section>
 
         <!-- 下方：动态流（关注的人发布的文章，按时间排序，触底加载更多） -->
-        <section class="follow-feed">
-          <div v-if="feedLoading" class="feed-loading">加载中…</div>
-          <template v-else>
+        <section class="follow-feed follow-feed--stable">
+            <div v-if="showFeedSkeleton" class="feed-skeleton-list">
+              <div v-for="n in 4" :key="n" class="feed-card-skeleton">
+                <div class="feed-card-skeleton-main">
+                  <div class="feed-skel-line feed-skel-line--sm" />
+                  <div class="feed-skel-line feed-skel-line--md" />
+                  <div class="feed-skel-line feed-skel-line--lg" />
+                  <div class="feed-skel-line feed-skel-line--body" />
+                  <div class="feed-skel-line feed-skel-line--body short" />
+                </div>
+                <div class="feed-card-skeleton-cover" />
+              </div>
+            </div>
+            <div v-show="!showFeedSkeleton" class="feed-list-inner">
             <article
               v-for="item in feedListFiltered"
               :key="item.id"
@@ -99,7 +126,7 @@
             />
             <div v-if="feedLoadingMore" class="feed-load-more">加载更多…</div>
             <p v-if="feedListFiltered.length > 0 && !hasMoreFeed && !feedLoading" class="feed-no-more">没有更多了</p>
-          </template>
+            </div>
         </section>
       </main>
       <aside class="follow-sidebar-wrap">
@@ -116,7 +143,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { List, ArrowDown, CaretTop, ChatDotRound, Share, Star } from '@element-plus/icons-vue'
+import { List, ArrowDown, CaretTop, ChatDotRound, Share, Star, Loading } from '@element-plus/icons-vue'
 import { getFollowList } from '@/api/follow'
 import { getUsersBatch } from '@/api/user'
 import { getContentsList, type ContentListItem } from '@/api/content'
@@ -184,6 +211,8 @@ const currentFeedId = ref('all')
 const followedUsers = ref<FollowedUser[]>([])
 const followeeIds = ref<number[]>([])
 const followListLoading = ref(false)
+/** 关注列表首屏拉取完成前禁止 loadFeed，避免在 followeeIds 为空时先请求一次再闪屏重拉 */
+const followListReady = ref(false)
 
 const feedList = ref<FeedItem[]>([])
 const feedPage = ref(0)
@@ -193,6 +222,11 @@ const feedLoadingMore = ref(false)
 const feedSentinelRef = ref<HTMLElement | null>(null)
 
 const hasMoreFeed = computed(() => feedList.value.length < feedTotal.value)
+
+/** 首屏加载用骨架屏，避免「整块加载中」替换真实列表造成高度抖动 */
+const showFeedSkeleton = computed(
+  () => feedLoading.value && !feedLoadingMore.value && feedList.value.length === 0,
+)
 
 /** 顶部关注条列表：自己 + 关注的人（已登录时自己在最前） */
 const followedUsersWithSelf = computed(() => {
@@ -339,12 +373,14 @@ watch(
 )
 
 watch(currentFeedId, () => {
+  if (!followListReady.value) return
   loadFeed(false)
 })
 
 onMounted(async () => {
   await loadFollowList()
-  loadFeed(false)
+  followListReady.value = true
+  await loadFeed(false)
 })
 
 let feedSentinelObserver: IntersectionObserver | null = null
@@ -380,15 +416,18 @@ onBeforeUnmount(() => {
 
 .follow-layout {
   max-width: 1400px;
+  width: 100%;
   margin: 0 auto;
   padding: 24px;
   display: flex;
   gap: 24px;
+  box-sizing: border-box;
 }
 
 .follow-main {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
+  min-height: 560px;
   background: #fff;
   border: 1px solid #e8e8e8;
   border-top: 3px solid #BB1919;
@@ -418,10 +457,95 @@ onBeforeUnmount(() => {
   min-width: max-content;
 }
 
-.follow-people-loading {
-  font-size: 13px;
-  color: #888;
-  padding: 0 8px;
+/* 右侧关注头像区域：固定最小高度，加载完成前后与「头像+昵称」行高对齐，减少跳动 */
+.follow-people-rest {
+  flex: 1;
+  min-width: 0;
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+}
+
+.follow-people-loading-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  padding: 4px 0 2px;
+  min-height: 92px;
+  box-sizing: border-box;
+}
+.follow-people-loading-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.follow-people-spin-wrap {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.follow-people-spin {
+  font-size: 26px;
+  color: #bb1919;
+  animation: follow-people-spin 0.85s linear infinite;
+}
+@keyframes follow-people-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.follow-people-loading-text {
+  margin: 0;
+  padding-left: 60px;
+  font-size: 12px;
+  color: #999;
+  line-height: 1.4;
+}
+
+@keyframes follow-skel-shimmer {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+.follow-people-skel {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+.follow-people-skel-item {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.follow-people-skel-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid #f0f0f0;
+  box-sizing: border-box;
+  background: linear-gradient(110deg, #eee 8%, #f7f7f7 18%, #eee 33%);
+  background-size: 200% 100%;
+  animation: follow-skel-shimmer 1.2s ease-in-out infinite;
+}
+.follow-people-skel-name {
+  width: 56px;
+  height: 12px;
+  border-radius: 4px;
+  background: #eee;
+  animation: follow-skel-shimmer 1.2s ease-in-out infinite;
+  animation-delay: 0.1s;
 }
 
 .follow-people-item {
@@ -515,8 +639,74 @@ onBeforeUnmount(() => {
 .follow-feed {
   padding: 0 24px 32px;
 }
+.follow-feed--stable {
+  min-height: 420px;
+}
 
-.feed-loading,
+.feed-skeleton-list {
+  padding-top: 8px;
+}
+.feed-card-skeleton {
+  display: flex;
+  gap: 28px;
+  padding: 24px 0;
+  border-bottom: 1px solid #eee;
+}
+.feed-card-skeleton-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+.feed-skel-line {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f0f0f0 0%, #f8f8f8 45%, #f0f0f0 90%);
+  background-size: 200% 100%;
+  animation: follow-skel-shimmer 1.3s ease-in-out infinite;
+}
+.feed-skel-line--sm {
+  width: 38%;
+  height: 12px;
+}
+.feed-skel-line--md {
+  width: 52%;
+  height: 14px;
+}
+.feed-skel-line--lg {
+  width: 72%;
+  height: 18px;
+}
+.feed-skel-line--body {
+  width: 100%;
+  height: 14px;
+}
+.feed-skel-line--body.short {
+  width: 85%;
+}
+.feed-card-skeleton-cover {
+  flex-shrink: 0;
+  width: 200px;
+  height: 140px;
+  border-radius: 10px;
+  background: #eee;
+  margin-top: 80px;
+  animation: follow-skel-shimmer 1.3s ease-in-out infinite;
+}
+
+.feed-list-inner {
+  animation: follow-content-in 0.28s ease-out;
+}
+@keyframes follow-content-in {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .feed-empty {
   padding: 48px 0;
   text-align: center;
@@ -734,14 +924,19 @@ onBeforeUnmount(() => {
   background: #e5e5e5;
 }
 
-/* 右侧栏：整列 sticky，粘在顶栏下，不随滚动滑没 */
+/* 右侧栏：固定列宽，避免子组件异步加载把侧栏撑宽/挤占主栏导致主内容区左右闪动 */
 .follow-sidebar-wrap {
+  flex: 0 0 300px;
+  width: 300px;
+  max-width: 300px;
+  box-sizing: border-box;
   flex-shrink: 0;
   align-self: flex-start;
   position: sticky;
   top: 64px;
   max-height: calc(100vh - 64px);
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .follow-sidebar-inner {

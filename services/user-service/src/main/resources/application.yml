@@ -29,6 +29,28 @@ jwt:
   secret: your-256-bit-secret-key-change-in-production-please
   expiration-ms: 86400000
 
+app:
+  content-service-url: http://localhost:8084
+
+# 阿里云号码认证：SendSmsVerifyCode / CheckSmsVerifyCode
+# 切勿将 AccessKey 写入本文件并提交。请使用：
+#   1) 环境变量 ALIYUN_DYPNS_ACCESS_KEY_ID / ALIYUN_DYPNS_ACCESS_KEY_SECRET / ALIYUN_DYPNS_ENABLED
+#   2) 或复制 application-local.yml.example 为 application-local.yml 并 spring.profiles.active=local（该文件已被 .gitignore）
+# 控制台模板变量为 ${code}、${min} 时，发送接口用 ##code## 由平台生成验证码
+aliyun:
+  dypns:
+    enabled: ${ALIYUN_DYPNS_ENABLED:false}
+    access-key-id: ${ALIYUN_DYPNS_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_DYPNS_ACCESS_KEY_SECRET:}
+    region-id: cn-hangzhou
+    sign-name: 速通互联验证码
+    template-code: "100001"
+    template-param-json: '{"code":"##code##","min":"5"}'
+    code-type: 1
+    code-length: 6
+    valid-time-seconds: 300
+    send-interval-seconds: 60
+
 management:
   endpoints:
     web:

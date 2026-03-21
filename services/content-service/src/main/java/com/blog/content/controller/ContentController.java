@@ -3,6 +3,7 @@ package com.blog.content.controller;
 import com.blog.content.dto.ContentDetailVO;
 import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentMeStatsVO;
+import com.blog.content.dto.CreatorAnalyticsVO;
 import com.blog.content.dto.ContentsMeResponse;
 import com.blog.content.dto.ContentViewVO;
 import com.blog.content.dto.PublishResponse;
@@ -53,6 +54,15 @@ public class ContentController {
     public ResponseEntity<ContentMeStatsVO> meStats(@RequestHeader(HEADER_USER_ID) Long userId) {
         ContentMeStatsVO stats = contentService.getStats(userId);
         return ResponseEntity.ok(stats);
+    }
+
+    @GetMapping("/me/analytics")
+    public ResponseEntity<CreatorAnalyticsVO> meAnalytics(
+            @RequestHeader(HEADER_USER_ID) Long userId,
+            @RequestParam(defaultValue = "30") int days) {
+        if (days < 7) days = 7;
+        if (days > 90) days = 90;
+        return ResponseEntity.ok(contentService.getCreatorAnalytics(userId, days));
     }
 
     @PostMapping("/draft")

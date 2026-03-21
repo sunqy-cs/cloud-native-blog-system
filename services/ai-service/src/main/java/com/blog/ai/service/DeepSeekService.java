@@ -21,7 +21,10 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -190,6 +193,7 @@ public class DeepSeekService {
     }
 
     private static final int COVER_PROMPT_MAX_LENGTH = 500;
+    private static final int MODERATION_INPUT_MAX_LENGTH = 6000;
 
     /**
      * 根据正文生成适合文生图的封面描述（1～2 句话），用于 Z-Image 等模型。
@@ -213,6 +217,114 @@ public class DeepSeekService {
             prompt = prompt.substring(0, COVER_PROMPT_MAX_LENGTH);
         }
         return prompt.isEmpty() ? "简洁的博客封面，清新风格" : prompt;
+    }
+
+    /**
+     * 使用 DeepSeek 做内容审核预判。
+     * 返回结构：decision(PASS/REJECT/NEEDS_HUMAN), reason, score(0~1)
+     */
+    public Map<String, Object> reviewModeration(String resourceType, String content) {
+        String input = content == null ? "" : content.trim();
+        if (input.isEmpty()) {
+            return Map.of(
+                    "decision", "NEEDS_HUMAN",
+                    "reason", "空内容回退人工审核",
+                    "score", 0.0
+            );
+        }
+        if (input.length() > MODERATION_INPUT_MAX_LENGTH) {
+            input = input.substring(0, MODERATION_INPUT_MAX_LENGTH);
+        }
+
+        String rt = resourceType == null ? "UNKNOWN" : resourceType.trim().toUpperCase();
+        List<ChatMessage> messages = List.of(
+                new ChatMessage("system",
+                        "你是 AI 社区内容审核助手。请根据输入内容给出审核预判。\n"
+                                + "审核规则（必须遵守）：\n"
+                                + "1) 以下不良内容必须判为 REJECT：暴恐、枪支弹药、毒品、诈骗、仇恨歧视、恶意辱骂、色情低俗、赌博、违法犯罪教程、隐私泄露与人肉信息、明显侵权盗版、钓鱼/恶意引流。\n"
+                                + "2) 如果内容与 AI 社区无关（例如纯娱乐八卦、无关生活流水账、与 AI 技术/产品/应用/行业讨论无关），必须判为 REJECT。\n"
+                                + "3) 只有当内容安全且与 AI 社区主题相关时，才可判为 PASS。\n"
+                                + "4) 信息不足或边界不清，判为 NEEDS_HUMAN。\n"
+                                + "5) 当 decision 不是 PASS 时，reason 必须具体说明触发原因（不超过30字）。\n"
+                                + "你必须只输出 JSON，不要输出任何解释或 Markdown。JSON 格式必须是："
+                                + "{\"decision\":\"PASS|REJECT|NEEDS_HUMAN\",\"reason\":\"简短中文原因\",\"score\":0到1的小数}。"),
+                new ChatMessage("user",
+                        "resourceType=" + rt + "\n"
+                                + "content=\n" + input + "\n\n"
+                                + "请严格输出 JSON。")
+        );
+
+        try {
+            String raw = chat(messages);
+            return normalizeModerationResult(raw);
+        } catch (Exception e) {
+            log.warn("DeepSeek 审核调用失败，回退人工审核: {}", e.getMessage());
+            return Map.of(
+                    "decision", "NEEDS_HUMAN",
+                    "reason", "AI 调用失败，回退人工审核",
+                    "score", 0.0
+            );
+        }
+    }
+
+    private Map<String, Object> normalizeModerationResult(String raw) {
+        String decision = "NEEDS_HUMAN";
+        String reason = "模型输出不可解析，回退人工审核";
+        double score = 0.0;
+        if (raw == null || raw.isBlank()) {
+            return Map.of("decision", decision, "reason", "模型无返回，回退人工审核", "score", score);
+        }
+
+        String text = raw.trim();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> parsed = objectMapper.readValue(text, Map.class);
+            String d = Objects.toString(parsed.get("decision"), "").trim().toUpperCase();
+            if ("PASS".equals(d) || "REJECT".equals(d) || "NEEDS_HUMAN".equals(d)) {
+                decision = d;
+            }
+            String r = Objects.toString(parsed.get("reason"), "").trim();
+            if (!r.isEmpty()) reason = r;
+            Object s = parsed.get("score");
+            if (s instanceof Number n) {
+                score = n.doubleValue();
+            } else if (s != null) {
+                try {
+                    score = Double.parseDouble(Objects.toString(s, "0"));
+                } catch (Exception ignored) {
+                    score = 0.0;
+                }
+            }
+        } catch (Exception ignored) {
+            String upper = text.toUpperCase();
+            if (upper.contains("REJECT")) {
+                decision = "REJECT";
+                reason = "模型文本结果指示驳回";
+                score = 0.9;
+            } else if (upper.contains("PASS")) {
+                decision = "PASS";
+                reason = "模型文本结果指示通过";
+                score = 0.1;
+            }
+        }
+
+        if (score < 0) score = 0.0;
+        if (score > 1) score = 1.0;
+        if (!"PASS".equals(decision) && (reason == null || reason.isBlank())) {
+            reason = defaultReasonForDecision(decision);
+        }
+        Map<String, Object> res = new HashMap<>();
+        res.put("decision", decision);
+        res.put("reason", reason);
+        res.put("score", score);
+        return res;
+    }
+
+    private String defaultReasonForDecision(String decision) {
+        if ("REJECT".equals(decision)) {
+            return "命中高风险内容，建议驳回";
+        }
+        return "存在风险或信息不足，需人工复核";
     }
 
     private static final int BODY_MAX_LENGTH = 15000;

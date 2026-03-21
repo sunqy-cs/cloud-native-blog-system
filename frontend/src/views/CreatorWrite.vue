@@ -309,6 +309,7 @@ import { ArrowLeft, ArrowDown, DArrowRight, DArrowLeft, RefreshLeft, RefreshRigh
 import { ElMessage } from 'element-plus'
 import Vditor from 'vditor'
 import 'vditor/dist/index.css'
+import { VDITOR_CDN } from '@/utils/vditorCdn'
 import { uploadImage } from '@/api/upload'
 import { generateCover } from '@/api/ai'
 import { saveDraft, getContentForEdit, publishContent } from '@/api/content'
@@ -689,6 +690,7 @@ onMounted(async () => {
   }
   if (!vditorRef.value) return
   vditor = new Vditor(vditorRef.value, {
+    cdn: VDITOR_CDN,
     height: 420,
     value: initialBody,
     placeholder: '#创作灵感#\n记录工作实践、项目复盘\n写技术笔记巩固知识要点\n发表职场感悟心得',

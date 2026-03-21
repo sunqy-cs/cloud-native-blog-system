@@ -26,7 +26,7 @@ spring:
         - id: user-service
           uri: lb://user-service
           predicates:
-            - Path=/api/sessions/**,/api/users/**
+            - Path=/api/sessions/**,/api/users/**,/api/auth/**
           order: 1
         # 文件服务：对象存储
         - id: file-service
@@ -39,6 +39,12 @@ spring:
           uri: lb://content-service
           predicates:
             - Path=/api/contents/**
+          order: 3
+        # 审核（管理员）：接入 moderation API 后由 content-service 或独立服务提供
+        - id: content-service-moderation
+          uri: lb://content-service
+          predicates:
+            - Path=/api/admin/moderation/**
           order: 3
         # 内容服务：收藏夹
         - id: content-service-folders
@@ -123,6 +129,8 @@ gateway:
     permit-all:
       - "POST:/api/sessions"
       - "POST:/api/users"
+      - "POST:/api/auth/sms/send"
+      - "POST:/api/auth/password/reset"
       # GET 图片流式地址（?stream=1）用于编辑器/文章内展示，不携带 Token 也放行
       - "GET:/api/objects/**"
       # 推荐页公开列表（已发布博客，按主标签/最新）
@@ -135,6 +143,10 @@ gateway:
       - "GET:/api/columns/list"
       # 指定用户的关注统计（公开），用于他人个人主页展示关注者数
       - "GET:/api/follow/stats"
+      # 主标签列表（推荐页顶栏、创作页必选等），未登录可访问
+      - "GET:/api/tags/main"
+      # 非主标签列表（创作页其他标签可选），未登录可访问
+      - "GET:/api/tags/others"
       # 综合搜索（标题、摘要、正文、标签）
       - "GET:/api/search"
       # 全量重建搜索索引（开发/首次同步用）

@@ -34,7 +34,7 @@ const routes: RouteRecordRaw[] = [
     path: '/hot',
     name: 'hot',
     component: () => import('@/views/Hot.vue'),
-    meta: { title: '热榜' },
+    meta: { title: '热榜', requireLogin: true },
   },
   {
     path: '/search',
@@ -47,6 +47,54 @@ const routes: RouteRecordRaw[] = [
     name: 'knowledge',
     component: () => import('@/views/Knowledge.vue'),
     meta: { title: '知识库', requireLogin: true },
+  },
+  {
+    path: '/audit',
+    name: 'audit',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '审核中心', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/articles',
+    name: 'audit-articles',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '待审文章', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/comments',
+    name: 'audit-comments',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '评论审核', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/logs',
+    name: 'audit-logs',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '审核记录', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/knowledge',
+    name: 'audit-knowledge',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '公开知识库审核', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/columns',
+    name: 'audit-columns',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '专栏审核', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/knowledge-base',
+    name: 'audit-knowledge-base',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '知识库审核', requireLogin: true, requireAdmin: true },
+  },
+  {
+    path: '/audit/profile',
+    name: 'audit-profile',
+    component: () => import('@/views/AuditCenter.vue'),
+    meta: { title: '资料审核', requireLogin: true, requireAdmin: true },
   },
   {
     path: '/creator',
@@ -79,6 +127,15 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '博客机器人', requireLogin: true },
   },
   {
+    path: '/creator/analytics',
+    name: 'creator-analytics',
+    component: () => import('@/views/CreatorCenter.vue'),
+    meta: { title: '数据分析', requireLogin: true },
+  },
+  { path: '/creator/analytics/overview', redirect: '/creator/analytics' },
+  { path: '/creator/analytics/content', redirect: '/creator/analytics' },
+  { path: '/creator/analytics/audience', redirect: '/creator/analytics' },
+  {
     path: '/creator/write',
     name: 'creator-write',
     component: () => import('@/views/CreatorWrite.vue'),
@@ -95,6 +152,12 @@ const routes: RouteRecordRaw[] = [
     name: 'profile',
     component: () => import('@/views/Profile.vue'),
     meta: { title: '个人主页', requireLogin: true },
+  },
+  {
+    path: '/inbox',
+    name: 'inbox',
+    component: () => import('@/views/Inbox.vue'),
+    meta: { title: '收件箱', requireLogin: true },
   },
   {
     path: '/column/:id',
@@ -143,6 +206,18 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   document.title = (to.meta.title as string) ? `${to.meta.title} - 云原生博客` : '云原生博客'
   const userStore = useUserStore()
+  if (to.meta.requireAdmin) {
+    if (!userStore.token) {
+      requestLogin(to.fullPath)
+      next(false)
+      return
+    }
+    const role = (userStore.userInfo?.role || '').toUpperCase()
+    if (role !== 'ADMIN') {
+      next({ path: '/recommend' })
+      return
+    }
+  }
   if (!userStore.token) {
     if (to.meta.requireAuth) {
       /* 后台等：重定向到推荐，不弹窗 */

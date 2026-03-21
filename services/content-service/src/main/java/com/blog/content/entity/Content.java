@@ -21,6 +21,7 @@ public class Content {
     private String body;
     private String cover;
     private String status;
+    private String moderationStatus;
     private String articleType;
     private String creationStatement;
     private String visibility;

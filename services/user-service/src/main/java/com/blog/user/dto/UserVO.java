@@ -17,7 +17,8 @@ public class UserVO {
     private String residence;
     private String industry;
     private String bio;
-    private String wechatId;
+    /** 脱敏展示，如 138****8000 */
+    private String phone;
     private String role;
     private LocalDateTime createdAt;
 }

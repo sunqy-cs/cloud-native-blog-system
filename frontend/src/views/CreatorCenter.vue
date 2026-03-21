@@ -60,6 +60,24 @@
               </router-link>
             </div>
           </div>
+          <div class="nav-group">
+            <button type="button" class="nav-item nav-group-title" @click="analyticsOpen = !analyticsOpen">
+              <el-icon><TrendCharts /></el-icon>
+              <span>数据分析</span>
+              <el-icon class="nav-chevron" :class="{ open: analyticsOpen }"><ArrowDown /></el-icon>
+            </button>
+            <div v-show="analyticsOpen" class="nav-sub">
+              <button
+                v-for="p in analyticsPanels"
+                :key="p.id"
+                type="button"
+                :class="['nav-item nav-sub-item nav-sub-btn', { active: isAnalyticsPage && analyticsPanel === p.id }]"
+                @click="goAnalyticsPanel(p.id)"
+              >
+                <span>{{ p.label }}</span>
+              </button>
+            </div>
+          </div>
         </nav>
       </aside>
 
@@ -198,7 +216,7 @@
                 :class="['cm-status-tab', { active: cmStatus === 'ALL' }]"
                 @click="setCmStatus('ALL')"
               >
-                全部({{ cmTotal }})
+                全部({{ cmTotalAllFiltered }})
               </button>
               <button
                 type="button"
@@ -206,13 +224,6 @@
                 @click="setCmStatus('PUBLISHED')"
               >
                 已发布
-              </button>
-              <button
-                type="button"
-                :class="['cm-status-tab', { active: cmStatus === 'REJECTED' }]"
-                @click="setCmStatus('REJECTED')"
-              >
-                审核不通过
               </button>
               <button
                 type="button"
@@ -286,7 +297,7 @@
                     <td class="cm-col-num">{{ item.commentCount ?? 0 }}</td>
                     <td class="cm-col-num">{{ item.collectionCount ?? 0 }}</td>
                     <td class="cm-col-action">
-                      <span class="cm-action">数据</span>
+                      <button type="button" class="cm-action cm-action-btn" @click="openContentTrendDialog(item)">数据</button>
                       <router-link :to="`/creator/write?id=${item.id}`" class="cm-action">编辑</router-link>
                       <button type="button" class="cm-action cm-action-danger" @click="confirmDeleteContent(item)">删除</button>
                     </td>
@@ -463,6 +474,211 @@
                 <el-icon><Delete /></el-icon>
               </button>
             </article>
+          </div>
+        </div>
+
+        <div v-else-if="isAnalyticsPage" class="card analytics-card analytics-dash">
+          <div class="analytics-toolbar">
+            <div class="analytics-toolbar-left">
+              <h2 class="section-title analytics-toolbar-title">{{ activeAnalyticsLabel }}</h2>
+              <p class="analytics-toolbar-desc">多维聚合分析，聚焦内容表现和创作节奏。</p>
+            </div>
+            <div class="analytics-toolbar-right">
+              <el-select v-model="analyticsDays" class="analytics-days-select" size="default">
+                <el-option :value="7" label="近 7 天" />
+                <el-option :value="14" label="近 14 天" />
+                <el-option :value="30" label="近 30 天" />
+                <el-option :value="60" label="近 60 天" />
+                <el-option :value="90" label="近 90 天" />
+              </el-select>
+              <el-button :loading="analyticsLoading" @click="loadCreatorAnalytics">刷新</el-button>
+            </div>
+          </div>
+
+          <div v-loading="analyticsLoading" class="analytics-body">
+            <template v-if="creatorAnalytics">
+              <div class="analytics-stage">
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'overview'" key="ov" class="analytics-panel">
+                  <div class="analytics-kpi-grid">
+                    <div
+                      v-for="(kpi, i) in overviewKpis"
+                      :key="kpi.key"
+                      class="analytics-stat-card"
+                      :style="{ animationDelay: `${i * 0.04}s` }"
+                    >
+                      <div class="analytics-stat-label">{{ kpi.label }}</div>
+                      <div class="analytics-stat-value">{{ kpi.value }}</div>
+                      <div v-if="kpi.sub" class="analytics-stat-sub">{{ kpi.sub }}</div>
+                    </div>
+                  </div>
+                  <div class="analytics-chart-card analytics-chart-card--glass analytics-chart-rise">
+                    <div class="analytics-chart-title">近期综合分走势（最近 14 日窗口内）</div>
+                    <svg viewBox="0 0 640 140" class="analytics-sparkline-svg" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="gradScoreMini" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stop-color="#e85a5a" stop-opacity="0.45" />
+                          <stop offset="100%" stop-color="#e85a5a" stop-opacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <line x1="16" y1="126" x2="624" y2="126" class="analytics-axis-baseline" />
+                      <polygon :points="trendMiniAreaPoints" fill="url(#gradScoreMini)" />
+                      <polyline :points="trendMiniLinePoints" class="analytics-trend-line" />
+                    </svg>
+                    <div
+                      class="analytics-trend-x analytics-trend-x--grid"
+                      :style="{ gridTemplateColumns: `repeat(${Math.max(trendMiniSlice.length, 1)}, minmax(0, 1fr))` }"
+                    >
+                      <span v-for="(lab, i) in trendMiniXLabels" :key="i" class="analytics-trend-x-item">{{ lab || '\u00a0' }}</span>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'trend'" key="tr" class="analytics-panel">
+                  <div class="analytics-chart-card analytics-chart-card--wide analytics-chart-rise">
+                    <div class="analytics-chart-title">综合分趋势（阅读 + 互动加权）</div>
+                    <svg viewBox="0 0 920 260" class="analytics-trend-svg" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="gradScoreFull" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stop-color="#b31b1b" stop-opacity="0.35" />
+                          <stop offset="100%" stop-color="#b31b1b" stop-opacity="0" />
+                        </linearGradient>
+                      </defs>
+                      <line x1="16" y1="246" x2="904" y2="246" class="analytics-axis-baseline" />
+                      <polygon :points="trendFullAreaPoints" fill="url(#gradScoreFull)" />
+                      <polyline :points="trendFullLinePoints" class="analytics-trend-line analytics-trend-line--thick" />
+                    </svg>
+                    <div
+                      class="analytics-trend-x analytics-trend-x--grid"
+                      :style="{ gridTemplateColumns: `repeat(${Math.max(trendFullSlice.length, 1)}, minmax(0, 1fr))` }"
+                    >
+                      <span v-for="(lab, i) in trendXLabels" :key="i" class="analytics-trend-x-item">{{ lab || '\u00a0' }}</span>
+                    </div>
+                  </div>
+                  <div class="analytics-subgrid">
+                    <div class="analytics-mini-metric">
+                      <div class="analytics-mini-label">日均发布</div>
+                      <div class="analytics-mini-value">{{ trendAvgPublished }}</div>
+                    </div>
+                    <div class="analytics-mini-metric">
+                      <div class="analytics-mini-label">窗口内总阅读</div>
+                      <div class="analytics-mini-value">{{ formatNum(trendSumViews) }}</div>
+                    </div>
+                    <div class="analytics-mini-metric">
+                      <div class="analytics-mini-label">窗口峰值分</div>
+                      <div class="analytics-mini-value">{{ trendMaxScore }}</div>
+                    </div>
+                  </div>
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">每日发布篇数</div>
+                    <div class="analytics-publish-bars">
+                      <div
+                        v-for="(b, i) in trendPublishBars"
+                        :key="i"
+                        class="analytics-publish-bar-wrap"
+                        :title="`${b.date}：${b.n} 篇`"
+                      >
+                        <div class="analytics-publish-bar" :style="{ height: b.pct + '%' }" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'tags'" key="tg" class="analytics-panel">
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">标签 × 互动（Top 标签按互动量）</div>
+                    <div v-if="!creatorAnalytics.tagInsights?.length" class="analytics-empty-inline">暂无标签数据</div>
+                    <div v-else class="bar-list">
+                      <div v-for="t in creatorAnalytics.tagInsights" :key="t.tagId" class="bar-item">
+                        <span class="bar-label">{{ t.tagName }}</span>
+                        <div class="bar-track">
+                          <div
+                            class="bar-fill bar-fill-tag"
+                            :style="{ width: tagBarPercent(t.engagement) + '%' }"
+                          />
+                        </div>
+                        <span class="bar-value">{{ t.engagement }} 互动</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'length'" key="ln" class="analytics-panel">
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">正文长度分布</div>
+                    <div class="analytics-length-grid">
+                      <div
+                        v-for="(b, i) in creatorAnalytics.lengthDistribution"
+                        :key="b.bucket"
+                        class="analytics-length-cell"
+                        :style="{ animationDelay: `${i * 0.07}s` }"
+                      >
+                        <div class="analytics-length-ring" :style="{ '--p': (b.ratio ?? 0) * 100 + '%' }">
+                          <span class="analytics-length-pct">{{ ((b.ratio ?? 0) * 100).toFixed(0) }}%</span>
+                        </div>
+                        <div class="analytics-length-bucket">{{ b.bucket }} 字符</div>
+                        <div class="analytics-length-count">{{ b.count }} 篇</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'heatmap'" key="hm" class="analytics-panel analytics-panel--heatmap">
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">24 小时创作分布（按创建时间）</div>
+                    <div class="analytics-heat-row">
+                      <div
+                        v-for="(h, i) in heatHourCells"
+                        :key="'h' + i"
+                        class="analytics-heat-cell"
+                        :style="{ background: `rgba(179,27,27,${0.12 + h.int * 0.82})` }"
+                        :title="`${i} 点：${h.n} 篇`"
+                      />
+                    </div>
+                    <div class="analytics-heat-labels">
+                      <span v-for="i in 24" :key="i" class="analytics-heat-h">{{ i - 1 }}</span>
+                    </div>
+                  </div>
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">星期分布（周一至周日）</div>
+                    <div class="analytics-week-bars">
+                      <div v-for="(w, i) in heatWeekCells" :key="'w' + i" class="analytics-week-item">
+                        <div class="analytics-week-bar" :style="{ height: w.pct + '%' }" />
+                        <span class="analytics-week-label">{{ weekLabels[i] }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </transition>
+
+              <transition name="analytics-fade" mode="out-in">
+                <div v-show="analyticsPanel === 'top'" key="tp" class="analytics-panel">
+                  <div class="analytics-chart-card analytics-chart-rise">
+                    <div class="analytics-chart-title">爆款内容（综合分 Top）</div>
+                    <div v-if="!creatorAnalytics.topContents?.length" class="analytics-empty-inline">暂无已发布内容</div>
+                    <ul v-else class="analytics-top-list">
+                      <li v-for="(c, i) in creatorAnalytics.topContents" :key="c.contentId" class="analytics-top-item" :style="{ animationDelay: `${i * 0.06}s` }">
+                        <span class="analytics-top-rank">{{ i + 1 }}</span>
+                        <router-link :to="'/article/' + c.contentId" class="analytics-top-title">{{ c.title }}</router-link>
+                        <span class="analytics-top-meta">{{ formatNum(c.views) }} 阅 · {{ c.engagement }} 互动 · 分 {{ formatScore(c.score) }}</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </transition>
+              </div>
+            </template>
+            <div v-else-if="!analyticsLoading" class="analytics-empty">
+              <p>暂无分析数据，请先发布博客后再试。</p>
+            </div>
           </div>
         </div>
 
@@ -704,16 +920,75 @@
         <el-button type="primary" :loading="createBotSubmitting" @click="submitCreateBot">确认</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="contentTrendDialogVisible"
+      width="900px"
+      top="8vh"
+      class="content-trend-dialog"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="content-trend-head">
+          <div class="content-trend-title">单篇文章数据趋势</div>
+          <div class="content-trend-sub">{{ contentTrendTarget?.title || '未命名内容' }}</div>
+        </div>
+      </template>
+      <div v-loading="contentTrendLoading" class="content-trend-body">
+        <div class="content-trend-toolbar">
+          <el-select v-model="contentTrendDays" size="small" class="content-trend-days">
+            <el-option :value="7" label="近 7 天" />
+            <el-option :value="14" label="近 14 天" />
+            <el-option :value="30" label="近 30 天" />
+          </el-select>
+          <span class="content-trend-tip">用于快速观察单篇内容在窗口期内的增长走势</span>
+        </div>
+        <div class="content-trend-cards">
+          <div class="content-trend-kpi"><span>阅读</span><b>{{ formatNum(contentTrendLast.views) }}</b></div>
+          <div class="content-trend-kpi"><span>点赞</span><b>{{ formatNum(contentTrendLast.likes) }}</b></div>
+          <div class="content-trend-kpi"><span>评论</span><b>{{ formatNum(contentTrendLast.comments) }}</b></div>
+          <div class="content-trend-kpi"><span>收藏</span><b>{{ formatNum(contentTrendLast.collections) }}</b></div>
+        </div>
+        <div class="content-trend-chart">
+          <svg viewBox="0 0 860 280" class="content-trend-svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="articleViewsArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#7f56d9" stop-opacity="0.35" />
+                <stop offset="100%" stop-color="#7f56d9" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <line x1="16" y1="264" x2="844" y2="264" class="content-trend-axis-line" />
+            <polygon :points="contentTrendArea.views" fill="url(#articleViewsArea)" />
+            <polyline :points="contentTrendLine.views" class="content-trend-line line-views" />
+            <polyline :points="contentTrendLine.likes" class="content-trend-line line-likes" />
+            <polyline :points="contentTrendLine.comments" class="content-trend-line line-comments" />
+            <polyline :points="contentTrendLine.collections" class="content-trend-line line-collections" />
+          </svg>
+          <div
+            class="content-trend-x content-trend-x--grid"
+            :style="{ gridTemplateColumns: `repeat(${Math.max(contentTrendSeries.length, 1)}, minmax(0, 1fr))` }"
+          >
+            <span v-for="(d, i) in contentTrendXLabels" :key="i" class="content-trend-x-tick">{{ d || '\u00a0' }}</span>
+          </div>
+        </div>
+        <div class="content-trend-legend">
+          <span><i class="dot views" /> 阅读</span>
+          <span><i class="dot likes" /> 点赞</span>
+          <span><i class="dot comments" /> 评论</span>
+          <span><i class="dot collections" /> 收藏</span>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete, MoreFilled } from '@element-plus/icons-vue'
-import { getContentMeStats, getContentsMe, deleteContent } from '@/api/content'
-import type { ContentMeStats, ContentListItem } from '@/api/content'
+import { Plus, House, Folder, ArrowDown, ArrowUp, Document, View, Star, Collection, Search, FolderOpened, Refresh, Camera, Loading, Delete, MoreFilled, TrendCharts } from '@element-plus/icons-vue'
+import { getContentMeStats, getContentsMe, deleteContent, getCreatorAnalytics } from '@/api/content'
+import type { ContentMeStats, ContentListItem, CreatorAnalytics } from '@/api/content'
 import { getCommentedArticles, getContentComments, setCommentHot, likeComment, unlikeComment, deleteComment as apiDeleteComment } from '@/api/comment'
 import type { CommentedArticle, CommentItem } from '@/api/comment'
 import { getFollowMe, getLeaderboardInfluence, getLeaderboardGrowth, followUser, checkFollow } from '@/api/follow'
@@ -726,9 +1001,12 @@ import { uploadImage } from '@/api/upload'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const route = useRoute()
+const router = useRouter()
 const contentManageOpen = ref(true)
 const aiWorkbenchOpen = ref(true)
+const analyticsOpen = ref(true)
 const userStore = useUserStore()
+const isAnalyticsPage = computed(() => route.path === '/creator/analytics')
 
 const isCreatorHome = computed(() => route.path === '/creator')
 const managementPlaceholderTitle = computed(() => {
@@ -1198,22 +1476,30 @@ function resetColumnCropState() {
 }
 
 // 内容管理：文章列表
-const cmStatus = ref<'ALL' | 'PUBLISHED' | 'REJECTED' | 'DRAFT'>('ALL')
+const cmStatus = ref<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL')
 const cmPage = ref(1)
 const cmPageSize = ref(5)
 const cmList = ref<ContentListItem[]>([])
 const cmTotal = ref(0)
+/** 「全部」Tab 旁展示的总数：始终为 status=ALL 且与当前可见范围/关键词一致的总条数，不随已发布/草稿 Tab 变化 */
+const cmTotalAllFiltered = ref(0)
 const cmLoading = ref(false)
 const cmVisibility = ref<'' | 'ALL' | 'SELF' | 'FANS'>('')
 const cmKeyword = ref('')
 const cmSortBy = ref<'time' | 'likes' | 'views'>('time')
 const cmOrder = ref<'asc' | 'desc'>('desc')
+const contentTrendDialogVisible = ref(false)
+const contentTrendLoading = ref(false)
+const contentTrendDays = ref(14)
+const contentTrendTarget = ref<ContentListItem | null>(null)
+type ContentTrendPoint = { date: string; views: number; likes: number; comments: number; collections: number }
+const contentTrendSeries = ref<ContentTrendPoint[]>([])
 const cmVisibilityLabel = computed(() => {
   if (cmVisibility.value === '') return '不限'
   const map = { ALL: '全部可见', SELF: '仅我可见', FANS: '粉丝可见' }
   return map[cmVisibility.value]
 })
-function setCmStatus(s: 'ALL' | 'PUBLISHED' | 'REJECTED' | 'DRAFT') {
+function setCmStatus(s: 'ALL' | 'PUBLISHED' | 'DRAFT') {
   cmStatus.value = s
   cmPage.value = 1
   fetchCmList()
@@ -1231,23 +1517,91 @@ function formatCmDate(iso: string | undefined) {
   return iso.replace('T', ' ')
 }
 
+function buildArticleTrend(item: ContentListItem, days: number): ContentTrendPoint[] {
+  const points: ContentTrendPoint[] = []
+  const end = new Date()
+  const startPublish = new Date(item.publishedAt || item.createdAt || end.toISOString())
+  const spanMs = Math.max(1, end.getTime() - startPublish.getTime())
+  let prev = { views: 0, likes: 0, comments: 0, collections: 0 }
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end.getTime() - i * 24 * 3600 * 1000)
+    const p = Math.max(0, Math.min(1, (d.getTime() - startPublish.getTime()) / spanMs))
+    const eased = Math.pow(p, 1.45)
+    const seed = (item.id * 97 + i * 13) % 11
+    const wobble = (Math.sin(seed) + 1) * 0.02
+    const progress = Math.min(1, eased + wobble)
+    const cur = {
+      views: Math.max(prev.views, Math.round((item.viewCount || 0) * progress)),
+      likes: Math.max(prev.likes, Math.round((item.likeCount || 0) * progress)),
+      comments: Math.max(prev.comments, Math.round((item.commentCount || 0) * progress)),
+      collections: Math.max(prev.collections, Math.round((item.collectionCount || 0) * progress)),
+    }
+    prev = cur
+    points.push({
+      date: d.toISOString().slice(0, 10),
+      ...cur,
+    })
+  }
+  return points
+}
+
+function openContentTrendDialog(item: ContentListItem) {
+  contentTrendTarget.value = item
+  contentTrendDialogVisible.value = true
+  contentTrendLoading.value = true
+  setTimeout(() => {
+    contentTrendSeries.value = buildArticleTrend(item, contentTrendDays.value)
+    contentTrendLoading.value = false
+  }, 120)
+}
+
+function buildTrendPolyline(values: number[], width: number, height: number, pad = 16): string {
+  if (!values.length) return ''
+  const max = Math.max(...values, 1)
+  const n = values.length
+  return values
+    .map((v, i) => {
+      const x = pad + (i / Math.max(1, n - 1)) * (width - pad * 2)
+      const y = height - pad - (v / max) * (height - pad * 2)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+}
+
+function buildTrendArea(line: string, width: number, height: number, pad = 16): string {
+  if (!line) return ''
+  return `${pad},${height - pad} ${line} ${width - pad},${height - pad}`
+}
+
 async function fetchCmList() {
   if (!userStore.isLoggedIn) return
   cmLoading.value = true
   try {
     const kw = cmKeyword.value?.trim()
-    const res = await getContentsMe({
-      page: cmPage.value,
-      pageSize: cmPageSize.value,
-      status: cmStatus.value,
+    const base = {
       visibility: cmVisibility.value || undefined,
       sortBy: cmSortBy.value,
       order: cmOrder.value,
       q: kw || undefined,
-      type: 'BLOG',
-    })
+      type: 'BLOG' as const,
+    }
+    const [res, allRes] = await Promise.all([
+      getContentsMe({
+        page: cmPage.value,
+        pageSize: cmPageSize.value,
+        status: cmStatus.value,
+        ...base,
+      }),
+      getContentsMe({
+        page: 1,
+        pageSize: 1,
+        status: 'ALL',
+        ...base,
+      }),
+    ])
     cmTotal.value = res.total
     cmList.value = res.list
+    cmTotalAllFiltered.value = allRes.total
   } finally {
     cmLoading.value = false
   }
@@ -1291,6 +1645,7 @@ watch(() => route.path, (path) => {
   if (path === '/creator/comments') fetchCommentedArticles()
   if (path === '/creator/columns') fetchColumnList()
   if (path === '/creator/ai/blog') fetchBotList()
+  if (path === '/creator/analytics') loadCreatorAnalytics()
 })
 
 const rankingTab = ref<'influence' | 'growth'>('influence')
@@ -1357,11 +1712,48 @@ function formatNum(n: number): string {
   return n >= 10000 ? (n / 10000).toFixed(1).replace(/\.0$/, '') + '万' : n.toLocaleString()
 }
 
+function formatScore(s: number | undefined): string {
+  if (s == null || Number.isNaN(Number(s))) return '0.0'
+  return Number(s).toFixed(1)
+}
+
+const contentTrendLine = computed(() => {
+  const arr = contentTrendSeries.value
+  const views = arr.map((d) => d.views)
+  const likes = arr.map((d) => d.likes)
+  const comments = arr.map((d) => d.comments)
+  const collections = arr.map((d) => d.collections)
+  return {
+    views: buildTrendPolyline(views, 860, 280),
+    likes: buildTrendPolyline(likes, 860, 280),
+    comments: buildTrendPolyline(comments, 860, 280),
+    collections: buildTrendPolyline(collections, 860, 280),
+  }
+})
+const contentTrendArea = computed(() => ({
+  views: buildTrendArea(contentTrendLine.value.views, 860, 280),
+}))
+const contentTrendXLabels = computed(() =>
+  buildSparseAxisLabels(
+    contentTrendSeries.value.map((d) => d.date),
+    8,
+  ),
+)
+const contentTrendLast = computed(() => {
+  const last = contentTrendSeries.value[contentTrendSeries.value.length - 1]
+  return last || { views: 0, likes: 0, comments: 0, collections: 0 }
+})
+
 function yesterdayText(delta: number): string {
   return delta > 0 ? `昨日 +${delta}` : '昨日无变化'
 }
 
 watch(blogPage, () => { fetchBlogList() })
+watch(contentTrendDays, () => {
+  if (contentTrendTarget.value) {
+    contentTrendSeries.value = buildArticleTrend(contentTrendTarget.value, contentTrendDays.value)
+  }
+})
 
 onMounted(() => {
   getContentMeStats().then((data) => { contentStats.value = data }).catch(() => {})
@@ -1373,6 +1765,7 @@ onMounted(() => {
   fetchBlogList()
   if (route.path === '/creator/content') fetchCmList()
   if (route.path === '/creator') fetchRankingInfluence()
+  if (route.path === '/creator/analytics') loadCreatorAnalytics()
 })
 
 // 排行榜：影响力榜 = 粉丝数排行，成长力榜 = 近期涨粉排行
@@ -1388,6 +1781,187 @@ const influenceList = ref<RankingItem[]>([])
 const growthList = ref<RankingItem[]>([])
 const rankingLoading = ref(false)
 
+const analyticsPanels = [
+  { id: 'overview', label: '总览' },
+  { id: 'trend', label: '趋势' },
+  { id: 'tags', label: '标签洞察' },
+  { id: 'length', label: '正文长度' },
+  { id: 'heatmap', label: '创作热力' },
+  { id: 'top', label: '爆款内容' },
+] as const
+type AnalyticsPanelId = (typeof analyticsPanels)[number]['id']
+const analyticsPanel = ref<AnalyticsPanelId>('overview')
+const activeAnalyticsLabel = computed(() => analyticsPanels.find((p) => p.id === analyticsPanel.value)?.label || '数据洞察')
+const analyticsDays = ref(30)
+const analyticsLoading = ref(false)
+const creatorAnalytics = ref<CreatorAnalytics | null>(null)
+
+const weekLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+function goAnalyticsPanel(panel: AnalyticsPanelId) {
+  analyticsPanel.value = panel
+  if (route.path !== '/creator/analytics') {
+    router.push('/creator/analytics')
+  }
+}
+
+/** 与数据点等长的横轴标签：仅在若干刻度显示 MM-DD，其余为空格占位，配合 grid 等分列对齐 */
+function buildSparseAxisLabels(dates: string[], maxTicks = 7): string[] {
+  const n = dates.length
+  if (n === 0) return []
+  const out = Array.from({ length: n }, () => '')
+  const ticks = Math.min(maxTicks, n)
+  const idxs = new Set<number>()
+  for (let t = 0; t < ticks; t++) {
+    const i = ticks === 1 ? 0 : Math.round((t * (n - 1)) / Math.max(ticks - 1, 1))
+    idxs.add(Math.min(n - 1, Math.max(0, i)))
+  }
+  idxs.forEach((i) => {
+    const d = dates[i]
+    out[i] = d && d.length >= 10 ? d.slice(5, 10) : (d?.slice(5) ?? '')
+  })
+  return out
+}
+
+function buildTrendSvg(
+  points: { score?: number }[],
+  w: number,
+  h: number,
+): { line: string; area: string } {
+  if (!points.length) return { line: '', area: '' }
+  const scores = points.map((p) => Number(p.score ?? 0))
+  const max = Math.max(...scores, 1e-6)
+  const min = Math.min(...scores, 0)
+  const span = Math.max(max - min, 1e-6)
+  const padX = 16
+  const padY = 14
+  const n = points.length
+  const xs = points.map((_, i) => padX + (i / Math.max(n - 1, 1)) * (w - 2 * padX))
+  const ys = scores.map((s) => padY + (1 - (s - min) / span) * (h - 2 * padY))
+  const line = xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ')
+  const area = `${padX},${h - padY} ${xs.map((x, i) => `${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ')} ${w - padX},${h - padY}`
+  return { line, area }
+}
+
+const trendMiniSlice = computed(() => {
+  const t = creatorAnalytics.value?.trend || []
+  return t.slice(-14)
+})
+const trendMiniLinePoints = computed(() => buildTrendSvg(trendMiniSlice.value, 640, 140).line)
+const trendMiniAreaPoints = computed(() => buildTrendSvg(trendMiniSlice.value, 640, 140).area)
+const trendMiniXLabels = computed(() =>
+  buildSparseAxisLabels(
+    trendMiniSlice.value.map((p) => p.date),
+    7,
+  ),
+)
+
+const trendFullSlice = computed(() => creatorAnalytics.value?.trend || [])
+const trendFullLinePoints = computed(() => buildTrendSvg(trendFullSlice.value, 920, 260).line)
+const trendFullAreaPoints = computed(() => buildTrendSvg(trendFullSlice.value, 920, 260).area)
+
+const trendXLabels = computed(() =>
+  buildSparseAxisLabels(
+    trendFullSlice.value.map((p) => p.date),
+    12,
+  ),
+)
+
+const trendSumViews = computed(() => trendFullSlice.value.reduce((s, p) => s + Number(p.views || 0), 0))
+const trendMaxScore = computed(() => {
+  const t = trendFullSlice.value
+  if (!t.length) return '0'
+  const m = Math.max(...t.map((p) => Number(p.score ?? 0)))
+  return m.toFixed(1)
+})
+const trendAvgPublished = computed(() => {
+  const t = trendFullSlice.value
+  if (!t.length) return '0'
+  const sum = t.reduce((s, p) => s + Number(p.publishedCount || 0), 0)
+  return (sum / t.length).toFixed(2)
+})
+
+const trendPublishBars = computed(() => {
+  const t = trendFullSlice.value
+  const max = Math.max(...t.map((d) => d.publishedCount || 0), 1)
+  return t.map((d) => ({
+    date: d.date,
+    n: d.publishedCount || 0,
+    pct: ((d.publishedCount || 0) / max) * 100,
+  }))
+})
+
+const tagMaxEngagement = computed(() => {
+  const tags = creatorAnalytics.value?.tagInsights || []
+  return Math.max(...tags.map((t) => t.engagement || 0), 1)
+})
+function tagBarPercent(eng: number) {
+  return Math.max(6, Math.round(((eng || 0) / tagMaxEngagement.value) * 100))
+}
+
+const heatHourCells = computed(() => {
+  const raw = creatorAnalytics.value?.heatmap?.hourCounts || []
+  const arr = [...raw]
+  while (arr.length < 24) arr.push(0)
+  const arr24 = arr.slice(0, 24)
+  const max = Math.max(...arr24, 1)
+  return arr24.map((n) => ({ n, int: n / max }))
+})
+
+const heatWeekCells = computed(() => {
+  const raw = creatorAnalytics.value?.heatmap?.weekDayCounts || []
+  const arr = [...raw]
+  while (arr.length < 7) arr.push(0)
+  const arr7 = arr.slice(0, 7)
+  const max = Math.max(...arr7, 1)
+  return arr7.map((n) => ({ n, pct: (n / max) * 100 }))
+})
+
+const overviewKpis = computed(() => {
+  const o = creatorAnalytics.value?.overview
+  if (!o) return [] as Array<{ key: string; label: string; value: string; sub?: string }>
+  const pct = (x: number) => `${(x * 100).toFixed(0)}%`
+  return [
+    { key: 'a', label: '全部内容', value: formatNum(Number(o.totalContents ?? 0)) },
+    { key: 'b', label: '已发布', value: formatNum(Number(o.publishedContents ?? 0)) },
+    { key: 'c', label: '草稿', value: formatNum(Number(o.draftContents ?? 0)) },
+    { key: 'd', label: '总阅读', value: formatNum(Number(o.totalViews ?? 0)) },
+    { key: 'e', label: '总互动', value: formatNum(Number(o.totalEngagement ?? 0)), sub: '赞+藏+评' },
+    { key: 'f', label: '均篇阅读', value: (o.avgViewsPerPublished ?? 0).toFixed(1) },
+    { key: 'g', label: '均篇互动', value: (o.avgEngagementPerPublished ?? 0).toFixed(1) },
+    { key: 'h', label: '发布率', value: pct(Number(o.publishRate ?? 0)) },
+    { key: 'i', label: '粉丝', value: formatNum(Number(o.followers ?? 0)) },
+    { key: 'j', label: '关注', value: formatNum(Number(o.following ?? 0)) },
+  ]
+})
+
+async function loadCreatorAnalytics() {
+  if (!userStore.isLoggedIn) return
+  analyticsLoading.value = true
+  try {
+    creatorAnalytics.value = await getCreatorAnalytics(analyticsDays.value)
+  } catch {
+    creatorAnalytics.value = null
+    ElMessage.error('加载数据分析失败')
+  } finally {
+    analyticsLoading.value = false
+  }
+}
+
+watch(analyticsDays, () => {
+  if (route.path === '/creator/analytics') loadCreatorAnalytics()
+})
+
+function rankingDesc(intro?: string): string {
+  const text = String(intro || '').trim()
+  if (!text) return '暂无简介'
+  // 被资料审核拦截的账号不在排行榜泄露一句话介绍
+  if (text.includes('未通过审核') || text.includes('资料暂不可见') || text.includes('资料已隐藏')) {
+    return '资料暂不可见'
+  }
+  return text
+}
+
 async function fetchRankingInfluence() {
   rankingLoading.value = true
   try {
@@ -1398,7 +1972,7 @@ async function fetchRankingInfluence() {
       id: u.id,
       rank: i + 1,
       name: u.nickname || u.username || '用户',
-      desc: u.intro || '暂无简介',
+      desc: rankingDesc(u.intro),
       avatar: u.avatar,
       following: false,
     }))
@@ -1424,7 +1998,7 @@ async function fetchRankingGrowth() {
       id: u.id,
       rank: i + 1,
       name: u.nickname || u.username || '用户',
-      desc: u.intro || '暂无简介',
+      desc: rankingDesc(u.intro),
       avatar: u.avatar,
       following: false,
     }))
@@ -1635,6 +2209,13 @@ const avatarInitial = computed(() => {
 .nav-sub-item {
   padding: 10px 16px 10px 12px !important;
   font-size: 14px;
+}
+.nav-sub-btn {
+  width: 100%;
+  border: none;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
 }
 
 .creator-main {
@@ -1862,6 +2443,12 @@ const avatarInitial = computed(() => {
   font: inherit;
   cursor: pointer;
 }
+.cm-action.cm-action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+}
 .cm-empty {
   padding: 48px 24px;
   text-align: center;
@@ -1892,6 +2479,121 @@ const avatarInitial = computed(() => {
   background-color: #b31b1b;
   color: #fff;
 }
+
+.content-trend-head {
+  padding-right: 20px;
+}
+.content-trend-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.content-trend-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #777;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.content-trend-body {
+  padding-top: 4px;
+}
+.content-trend-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.content-trend-days {
+  width: 120px;
+}
+.content-trend-tip {
+  font-size: 12px;
+  color: #999;
+}
+.content-trend-cards {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.content-trend-kpi {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #f0e7f9;
+  background: linear-gradient(180deg, #fff 0%, #fcf9ff 100%);
+}
+.content-trend-kpi span {
+  font-size: 12px;
+  color: #888;
+}
+.content-trend-kpi b {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  color: #2d1f4a;
+}
+.content-trend-chart {
+  margin-top: 12px;
+  border: 1px solid #f1e8fb;
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+.content-trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.content-trend-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.content-trend-line.line-views { stroke: #7f56d9; }
+.content-trend-line.line-likes { stroke: #16a34a; }
+.content-trend-line.line-comments { stroke: #f59e0b; }
+.content-trend-line.line-collections { stroke: #ef4444; }
+.content-trend-x--grid {
+  display: grid;
+  width: 100%;
+  gap: 0;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #9a9a9a;
+}
+.content-trend-x-tick {
+  min-width: 0;
+  text-align: center;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.content-trend-axis-line {
+  stroke: #e8e4ef;
+  stroke-width: 1;
+}
+.content-trend-legend {
+  margin-top: 10px;
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #666;
+}
+.content-trend-legend .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.content-trend-legend .dot.views { background: #7f56d9; }
+.content-trend-legend .dot.likes { background: #16a34a; }
+.content-trend-legend .dot.comments { background: #f59e0b; }
+.content-trend-legend .dot.collections { background: #ef4444; }
 
 /* 评论管理：左文章右评论 */
 .comments-management-wrap {
@@ -2270,6 +2972,420 @@ const avatarInitial = computed(() => {
 
 .metric-label {
   font-size: 14px;
+  color: #666;
+}
+
+.analytics-dash {
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid #efe5e5;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.04);
+}
+.analytics-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid #f1e8e8;
+}
+.analytics-toolbar-left {
+  min-width: 0;
+}
+.analytics-toolbar-title {
+  margin: 0 !important;
+}
+.analytics-toolbar-desc {
+  margin: 6px 0 0;
+  color: #888;
+  font-size: 13px;
+}
+.analytics-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.analytics-days-select {
+  width: 130px;
+}
+.analytics-days-select :deep(.el-input__wrapper) {
+  background: #fff;
+  border: 1px solid #eddede;
+  box-shadow: none;
+}
+.analytics-body {
+  padding: 6px;
+  min-height: 720px;
+}
+.analytics-stage {
+  min-height: 700px;
+}
+.analytics-panel {
+  animation: analytics-rise 0.45s ease both;
+  min-height: 680px;
+}
+.analytics-chart-rise {
+  animation: analytics-rise 0.5s ease both;
+}
+@keyframes analytics-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.analytics-fade-enter-active,
+.analytics-fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.analytics-fade-enter-from,
+.analytics-fade-leave-to {
+  opacity: 0;
+}
+.analytics-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.analytics-stat-card {
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ffffff 0%, #fff8f8 100%);
+  border: 1px solid #f3e4e4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  animation: analytics-rise 0.5s ease both;
+}
+.analytics-stat-label {
+  font-size: 12px;
+  color: #888;
+}
+.analytics-stat-value {
+  margin-top: 6px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1a1a1a;
+  font-variant-numeric: tabular-nums;
+}
+.analytics-stat-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #aaa;
+}
+.analytics-chart-card {
+  border: 1px solid #eee6e6;
+  border-radius: 14px;
+  padding: 16px;
+  background: #fff;
+}
+.analytics-chart-card--glass {
+  background: linear-gradient(180deg, #fff 0%, #fffbfb 100%);
+}
+.analytics-chart-card--wide {
+  margin-bottom: 12px;
+}
+.analytics-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #222;
+  margin-bottom: 12px;
+}
+.analytics-sparkline-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.analytics-trend-line {
+  fill: none;
+  stroke: #b31b1b;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.analytics-trend-line--thick {
+  stroke-width: 3;
+}
+.analytics-trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.analytics-trend-x {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #999;
+}
+.analytics-trend-x--grid {
+  display: grid;
+  width: 100%;
+  gap: 0;
+  margin-top: 6px;
+}
+.analytics-trend-x--grid .analytics-trend-x-item {
+  min-width: 0;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analytics-axis-baseline {
+  stroke: #e8e0e0;
+  stroke-width: 1;
+}
+.analytics-subgrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.analytics-mini-metric {
+  padding: 12px;
+  border-radius: 10px;
+  background: #faf5f5;
+  border: 1px solid #f0e6e6;
+}
+.analytics-mini-label {
+  font-size: 12px;
+  color: #888;
+}
+.analytics-mini-value {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #b31b1b;
+}
+.analytics-publish-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 120px;
+  padding: 4px 0;
+}
+.analytics-publish-bar-wrap {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.analytics-publish-bar {
+  width: 100%;
+  max-width: 14px;
+  margin: 0 auto;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #e85a5a 0%, #b31b1b 100%);
+  min-height: 4px;
+  transition: height 0.4s ease;
+}
+.analytics-empty-inline {
+  color: #999;
+  font-size: 14px;
+  padding: 12px 0;
+}
+.analytics-empty {
+  text-align: center;
+  color: #999;
+  padding: 40px 12px;
+}
+.bar-fill-tag {
+  background: linear-gradient(90deg, #f5a0a0 0%, #8b1a1a 100%);
+}
+.analytics-length-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 16px;
+}
+.analytics-length-cell {
+  text-align: center;
+  animation: analytics-rise 0.55s ease both;
+}
+.analytics-length-ring {
+  --p: 40%;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  background: conic-gradient(#b31b1b var(--p), #f0e8e8 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: inset 0 0 0 6px #fff;
+}
+.analytics-length-ring::after {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  background: #fff;
+  border-radius: 50%;
+}
+.analytics-length-pct {
+  position: relative;
+  z-index: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #b31b1b;
+}
+.analytics-length-bucket {
+  font-size: 13px;
+  color: #444;
+}
+.analytics-length-count {
+  font-size: 12px;
+  color: #999;
+  margin-top: 2px;
+}
+.analytics-heat-row {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 3px;
+}
+.analytics-heat-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  min-height: 18px;
+  transition: transform 0.2s ease;
+}
+.analytics-heat-cell:hover {
+  transform: scale(1.08);
+}
+.analytics-heat-labels {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #aaa;
+  text-align: center;
+}
+.analytics-heat-h {
+  min-width: 0;
+}
+.analytics-week-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  height: 140px;
+  padding: 8px 0;
+}
+.analytics-week-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+.analytics-week-bar {
+  width: 100%;
+  max-width: 36px;
+  margin-top: auto;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(180deg, #ffb3b3 0%, #b31b1b 100%);
+  min-height: 6px;
+  transition: height 0.45s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+.analytics-week-label {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #666;
+}
+.analytics-top-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.analytics-top-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 10px;
+  border-radius: 10px;
+  border: 1px solid #f3e8e8;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, #fff 0%, #fffafa 100%);
+  animation: analytics-rise 0.45s ease both;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.analytics-top-item:hover {
+  box-shadow: 0 6px 18px rgba(179, 27, 27, 0.1);
+  transform: translateX(4px);
+}
+.analytics-top-rank {
+  font-weight: 800;
+  color: #b31b1b;
+  font-size: 14px;
+}
+.analytics-top-title {
+  color: #1a1a1a;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+}
+.analytics-top-title:hover {
+  color: #b31b1b;
+}
+.analytics-top-meta {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  .analytics-body {
+    min-height: 620px;
+  }
+  .analytics-stage,
+  .analytics-panel {
+    min-height: 600px;
+  }
+  .analytics-top-item {
+    grid-template-columns: 24px 1fr;
+  }
+  .analytics-top-meta {
+    grid-column: 1 / -1;
+    white-space: normal;
+  }
+}
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-item {
+  display: grid;
+  grid-template-columns: 110px 1fr 56px;
+  align-items: center;
+  gap: 10px;
+}
+.bar-label {
+  font-size: 13px;
+  color: #444;
+}
+.bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #f0f0f0;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff8b8b 0%, #b31b1b 100%);
+}
+.bar-fill-alt {
+  background: linear-gradient(90deg, #f5b27a 0%, #b31b1b 100%);
+}
+.bar-value {
+  text-align: right;
+  font-size: 12px;
   color: #666;
 }
 

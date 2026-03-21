@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `content` (
     `body`             LONGTEXT     DEFAULT NULL COMMENT '正文',
     `cover`            VARCHAR(512) DEFAULT NULL COMMENT '封面图 URL',
     `status`           VARCHAR(32)  NOT NULL DEFAULT 'DRAFT' COMMENT '状态：DRAFT-草稿 / PUBLISHED-已发布',
+    `moderation_status` VARCHAR(32) DEFAULT NULL COMMENT '审核：PENDING/NEEDS_HUMAN/APPROVED/REJECTED；NULL=历史数据或免审（管理员）',
     `article_type`     VARCHAR(32)  DEFAULT 'ORIGINAL' COMMENT '文章类型：ORIGINAL-原创 / REPRINT-转载 / TRANSLATED-翻译',
     `creation_statement` VARCHAR(64) DEFAULT NULL COMMENT '创作声明：none/ai-assisted/network/personal',
     `visibility`       VARCHAR(32)  NOT NULL DEFAULT 'ALL' COMMENT '可见范围：ALL-全部可见 / SELF-仅我可见 / FANS-粉丝可见',

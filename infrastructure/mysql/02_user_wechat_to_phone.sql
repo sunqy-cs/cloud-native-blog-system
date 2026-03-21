@@ -1,0 +1,5 @@
+-- 若库中仍为 wechat_id，可执行本脚本迁移为 phone（新环境直接用 01_user.sql 即可）
+-- USE blog;
+-- ALTER TABLE `user` CHANGE COLUMN `wechat_id` `phone` VARCHAR(11) DEFAULT NULL COMMENT '手机号';
+-- 若需全新加列而非改名：ALTER TABLE `user` ADD COLUMN `phone` VARCHAR(11) DEFAULT NULL COMMENT '手机号' AFTER `bio`;
+-- ALTER TABLE `user` ADD UNIQUE KEY `uk_phone` (`phone`);

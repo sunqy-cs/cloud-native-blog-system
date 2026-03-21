@@ -1,5 +1,5 @@
 <template>
-  <header class="app-header">
+  <header class="app-header" :class="{ 'app-header--audit': showAuditButton }">
     <div class="header-inner">
       <!-- 左侧：Logo 占位 -->
       <div class="logo-area">
@@ -44,12 +44,22 @@
         </div>
       </nav>
 
-      <!-- 右侧：操作区（BBC 风格） -->
+      <!-- 右侧：操作区（BBC 风格）；管理员在「创作」左侧显示「审核」 -->
       <div class="action-area">
-        <button type="button" class="btn-create" @click="goWrite">
-          <span class="btn-create-plus">+</span>
-          <span class="btn-create-text">创作</span>
-        </button>
+        <div class="action-primary-btns">
+          <button
+            v-if="showAuditButton"
+            type="button"
+            class="btn-create btn-audit"
+            @click="goAudit"
+          >
+            <span class="btn-create-text">审核</span>
+          </button>
+          <button type="button" class="btn-create" @click="goWrite">
+            <span class="btn-create-plus">+</span>
+            <span class="btn-create-text">创作</span>
+          </button>
+        </div>
         <el-button
           v-if="!userStore.isLoggedIn"
           type="primary"
@@ -57,7 +67,17 @@
         >
           登录 / 注册
         </el-button>
-        <el-dropdown v-else popper-class="app-header-user-dropdown" @command="onDropdownCommand">
+        <button
+          v-if="userStore.isLoggedIn"
+          type="button"
+          class="btn-inbox"
+          title="收件箱"
+          @click="goInbox"
+        >
+          <el-icon><Bell /></el-icon>
+          <span v-if="unreadCount > 0" class="inbox-badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+        </button>
+        <el-dropdown v-if="userStore.isLoggedIn" popper-class="app-header-user-dropdown" @command="onDropdownCommand">
           <span class="user-dropdown">
             <span class="user-avatar">
               <img v-if="avatarUrl" :src="avatarUrl" alt="头像" class="avatar-img" />
@@ -81,7 +101,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { Search, ArrowDown } from '@element-plus/icons-vue'
+import { Search, ArrowDown, Bell } from '@element-plus/icons-vue'
+import { getUnreadMessageCount } from '@/api/userMessage'
 
 const props = defineProps<{
   openLoginModal?: (redirect?: string) => void
@@ -91,17 +112,22 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
+const showAuditButton = computed(() => userStore.isLoggedIn && userStore.isAdmin)
+
 const keyword = ref('')
 const searchBoxHover = ref(false)
 const menuWrapperRef = ref<HTMLElement | null>(null)
+const unreadCount = ref(0)
 
-// 在搜索页时，顶栏搜索框显示当前关键词，便于修改后再次搜索
+// 在搜索页时同步 URL 关键词；从搜索页切到其他主导航时清空输入框
 watch(
-  () => [route.path, route.query.q],
-  () => {
-    if (route.path === '/search') {
-      const q = route.query.q
+  () => ({ path: route.path, q: route.query.q }),
+  (to, from) => {
+    if (to.path === '/search') {
+      const q = to.q
       keyword.value = typeof q === 'string' ? q : (Array.isArray(q) ? q[0] ?? '' : '')
+    } else if (from?.path === '/search') {
+      keyword.value = ''
     }
   },
   { immediate: true }
@@ -117,7 +143,10 @@ function updateIndicator() {
   nextTick(() => {
     const wrapper = menuWrapperRef.value
     const activeItem = wrapper?.querySelector('.el-menu-item.is-active')
-    if (!wrapper || !activeItem) return
+    if (!wrapper || !activeItem) {
+      indicatorStyle.value = { left: '0px', width: '0px' }
+      return
+    }
     const textEl = activeItem.querySelector('.nav-text') || activeItem
     const rect = textEl.getBoundingClientRect()
     const wrapperRect = wrapper.getBoundingClientRect()
@@ -146,10 +175,15 @@ watch(activeMenu, updateIndicator)
 onMounted(() => {
   updateIndicator()
   window.addEventListener('resize', updateIndicator)
+  refreshUnreadCount()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateIndicator)
 })
+
+watch(() => userStore.isLoggedIn, () => {
+  refreshUnreadCount()
+}, { immediate: true })
 
 function goLogin() {
   props.openLoginModal?.(route.fullPath)
@@ -179,6 +213,32 @@ function goWrite() {
     return
   }
   router.push('/creator')
+}
+
+function goAudit() {
+  if (!userStore.isLoggedIn) {
+    props.openLoginModal?.('/audit')
+    return
+  }
+  if (!userStore.isAdmin) return
+  router.push('/audit')
+}
+
+function goInbox() {
+  router.push('/inbox')
+}
+
+async function refreshUnreadCount() {
+  if (!userStore.isLoggedIn) {
+    unreadCount.value = 0
+    return
+  }
+  try {
+    const data: any = await getUnreadMessageCount()
+    unreadCount.value = Number(data?.count ?? data?.data?.count ?? 0)
+  } catch {
+    unreadCount.value = 0
+  }
 }
 </script>
 
@@ -224,6 +284,16 @@ function goWrite() {
   display: flex;
   align-items: center;
   flex: 1;
+  min-width: 0; /* 右侧双按钮时允许中间区收缩 */
+}
+
+.app-header--audit .nav-menu-wrapper {
+  flex-shrink: 0;
+}
+
+.app-header--audit .search-box {
+  min-width: 200px;
+  max-width: min(380px, 32vw);
 }
 
 .nav-menu-wrapper {
@@ -309,7 +379,59 @@ function goWrite() {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-left: 24px;
+  margin-left: 16px;
+  flex-shrink: 0;
+}
+
+.action-primary-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-audit {
+  padding: 0 14px;
+}
+
+.btn-inbox {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-inbox:hover {
+  border-color: #bb1919;
+  color: #bb1919;
+  background: #fff5f5;
+}
+
+.btn-inbox .el-icon {
+  font-size: 18px;
+}
+
+.inbox-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #bb1919;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 /* +创作：BBC 风格主按钮 */

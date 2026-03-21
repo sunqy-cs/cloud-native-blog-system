@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "copy:vditor": "node scripts/copy-vditor.cjs",
+    "dev": "npm run copy:vditor && vite",
+    "build": "npm run copy:vditor && vite build",
     "typecheck": "vue-tsc --noEmit",
     "preview": "vite preview"
   },
@@ -14,7 +15,9 @@
     "china-division": "^2.7.0",
     "element-plus": "^2.13.2",
     "force-graph": "^1.51.1",
+    "katex": "^0.16.9",
     "marked": "^9.1.6",
+    "marked-katex-extension": "^5.1.7",
     "pinia": "^2.1.0",
     "vditor": "^3.11.2",
     "vue": "^3.4.0",

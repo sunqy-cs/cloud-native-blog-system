@@ -14,11 +14,13 @@ CREATE TABLE IF NOT EXISTS `user` (
     `residence`    VARCHAR(128) DEFAULT NULL COMMENT '居住地',
     `industry`     VARCHAR(64)  DEFAULT NULL COMMENT '所在行业',
     `bio`          TEXT         DEFAULT NULL COMMENT '个人简介',
+    `profile_moderation_status` VARCHAR(32) DEFAULT NULL COMMENT '资料审核：PENDING/NEEDS_HUMAN/APPROVED/REJECTED；NULL=无待审变更',
     `account_quota` DECIMAL(12,2) DEFAULT 0 COMMENT '账户额度',
-    `wechat_id`    VARCHAR(64)  DEFAULT NULL COMMENT '微信 ID',
+    `phone`        VARCHAR(11)  DEFAULT NULL COMMENT '手机号（中国大陆11位，注册必填，唯一）',
     `role`         VARCHAR(32)  DEFAULT 'USER' COMMENT '角色：ADMIN / USER',
     `created_at`   DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `updated_at`   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uk_username` (`username`)
+    UNIQUE KEY `uk_username` (`username`),
+    UNIQUE KEY `uk_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';

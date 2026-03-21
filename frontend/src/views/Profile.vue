@@ -47,9 +47,9 @@
               <el-icon class="profile-line-icon"><Document /></el-icon>
               <span class="profile-label">简介</span>{{ profile.bio }}
             </p>
-            <p v-if="profile.wechatId" class="profile-line">
+            <p v-if="profile.phone" class="profile-line">
               <el-icon class="profile-line-icon"><ChatDotRound /></el-icon>
-              <span class="profile-label">微信</span>{{ profile.wechatId }}
+              <span class="profile-label">手机</span>{{ profile.phone }}
             </p>
           </template>
           <button type="button" class="profile-toggle-detail" @click="detailCollapsed = !detailCollapsed">
@@ -702,13 +702,21 @@ function onProfileSearch() {
 }
 
 const displayName = computed(() => {
-  if (isViewingOthers.value && profileUser.value) {
-    return profileUser.value.nickname || profileUser.value.username || '用户'
+  if (isViewingOthers.value) {
+    if (profileUser.value) {
+      return profileUser.value.nickname || profileUser.value.username || '用户'
+    }
+    // 加载中或失败：不要用当前登录用户昵称，避免闪一下自己的名字
+    return '用户'
   }
   return userStore.userInfo?.nickname || userStore.userInfo?.username || '用户'
 })
+/** 他人主页只用 TA 的 avatar；无头像时为空，绝不回退到当前登录用户头像 */
 const avatarUrl = computed(() => {
-  if (isViewingOthers.value && profileUser.value?.avatar) return profileUser.value.avatar
+  if (isViewingOthers.value) {
+    const a = profileUser.value?.avatar
+    return (typeof a === 'string' && a.trim()) ? a.trim() : ''
+  }
   return (userStore.userInfo as { avatar?: string })?.avatar || ''
 })
 
@@ -720,7 +728,7 @@ const profile = ref<{
   intro?: string
   gender?: string
   bio?: string
-  wechatId?: string
+  phone?: string
 }>({
   residence: '',
   industry: '',
@@ -808,7 +816,7 @@ function submitEditProfile() {
       profile.value.residence = user.residence
       profile.value.industry = user.industry
       profile.value.bio = user.bio
-      profile.value.wechatId = user.wechatId
+      profile.value.phone = user.phone
       editProfileVisible.value = false
     })
     .finally(() => { editProfileSubmitting.value = false })
@@ -827,8 +835,9 @@ function resetEditForm() {
   residenceCascaderValue.value = []
 }
 const coverStyle = computed(() => {
-  if (isViewingOthers.value && profileUser.value?.cover) {
-    return { backgroundImage: `url(${profileUser.value.cover})` }
+  if (isViewingOthers.value) {
+    const c = profileUser.value?.cover
+    return c && String(c).trim() ? { backgroundImage: `url(${c})` } : {}
   }
   const url = profile.value.cover || (userStore.userInfo as { cover?: string })?.cover || ''
   return url ? { backgroundImage: `url(${url})` } : {}
@@ -1160,6 +1169,10 @@ function resetColumnCropState() {
 async function loadProfileData() {
   const uid = profileUserId.value
   if (isViewingOthers.value && uid != null) {
+    // 切换不同 userId 时先清空，避免短暂显示上一用户的头像/资料
+    if (profileUser.value?.id !== uid) {
+      profileUser.value = null
+    }
     if (currentTab.value === 'collection') currentTab.value = 'blog'
     try {
       const user = await getUserById(uid)
@@ -1171,7 +1184,7 @@ async function loadProfileData() {
       profile.value.residence = user.residence
       profile.value.industry = user.industry
       profile.value.bio = user.bio
-      profile.value.wechatId = user.wechatId
+      profile.value.phone = user.phone
     } catch {
       profileUser.value = null
     }
@@ -1183,6 +1196,7 @@ async function loadProfileData() {
     if (currentTab.value === 'column') fetchColumnList()
     return
   }
+  profileUser.value = null
   if (!userStore.isLoggedIn) return
   getMe().then((user) => {
     userStore.setUserInfo(user)
@@ -1193,7 +1207,7 @@ async function loadProfileData() {
     profile.value.residence = user.residence
     profile.value.industry = user.industry
     profile.value.bio = user.bio
-    profile.value.wechatId = user.wechatId
+    profile.value.phone = user.phone
   }).catch(() => {})
   if (currentTab.value === 'blog') fetchBlogList()
   if (currentTab.value === 'dynamic') fetchDynamicBlogs()

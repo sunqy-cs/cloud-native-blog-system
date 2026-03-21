@@ -8,9 +8,11 @@ import com.blog.content.dto.ContentListItemVO;
 import com.blog.content.dto.ContentViewVO;
 import com.blog.content.dto.ContentMeStatsVO;
 import com.blog.content.dto.ContentsMeResponse;
+import com.blog.content.dto.CreatorAnalyticsVO;
 import com.blog.content.dto.PublishResponse;
 import com.blog.content.dto.SaveDraftRequest;
 import com.blog.content.dto.SaveDraftResponse;
+import com.blog.content.dto.ModerationSubmitRequest;
 import com.blog.content.entity.Content;
 import com.blog.content.entity.ContentCollection;
 import com.blog.content.entity.ContentReference;
@@ -44,6 +46,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.DayOfWeek;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -55,6 +58,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.Comparator;
 
 @Service
 @RequiredArgsConstructor
@@ -84,6 +88,7 @@ public class ContentService {
     private final KnowledgeBaseFavoriteMapper knowledgeBaseFavoriteMapper;
     private final RestTemplate restTemplate;
     private final KbVectorService kbVectorService;
+    private final ModerationService moderationService;
 
     /** 双链笔记：正文中 [[id:标题]] 或 [[标题]] 的匹配 */
     private static final Pattern WIKILINK_PATTERN = Pattern.compile("\\[\\[([^\\]]+)\\]\\]");
@@ -576,21 +581,44 @@ public class ContentService {
         if (STATUS_PUBLISHED.equals(c.getStatus())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "该内容已发布");
         }
-        c.setStatus(STATUS_PUBLISHED);
-        c.setUpdatedAt(LocalDateTime.now());
-        contentMapper.updateById(c);
-        notifySearchServiceIndex(c);
-        try {
-            kbVectorService.refreshEmbeddingsForContent(c.getId());
-        } catch (Exception e) {
-            org.slf4j.LoggerFactory.getLogger(ContentService.class).warn("发布后刷新知识库向量失败 contentId={}", c.getId(), e);
+        if (moderationService.isAdmin(userId)) {
+            c.setStatus(STATUS_PUBLISHED);
+            c.setModerationStatus(ModerationService.STATUS_APPROVED);
+            c.setUpdatedAt(LocalDateTime.now());
+            contentMapper.updateById(c);
+            notifySearchServiceIndex(c);
+            try {
+                kbVectorService.refreshEmbeddingsForContent(c.getId());
+            } catch (Exception e) {
+                org.slf4j.LoggerFactory.getLogger(ContentService.class).warn("发布后刷新知识库向量失败 contentId={}", c.getId(), e);
+            }
+        } else {
+            ModerationSubmitRequest req = new ModerationSubmitRequest();
+            req.setResourceType("ARTICLE");
+            req.setResourceId(c.getId());
+            req.setOwnerUserId(userId);
+            req.setPayloadSnapshot(buildModerationPayload(c));
+            moderationService.submitTask(req);
+            c = contentMapper.selectById(c.getId());
+            if (STATUS_PUBLISHED.equals(c.getStatus())) {
+                notifySearchServiceIndex(c);
+            }
         }
         PublishResponse res = new PublishResponse();
         res.setId(c.getId());
         res.setTitle(c.getTitle());
-        res.setStatus(STATUS_PUBLISHED);
+        res.setStatus(c.getStatus());
         res.setPublishedAt(c.getUpdatedAt() != null ? c.getUpdatedAt().format(ISO_FORMAT) : null);
         return res;
+    }
+
+    private String buildModerationPayload(Content c) {
+        String body = c.getBody() != null ? c.getBody() : "";
+        if (body.length() > 2000) body = body.substring(0, 2000);
+        return "title=" + (c.getTitle() != null ? c.getTitle() : "")
+                + "\nsummary=" + (c.getSummary() != null ? c.getSummary() : "")
+                + "\ncover=" + (c.getCover() != null ? c.getCover() : "")
+                + "\nbody=" + body;
     }
 
     /**
@@ -646,6 +674,226 @@ public class ContentService {
         return vo;
     }
 
+    public CreatorAnalyticsVO getCreatorAnalytics(Long userId, int days) {
+        List<Content> all = contentMapper.selectList(
+                new LambdaQueryWrapper<Content>()
+                        .eq(Content::getUserId, userId)
+                        .eq(Content::getType, TYPE_BLOG)
+                        .orderByDesc(Content::getUpdatedAt));
+
+        CreatorAnalyticsVO vo = new CreatorAnalyticsVO();
+        vo.setOverview(buildOverview(userId, all));
+        vo.setTrend(buildTrend(all, days));
+        vo.setTagInsights(buildTagInsights(all));
+        vo.setLengthDistribution(buildLengthDistribution(all));
+        vo.setTopContents(buildTopContents(all));
+        vo.setHeatmap(buildHeatmap(all));
+        return vo;
+    }
+
+    private CreatorAnalyticsVO.Overview buildOverview(Long userId, List<Content> all) {
+        long total = all.size();
+        List<Content> published = all.stream().filter(c -> STATUS_PUBLISHED.equalsIgnoreCase(c.getStatus())).collect(Collectors.toList());
+        long publishedCount = published.size();
+        long draftCount = Math.max(0, total - publishedCount);
+        long views = all.stream().mapToLong(c -> c.getViewCount() == null ? 0 : c.getViewCount()).sum();
+        long likes = all.stream().mapToLong(c -> c.getLikeCount() == null ? 0 : c.getLikeCount()).sum();
+        long collections = all.stream().mapToLong(c -> c.getCollectionCount() == null ? 0 : c.getCollectionCount()).sum();
+        long comments = all.stream().mapToLong(c -> c.getCommentCount() == null ? 0 : c.getCommentCount()).sum();
+        long engagement = likes + collections + comments;
+
+        CreatorAnalyticsVO.Overview o = new CreatorAnalyticsVO.Overview();
+        o.setTotalContents(total);
+        o.setPublishedContents(publishedCount);
+        o.setDraftContents(draftCount);
+        o.setTotalViews(views);
+        o.setTotalLikes(likes);
+        o.setTotalCollections(collections);
+        o.setTotalComments(comments);
+        o.setTotalEngagement(engagement);
+        o.setAvgViewsPerPublished(publishedCount == 0 ? 0.0 : round2((double) views / publishedCount));
+        o.setAvgEngagementPerPublished(publishedCount == 0 ? 0.0 : round2((double) engagement / publishedCount));
+        o.setPublishRate(total == 0 ? 0.0 : round2((double) publishedCount / total));
+
+        Map<String, Object> followStats = fetchFollowStats(userId);
+        o.setFollowers(toLongSafe(followStats.get("followerCount")));
+        o.setFollowing(toLongSafe(followStats.get("followingCount")));
+        return o;
+    }
+
+    private List<CreatorAnalyticsVO.TrendPoint> buildTrend(List<Content> all, int days) {
+        LocalDate today = LocalDate.now();
+        Map<LocalDate, CreatorAnalyticsVO.TrendPoint> byDate = new LinkedHashMap<>();
+        for (int i = days - 1; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            CreatorAnalyticsVO.TrendPoint p = new CreatorAnalyticsVO.TrendPoint();
+            p.setDate(d.toString());
+            p.setPublishedCount(0);
+            p.setViews(0L);
+            p.setLikes(0L);
+            p.setCollections(0L);
+            p.setComments(0L);
+            p.setScore(0.0);
+            byDate.put(d, p);
+        }
+
+        for (Content c : all) {
+            LocalDateTime t = c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt();
+            if (t == null) continue;
+            LocalDate d = t.toLocalDate();
+            CreatorAnalyticsVO.TrendPoint p = byDate.get(d);
+            if (p == null) continue;
+            if (STATUS_PUBLISHED.equalsIgnoreCase(c.getStatus())) {
+                p.setPublishedCount(p.getPublishedCount() + 1);
+            }
+            long v = c.getViewCount() == null ? 0 : c.getViewCount();
+            long l = c.getLikeCount() == null ? 0 : c.getLikeCount();
+            long col = c.getCollectionCount() == null ? 0 : c.getCollectionCount();
+            long com = c.getCommentCount() == null ? 0 : c.getCommentCount();
+            p.setViews(p.getViews() + v);
+            p.setLikes(p.getLikes() + l);
+            p.setCollections(p.getCollections() + col);
+            p.setComments(p.getComments() + com);
+            double score = Math.log(v + 1) + 3.0 * l + 4.0 * col + 5.0 * com;
+            p.setScore(round2(p.getScore() + score));
+        }
+        return new ArrayList<>(byDate.values());
+    }
+
+    private List<CreatorAnalyticsVO.TagInsight> buildTagInsights(List<Content> all) {
+        if (all.isEmpty()) return List.of();
+        List<Long> ids = all.stream().map(Content::getId).collect(Collectors.toList());
+        List<ContentTag> rel = contentTagMapper.selectList(new LambdaQueryWrapper<ContentTag>().in(ContentTag::getContentId, ids));
+        if (rel.isEmpty()) return List.of();
+        Map<Long, Content> byContentId = all.stream().collect(Collectors.toMap(Content::getId, c -> c, (a, b) -> a));
+        List<Long> tagIds = rel.stream().map(ContentTag::getTagId).distinct().collect(Collectors.toList());
+        Map<Long, String> tagName = tagMapper.selectBatchIds(tagIds).stream()
+                .collect(Collectors.toMap(Tag::getId, Tag::getName, (a, b) -> a));
+
+        Map<Long, CreatorAnalyticsVO.TagInsight> map = new LinkedHashMap<>();
+        for (ContentTag ct : rel) {
+            Content c = byContentId.get(ct.getContentId());
+            if (c == null) continue;
+            CreatorAnalyticsVO.TagInsight s = map.computeIfAbsent(ct.getTagId(), k -> {
+                CreatorAnalyticsVO.TagInsight x = new CreatorAnalyticsVO.TagInsight();
+                x.setTagId(k);
+                x.setTagName(tagName.getOrDefault(k, "未命名标签"));
+                x.setArticleCount(0);
+                x.setViews(0L);
+                x.setEngagement(0L);
+                return x;
+            });
+            s.setArticleCount(s.getArticleCount() + 1);
+            long v = c.getViewCount() == null ? 0 : c.getViewCount();
+            long e = (c.getLikeCount() == null ? 0 : c.getLikeCount())
+                    + (c.getCollectionCount() == null ? 0 : c.getCollectionCount())
+                    + (c.getCommentCount() == null ? 0 : c.getCommentCount());
+            s.setViews(s.getViews() + v);
+            s.setEngagement(s.getEngagement() + e);
+        }
+        return map.values().stream()
+                .sorted(Comparator.comparingLong(CreatorAnalyticsVO.TagInsight::getEngagement).reversed())
+                .limit(8)
+                .collect(Collectors.toList());
+    }
+
+    private List<CreatorAnalyticsVO.LengthBucket> buildLengthDistribution(List<Content> all) {
+        int b0 = 0, b1 = 0, b2 = 0, b3 = 0;
+        for (Content c : all) {
+            int n = c.getBody() == null ? 0 : c.getBody().length();
+            if (n < 500) b0++;
+            else if (n < 1500) b1++;
+            else if (n < 3000) b2++;
+            else b3++;
+        }
+        int total = Math.max(all.size(), 1);
+        List<CreatorAnalyticsVO.LengthBucket> list = new ArrayList<>();
+        list.add(bucket("0-500", b0, total));
+        list.add(bucket("500-1500", b1, total));
+        list.add(bucket("1500-3000", b2, total));
+        list.add(bucket("3000+", b3, total));
+        return list;
+    }
+
+    private CreatorAnalyticsVO.LengthBucket bucket(String name, int count, int total) {
+        CreatorAnalyticsVO.LengthBucket b = new CreatorAnalyticsVO.LengthBucket();
+        b.setBucket(name);
+        b.setCount(count);
+        b.setRatio(round2((double) count / total));
+        return b;
+    }
+
+    private List<CreatorAnalyticsVO.TopContent> buildTopContents(List<Content> all) {
+        return all.stream()
+                .filter(c -> STATUS_PUBLISHED.equalsIgnoreCase(c.getStatus()))
+                .map(c -> {
+                    long v = c.getViewCount() == null ? 0 : c.getViewCount();
+                    long l = c.getLikeCount() == null ? 0 : c.getLikeCount();
+                    long col = c.getCollectionCount() == null ? 0 : c.getCollectionCount();
+                    long com = c.getCommentCount() == null ? 0 : c.getCommentCount();
+                    double score = Math.log(v + 1) + 3.0 * l + 4.0 * col + 5.0 * com;
+                    CreatorAnalyticsVO.TopContent t = new CreatorAnalyticsVO.TopContent();
+                    t.setContentId(c.getId());
+                    t.setTitle(c.getTitle() == null ? "未命名内容" : c.getTitle());
+                    LocalDateTime p = c.getUpdatedAt() != null ? c.getUpdatedAt() : c.getCreatedAt();
+                    t.setPublishedAt(p == null ? "" : p.format(ISO_FORMAT));
+                    t.setViews(v);
+                    t.setEngagement(l + col + com);
+                    t.setScore(round2(score));
+                    return t;
+                })
+                .sorted(Comparator.comparingDouble(CreatorAnalyticsVO.TopContent::getScore).reversed())
+                .limit(8)
+                .collect(Collectors.toList());
+    }
+
+    private CreatorAnalyticsVO.Heatmap buildHeatmap(List<Content> all) {
+        int[] hours = new int[24];
+        int[] weeks = new int[7];
+        for (Content c : all) {
+            LocalDateTime t = c.getCreatedAt();
+            if (t == null) continue;
+            hours[t.getHour()]++;
+            DayOfWeek w = t.getDayOfWeek();
+            weeks[w.getValue() - 1]++;
+        }
+        CreatorAnalyticsVO.Heatmap h = new CreatorAnalyticsVO.Heatmap();
+        List<Integer> hourList = new ArrayList<>();
+        for (int v : hours) hourList.add(v);
+        List<Integer> weekList = new ArrayList<>();
+        for (int v : weeks) weekList.add(v);
+        h.setHourCounts(hourList);
+        h.setWeekDayCounts(weekList);
+        return h;
+    }
+
+    private Map<String, Object> fetchFollowStats(Long userId) {
+        try {
+            String url = interactionServiceUrl.replaceFirst("/$", "") + "/api/follow/me";
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-User-Id", String.valueOf(userId));
+            ResponseEntity<Map<String, Object>> resp = restTemplate.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers),
+                    new ParameterizedTypeReference<Map<String, Object>>() {});
+            return resp.getBody() == null ? Map.of() : resp.getBody();
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    private Long toLongSafe(Object x) {
+        if (x instanceof Number n) return n.longValue();
+        try {
+            return x == null ? 0L : Long.parseLong(String.valueOf(x));
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    private Double round2(double v) {
+        return Math.round(v * 100.0) / 100.0;
+    }
+
     /**
      * 保存草稿：博客正文不能为空，知识库允许正文为空；标题为空则存为 [无标题]。标签按名称先查询，不存在则创建再关联，最多 5 个。
      */
@@ -687,6 +935,7 @@ public class ContentService {
             contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getContentId, c.getId()));
             if (TYPE_KNOWLEDGE.equals(c.getType())) {
                 syncContentReferences(c.getId(), body);
+                submitKnowledgeDocModerationIfPublic(c);
             }
             try {
                 kbVectorService.refreshEmbeddingsForContent(c.getId());
@@ -747,6 +996,30 @@ public class ContentService {
         res.setStatus(STATUS_DRAFT);
         res.setCreatedAt(saved != null && saved.getCreatedAt() != null ? saved.getCreatedAt().format(ISO_FORMAT) : null);
         return res;
+    }
+
+    private void submitKnowledgeDocModerationIfPublic(Content c) {
+        try {
+            List<KnowledgeBaseContent> rel = knowledgeBaseContentMapper.selectList(
+                    new LambdaQueryWrapper<KnowledgeBaseContent>().eq(KnowledgeBaseContent::getContentId, c.getId()));
+            if (rel == null || rel.isEmpty()) return;
+            boolean inPublicKb = false;
+            for (KnowledgeBaseContent r : rel) {
+                KnowledgeBase kb = knowledgeBaseMapper.selectById(r.getKnowledgeBaseId());
+                if (kb != null && KB_VISIBILITY_PUBLIC.equalsIgnoreCase(kb.getVisibility())) {
+                    inPublicKb = true;
+                    break;
+                }
+            }
+            if (!inPublicKb) return;
+            ModerationSubmitRequest req = new ModerationSubmitRequest();
+            req.setResourceType("KNOWLEDGE_DOC");
+            req.setResourceId(c.getId());
+            req.setOwnerUserId(c.getUserId());
+            req.setPayloadSnapshot(buildModerationPayload(c));
+            moderationService.submitTask(req);
+        } catch (Exception ignored) {
+        }
     }
 
     /**

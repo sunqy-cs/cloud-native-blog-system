@@ -58,6 +58,80 @@ export function getContentMeStats(): Promise<ContentMeStats> {
   return request.get('contents/me/stats').then((data) => data as unknown as ContentMeStats)
 }
 
+/** 创作者数据分析（多维聚合，content-service） */
+export interface CreatorAnalyticsOverview {
+  totalContents: number
+  publishedContents: number
+  draftContents: number
+  totalViews: number
+  totalLikes: number
+  totalCollections: number
+  totalComments: number
+  totalEngagement: number
+  avgViewsPerPublished: number
+  avgEngagementPerPublished: number
+  publishRate: number
+  followers: number
+  following: number
+}
+
+export interface CreatorAnalyticsTrendPoint {
+  date: string
+  publishedCount: number
+  views: number
+  likes: number
+  collections: number
+  comments: number
+  score: number
+}
+
+export interface CreatorAnalyticsTagInsight {
+  tagId: number
+  tagName: string
+  articleCount: number
+  views: number
+  engagement: number
+}
+
+export interface CreatorAnalyticsLengthBucket {
+  bucket: string
+  count: number
+  ratio: number
+}
+
+export interface CreatorAnalyticsTopContent {
+  contentId: number
+  title: string
+  publishedAt: string
+  views: number
+  engagement: number
+  score: number
+}
+
+export interface CreatorAnalyticsHeatmap {
+  hourCounts: number[]
+  weekDayCounts: number[]
+}
+
+export interface CreatorAnalytics {
+  overview: CreatorAnalyticsOverview
+  trend: CreatorAnalyticsTrendPoint[]
+  tagInsights: CreatorAnalyticsTagInsight[]
+  lengthDistribution: CreatorAnalyticsLengthBucket[]
+  topContents: CreatorAnalyticsTopContent[]
+  heatmap: CreatorAnalyticsHeatmap
+}
+
+/**
+ * 获取当前用户创作者数据分析（趋势、标签、长度分桶、热力、爆款等）
+ * @param days 统计窗口天数，后端限制 7～90，默认 30
+ */
+export function getCreatorAnalytics(days?: number): Promise<CreatorAnalytics> {
+  return request
+    .get('contents/me/analytics', { params: days != null ? { days } : {} })
+    .then((data) => data as unknown as CreatorAnalytics)
+}
+
 /**
  * 分页获取当前用户的博客列表（我的博客）
  */

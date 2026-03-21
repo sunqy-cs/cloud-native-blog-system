@@ -13,5 +13,4 @@ public class UpdateProfileRequest {
     private String residence;
     private String industry;
     private String bio;
-    private String wechatId;
 }

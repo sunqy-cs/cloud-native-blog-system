@@ -4,6 +4,11 @@
   box-sizing: border-box;
 }
 
+html {
+  /* 预留滚动条槽位，避免内容从「无滚动条」到「有滚动条」时视口宽度突变导致整页横向闪一下 */
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   /* 偏英伦风一点的衬线字体组合 */

@@ -1,8 +1,8 @@
 <template>
   <div class="app-root" :class="{ 'app-root-knowledge': isKnowledgeRoute }">
-    <AppHeader v-if="!isCreatorRoute" :open-login-modal="openLoginModal" />
+    <AppHeader v-if="!isStandaloneWorkspace" :open-login-modal="openLoginModal" />
     <router-view />
-    <AppFooter v-if="!isCreatorRoute && !isKnowledgeRoute" />
+    <AppFooter v-if="!isStandaloneWorkspace && !isKnowledgeRoute" />
     <LoginModal v-model:visible="showLoginModal" :redirect="loginRedirect" />
   </div>
 </template>
@@ -20,7 +20,10 @@ import { pendingLogin } from '@/stores/loginModal'
 const route = useRoute()
 const userStore = useUserStore()
 const showLoginModal = ref(false)
-const isCreatorRoute = computed(() => route.path.startsWith('/creator'))
+/** 创作者中心 / 审核中心：独立顶栏，不显示全局 AppHeader 与页脚 */
+const isStandaloneWorkspace = computed(
+  () => route.path.startsWith('/creator') || route.path.startsWith('/audit')
+)
 const isKnowledgeRoute = computed(() => route.path.startsWith('/knowledge'))
 const loginRedirect = ref('')
 
@@ -44,9 +47,11 @@ watch(() => route.query.login, (v) => {
   }
 }, { immediate: true })
 
-// 已登录但 userInfo 无头像时拉取完整资料，保证顶栏头像能显示（无需先访问个人主页）
+// 已登录时补全资料：头像、role（管理员顶栏「审核」依赖 ADMIN）
 onMounted(() => {
-  if (userStore.isLoggedIn && !(userStore.userInfo as { avatar?: string } | null)?.avatar) {
+  if (!userStore.isLoggedIn) return
+  const info = userStore.userInfo as { avatar?: string; role?: string } | null
+  if (!info?.avatar || info.role == null || info.role === '') {
     getMe().then((u) => userStore.setUserInfo(u)).catch(() => {})
   }
 })

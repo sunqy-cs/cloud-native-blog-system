@@ -11,7 +11,8 @@ export interface UserMe {
   residence?: string
   industry?: string
   bio?: string
-  wechatId?: string
+  /** 手机号（后端可脱敏展示） */
+  phone?: string
   role?: string
   createdAt?: string
 }
@@ -25,7 +26,7 @@ export interface UpdateProfilePayload {
   residence?: string
   industry?: string
   bio?: string
-  wechatId?: string
+  phone?: string
 }
 
 export function getMe(): Promise<UserMe> {

@@ -21,7 +21,9 @@ public class User {
     private String residence;
     private String industry;
     private String bio;
-    private String wechatId;
+    private String profileModerationStatus;
+    /** 绑定手机号（11 位） */
+    private String phone;
     private String role;
 
     @TableField(fill = FieldFill.INSERT)

@@ -38,6 +38,7 @@ public class KnowledgeBaseService {
     private final ContentMapper contentMapper;
     private final ContentReferenceMapper contentReferenceMapper;
     private final ContentService contentService;
+    private final ModerationService moderationService;
     private final KbVectorService kbVectorService;
 
     public List<KnowledgeBaseVO> listMy(Long userId) {
@@ -200,6 +201,7 @@ public class KnowledgeBaseService {
         kb.setVisibility(request.getVisibility() != null && VISIBILITY_PUBLIC.equals(request.getVisibility())
                 ? VISIBILITY_PUBLIC : VISIBILITY_PRIVATE);
         knowledgeBaseMapper.insert(kb);
+        submitKnowledgeBaseMetaModerationIfPublic(kb);
         return toVO(kb);
     }
 
@@ -209,6 +211,7 @@ public class KnowledgeBaseService {
         if (kb == null || !kb.getUserId().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "知识库不存在");
         }
+        boolean wasPublic = VISIBILITY_PUBLIC.equals(kb.getVisibility());
         if (request.getName() != null) {
             String name = request.getName().trim();
             if (name.isEmpty()) {
@@ -226,6 +229,11 @@ public class KnowledgeBaseService {
             kb.setVisibility(VISIBILITY_PUBLIC.equals(request.getVisibility()) ? VISIBILITY_PUBLIC : VISIBILITY_PRIVATE);
         }
         knowledgeBaseMapper.updateById(kb);
+        submitKnowledgeBaseMetaModerationIfPublic(kb);
+        boolean nowPublic = VISIBILITY_PUBLIC.equals(kb.getVisibility());
+        if (!wasPublic && nowPublic) {
+            submitModerationForKnowledgeFilesInPublicKb(kb.getId());
+        }
         return toVO(knowledgeBaseMapper.selectById(id));
     }
 
@@ -405,5 +413,60 @@ public class KnowledgeBaseService {
         vo.setType(c.getType());
         vo.setUserId(c.getUserId());
         return vo;
+    }
+
+    /** 知识库从私有改公开时，对库内知识文件补提送审（幂等由 moderation_task 唯一键保证）。 */
+    private void submitModerationForKnowledgeFilesInPublicKb(Long kbId) {
+        if (kbId == null) return;
+        List<KnowledgeBaseContent> rel = knowledgeBaseContentMapper.selectList(
+                new LambdaQueryWrapper<KnowledgeBaseContent>()
+                        .eq(KnowledgeBaseContent::getKnowledgeBaseId, kbId));
+        if (rel == null || rel.isEmpty()) return;
+        for (KnowledgeBaseContent r : rel) {
+            if (r == null || r.getContentId() == null) continue;
+            Content c = contentMapper.selectById(r.getContentId());
+            if (c == null || !TYPE_KNOWLEDGE.equals(c.getType()) || c.getUserId() == null) continue;
+            try {
+                ModerationSubmitRequest req = new ModerationSubmitRequest();
+                req.setResourceType("KNOWLEDGE_DOC");
+                req.setResourceId(c.getId());
+                req.setOwnerUserId(c.getUserId());
+                req.setPayloadSnapshot(buildModerationPayload(c));
+                moderationService.submitTask(req);
+            } catch (Exception ignored) {
+                // 单条失败不影响其他文件送审
+            }
+        }
+    }
+
+    private String buildModerationPayload(Content c) {
+        String body = c.getBody() != null ? c.getBody() : "";
+        if (body.length() > 2000) body = body.substring(0, 2000);
+        return "title=" + (c.getTitle() != null ? c.getTitle() : "")
+                + "\nsummary=" + (c.getSummary() != null ? c.getSummary() : "")
+                + "\nbody=" + body;
+    }
+
+    private void submitKnowledgeBaseMetaModerationIfPublic(KnowledgeBase kb) {
+        if (kb == null || kb.getId() == null || kb.getUserId() == null) return;
+        if (!VISIBILITY_PUBLIC.equals(kb.getVisibility())) return;
+        try {
+            ModerationSubmitRequest req = new ModerationSubmitRequest();
+            req.setResourceType("KNOWLEDGE_BASE");
+            req.setResourceId(kb.getId());
+            req.setOwnerUserId(kb.getUserId());
+            req.setPayloadSnapshot(buildKnowledgeBaseModerationPayload(kb));
+            moderationService.submitTask(req);
+        } catch (Exception ignored) {
+            // 知识库元信息审核失败不阻塞主流程
+        }
+    }
+
+    private String buildKnowledgeBaseModerationPayload(KnowledgeBase kb) {
+        String desc = kb.getDescription() != null ? kb.getDescription().trim() : "";
+        if (desc.length() > 1000) desc = desc.substring(0, 1000);
+        return "title=" + (kb.getName() != null ? kb.getName() : "")
+                + "\nsummary=" + desc
+                + "\ncover=" + (kb.getCover() != null ? kb.getCover() : "");
     }
 }
